@@ -25,6 +25,7 @@ export const TUNING = {
   surfaceBand: 3, // a level hull this close under the surface is pulled onto it
   surfaceLevelEpsilon: 2 * DEG, // |pitch| below this counts as level
   surfaceSettle: 4, // 1/s — how quickly the hull settles to surfaceY
+  surfaceLeapPitch: 22 * DEG, // on the surface the nose rears this far before the hull lets go and leaps
   leapSpeed: 6, // m/s upward when crossing y = 0: at or above → airborne, below → surface
   gravity: 9.8, // m/s² while airborne
   airPitchAuthority: 10 * DEG, // how far pitch input can hold the nose off the arc

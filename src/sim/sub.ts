@@ -70,7 +70,8 @@ function swim(n: SubState, i: SubInput, dt: number, current: Vec3): void {
   n.yaw += i.yaw * yawRate(speedOf(n)) * dt;
   steerWithCurrent(n, current, dt);
 
-  if (n.medium === 'surface') n.pitch = towardZero(n.pitch, T.levelRate * dt);
+  // On the surface the nose can only be pulled up (to leap); otherwise it lies level.
+  if (n.medium === 'surface' && i.pitch <= 0) n.pitch = towardZero(n.pitch, T.levelRate * dt);
   else if (i.pitch !== 0) n.pitch += i.pitch * T.pitchRate * dt;
   else n.pitch = towardZero(n.pitch, T.levelRate * dt);
   n.pitch = clampPitch(n.pitch);
@@ -86,8 +87,15 @@ function swim(n: SubState, i: SubInput, dt: number, current: Vec3): void {
     z: speed * f.z + (n.vel.z - along * f.z) * keep,
   };
 
-  // Surface running: the one buoyancy — the hull settles half-awash.
-  if (n.medium === 'surface') n.vel.y = (T.surfaceY - n.pos.y) * T.surfaceSettle;
+  if (n.medium !== 'surface') return;
+  // Pulling up at speed throws the hull off the surface: it leaves as a climb and leaps on crossing y = 0.
+  // (Judged on the nose's own rise: the settle below keeps resetting the hull's actual vertical speed.)
+  if (i.pitch > 0 && n.pitch >= T.surfaceLeapPitch && speed * f.y >= T.leapSpeed) {
+    n.medium = 'submerged';
+    n.vel = scale(f, speed);
+  }
+  // Otherwise surface running is the one buoyancy — the hull settles half-awash.
+  else n.vel.y = (T.surfaceY - n.pos.y) * T.surfaceSettle;
 }
 
 /** New speed along the nose: thrust toward the throttle's target speed, otherwise coast toward rest. */
@@ -131,7 +139,8 @@ function changeMedium(n: SubState, i: SubInput): void {
   const rising = n.vel.y;
   if (y >= 0) n.medium = rising >= T.leapSpeed ? 'airborne' : 'surface';
   // A climb slower than leapSpeed reaching the awash line settles onto the surface.
-  else if (y >= T.surfaceY && rising > 0 && rising < T.leapSpeed) n.medium = 'surface';
+  // (Not while diving: dive input always leaves the surface, even with the nose still coming down.)
+  else if (y >= T.surfaceY && rising > 0 && rising < T.leapSpeed && i.pitch >= 0) n.medium = 'surface';
   else if (y >= -T.surfaceBand && i.pitch === 0 && Math.abs(n.pitch) < T.surfaceLevelEpsilon) n.medium = 'surface';
 }
 
