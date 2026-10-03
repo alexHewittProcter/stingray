@@ -5,6 +5,7 @@ import { PilotingMode } from './game/piloting';
 import { listenKeyboard } from './input/raw';
 import { createStepper } from './loop';
 import { createChaseCamera } from './render/chase-camera';
+import { createCombatView } from './render/combat-view';
 import { createCraft } from './render/craft';
 import { createHud } from './render/hud';
 import { createLandmarks } from './render/landmarks';
@@ -13,7 +14,8 @@ import { createMotes } from './render/motes';
 import { createParticles } from './render/particles';
 import { createSea } from './render/sea';
 import { createSeabed } from './render/seabed';
-import { speedOf } from './sim/sub';
+import { targetsLeft } from './sim/combat';
+import { forwardOf, speedOf } from './sim/sub';
 import { FIXED_DT, createWorld } from './sim/world';
 
 const KNOTS_PER_MS = 1.943844;
@@ -56,6 +58,12 @@ const piloting = new PilotingMode();
 const mode: ModeController = piloting;
 mode.enter(world);
 
+const combatView = createCombatView(world, piloting.combat, particles);
+scene.add(combatView.group);
+
+const RETICLE_RANGE = 150; // metres ahead of the nose
+const aim = new THREE.Vector3();
+
 const stepper = createStepper((dt) => mode.step(keyboard.held, dt), FIXED_DT);
 
 let elapsed = 0;
@@ -67,6 +75,7 @@ function draw(alpha: number, frameSeconds: number): void {
   } else {
     chase.update(target, frameSeconds);
   }
+  combatView.update(piloting.combat, frameSeconds);
   particles.update(frameSeconds);
   sea.update(camera, scene, elapsed);
   motes.update(camera, elapsed);
@@ -80,10 +89,20 @@ function draw(alpha: number, frameSeconds: number): void {
     headingDegrees: compass(-s.yaw * DEG),
     homeBearingDegrees: compass(Math.atan2(home.x - s.pos.x, -(home.z - s.pos.z)) * DEG),
     homeDistanceMetres: Math.hypot(home.x - s.pos.x, home.y - s.pos.y, home.z - s.pos.z),
-    targetsLeft: world.targets.length,
+    targetsLeft: targetsLeft(piloting.combat),
     targetsTotal: world.targets.length,
     airborne: s.medium === 'airborne',
   });
+
+  // The reticle marks where the nose points, 150 m ahead.
+  const nose = forwardOf(target.yaw, target.pitch);
+  aim.set(target.pos.x + nose.x * RETICLE_RANGE, target.pos.y + nose.y * RETICLE_RANGE, target.pos.z + nose.z * RETICLE_RANGE);
+  camera.updateMatrixWorld();
+  aim.project(camera);
+  hud.reticle.hidden = aim.z > 1;
+  hud.reticle.style.left = `${(aim.x * 0.5 + 0.5) * 100}%`;
+  hud.reticle.style.top = `${(-aim.y * 0.5 + 0.5) * 100}%`;
+
   renderer.render(scene, camera);
 }
 
@@ -91,6 +110,7 @@ installDebugHandle({
   mode: () => modeName,
   steps: () => piloting.steps,
   state: () => piloting.state,
+  combat: () => piloting.combat,
   teleport: (pos, yaw) => {
     piloting.place({
       pos: { ...pos }, vel: { x: 0, y: 0, z: 0 }, yaw: yaw ?? piloting.state.yaw, pitch: 0, medium: pos.y > 0 ? 'airborne' : 'submerged',
