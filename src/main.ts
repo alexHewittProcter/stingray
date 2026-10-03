@@ -33,11 +33,23 @@ mode.enter(world);
 
 const stepper = createStepper((dt) => mode.step(keyboard.held, dt), FIXED_DT);
 
+let elapsed = 0;
+function draw(): void {
+  sea.update(camera, scene, elapsed);
+  renderer.render(scene, camera);
+}
+
 installDebugHandle({
   mode: () => modeName,
   steps: () => piloting.steps,
   camera: () => ({ x: camera.position.x, y: camera.position.y, z: camera.position.z }),
   setCameraY: (y) => { camera.position.y = y; },
+  advance: (seconds) => {
+    const steps = Math.round(seconds / FIXED_DT);
+    for (let i = 0; i < steps; i++) mode.step(keyboard.held, FIXED_DT);
+    elapsed += steps * FIXED_DT;
+    draw();
+  },
 });
 
 window.addEventListener('resize', () => {
@@ -47,12 +59,10 @@ window.addEventListener('resize', () => {
 });
 
 let last = performance.now();
-let elapsed = 0;
 renderer.setAnimationLoop((now) => {
   const frame = (now - last) / 1000;
   last = now;
   elapsed += frame;
   stepper.advance(frame);
-  sea.update(camera, scene, elapsed);
-  renderer.render(scene, camera);
+  draw();
 });

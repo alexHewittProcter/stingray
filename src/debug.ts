@@ -7,6 +7,8 @@ export interface DebugHandle {
   steps(): number;
   camera(): { x: number; y: number; z: number };
   setCameraY(y: number): void;
+  /** Run the sim for this many seconds of fixed steps and draw one frame — works in a hidden tab, where requestAnimationFrame is paused. */
+  advance(seconds: number): void;
 }
 
 declare global {
