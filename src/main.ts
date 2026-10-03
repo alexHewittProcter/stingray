@@ -7,8 +7,12 @@ import { createStepper } from './loop';
 import { createChaseCamera } from './render/chase-camera';
 import { createCraft } from './render/craft';
 import { createHud } from './render/hud';
+import { createLandmarks } from './render/landmarks';
+import { createMarineville } from './render/marineville';
+import { createMotes } from './render/motes';
 import { createParticles } from './render/particles';
 import { createSea } from './render/sea';
+import { createSeabed } from './render/seabed';
 import { speedOf } from './sim/sub';
 import { FIXED_DT, createWorld } from './sim/world';
 
@@ -29,6 +33,11 @@ const camera = new THREE.PerspectiveCamera(58, window.innerWidth / window.innerH
 
 const sea = createSea(world);
 scene.add(sea.group);
+
+scene.add(createSeabed(world), createLandmarks(world), createMarineville());
+
+const motes = createMotes();
+scene.add(motes.points);
 
 const particles = createParticles();
 scene.add(particles.points);
@@ -60,6 +69,7 @@ function draw(alpha: number, frameSeconds: number): void {
   }
   particles.update(frameSeconds);
   sea.update(camera, scene, elapsed);
+  motes.update(camera, elapsed);
 
   const s = piloting.state;
   const home = world.marineville.tunnelMouth;
