@@ -64,6 +64,20 @@ scene.add(combatView.group);
 const RETICLE_RANGE = 150; // metres ahead of the nose
 const aim = new THREE.Vector3();
 
+// ?at=x,y,z&yaw=degrees&pitch=degrees starts the sub there (at rest) — for inspecting a view or taking a screenshot.
+const params = new URLSearchParams(location.search);
+const at = params.get('at')?.split(',').map(Number);
+if (at && at.length === 3 && at.every(Number.isFinite)) {
+  const [x = 0, y = 0, z = 0] = at;
+  piloting.place({
+    pos: { x, y, z },
+    vel: { x: 0, y: 0, z: 0 },
+    yaw: (Number(params.get('yaw') ?? 0) * Math.PI) / 180,
+    pitch: (Number(params.get('pitch') ?? 0) * Math.PI) / 180,
+    medium: y > 0 ? 'airborne' : 'submerged',
+  });
+}
+
 const stepper = createStepper((dt) => mode.step(keyboard.held, dt), FIXED_DT);
 
 let elapsed = 0;
