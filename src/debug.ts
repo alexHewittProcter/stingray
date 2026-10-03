@@ -1,14 +1,19 @@
 import type { GameMode } from './game/mode';
+import type { SubInput, SubState } from './sim/sub';
+import type { Vec3 } from './sim/vec3';
 
 // window.__stingray: how a browser-driven check witnesses behaviour without a human at the keys.
-// Phase 1 grows this with state(), combat(), teleport() and setInput() as the sim lands.
 export interface DebugHandle {
   mode(): GameMode;
   steps(): number;
-  camera(): { x: number; y: number; z: number };
-  setCameraY(y: number): void;
+  state(): SubState;
+  /** Put the sub at rest at a position (optionally with a heading). */
+  teleport(pos: Vec3, yaw?: number): void;
+  /** Hold these axes regardless of the keyboard; pass {} to release. */
+  setInput(input: Partial<SubInput>): void;
   /** Run the sim for this many seconds of fixed steps and draw one frame — works in a hidden tab, where requestAnimationFrame is paused. */
   advance(seconds: number): void;
+  camera(): Vec3;
 }
 
 declare global {
