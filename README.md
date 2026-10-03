@@ -26,6 +26,8 @@ pnpm build && pnpm preview
 
 Let go of climb/dive and Stingray levels out and holds its depth. Climb hard at speed to leap out of the water — from deep, or straight off a fast surface run.
 
+Add `?at=x,y,z&yaw=degrees&pitch=degrees` to the URL to start the sub at a point (yaw 0 faces north, toward Marineville; 180 faces out to sea) — handy for looking at one spot.
+
 Open `/model.html` under `pnpm dev` to inspect the Stingray model on its own.
 
 *Stingray* and its characters belong to their rights holder; this repo is a private prototype and is not for distribution.
