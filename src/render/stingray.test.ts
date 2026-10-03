@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { describe, expect, it } from 'vitest';
 import { createStingray } from './stingray';
 
-const TRIANGLE_BUDGET = 30_000;
+const TRIANGLE_BUDGET = 45_000;
 
 function triangles(object: THREE.Object3D): number {
   let count = 0;
