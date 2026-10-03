@@ -70,7 +70,7 @@ const GLASS = 0x0d1a2a;
 const STERN_PLANE = 0xcfe3ea;
 const DRIVE_CREAM = 0xeee6c6;
 const DRIVE_FIN = 0xf6f0d8;
-const DRIVE_HUB = 0x8a949d;
+const DRIVE_HUB = 0xd8d2bc;
 const MAST_GREY = 0xd8dde3;
 const LETTERING = '#0f2350';
 
