@@ -16,9 +16,28 @@ const FLASH_LIFE = 0.4;
 
 // ---- Targets ----
 
+let haloTexture: THREE.CanvasTexture | null = null;
+
+/** A soft round falloff, shared by every glow sprite. */
+function halo(): THREE.CanvasTexture {
+  if (haloTexture) return haloTexture;
+  const canvas = document.createElement('canvas');
+  canvas.width = canvas.height = 64;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) throw new Error('2d canvas unavailable');
+  const gradient = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
+  gradient.addColorStop(0, 'rgba(255,255,255,1)');
+  gradient.addColorStop(0.25, 'rgba(255,255,255,0.55)');
+  gradient.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, 0, 64, 64);
+  haloTexture = new THREE.CanvasTexture(canvas);
+  return haloTexture;
+}
+
 function glow(color: number, size: number): THREE.Sprite {
   const sprite = new THREE.Sprite(
-    new THREE.SpriteMaterial({ color, transparent: true, opacity: 0.55, blending: THREE.AdditiveBlending, depthWrite: false, fog: false }),
+    new THREE.SpriteMaterial({ map: halo(), color, transparent: true, opacity: 0.55, blending: THREE.AdditiveBlending, depthWrite: false, fog: false }),
   );
   sprite.scale.setScalar(size);
   return sprite;
@@ -45,9 +64,9 @@ function createBuoy(target: Target, world: World): THREE.Group {
   const lamp = new THREE.Mesh(new THREE.SphereGeometry(r * 0.3, 10, 8), new THREE.MeshBasicMaterial({ color: 0xfff2a8, fog: false }));
   lamp.position.y = r * 1.25;
   group.add(lamp);
-  const halo = glow(0xffe27a, r * 7);
-  halo.position.y = r * 1.25;
-  group.add(halo);
+  const lampGlow = glow(0xffe27a, r * 7);
+  lampGlow.position.y = r * 1.25;
+  group.add(lampGlow);
 
   // Mooring chain down to the bed.
   const drop = target.pos.y - world.seabedHeight(target.pos.x, target.pos.z);
@@ -88,9 +107,9 @@ function createTerrorFish(target: Target): THREE.Group {
     const eye = new THREE.Mesh(new THREE.SphereGeometry(r * 0.3, 12, 8), new THREE.MeshBasicMaterial({ color: 0xffffff, fog: false }));
     eye.position.set(side * r * 0.5, r * 0.3, -r * 1.15);
     group.add(eye);
-    const halo = glow(0xdff4ff, r * 4.5);
-    halo.position.copy(eye.position);
-    group.add(halo);
+    const eyeGlow = glow(0xdff4ff, r * 4.5);
+    eyeGlow.position.copy(eye.position);
+    group.add(eyeGlow);
   }
   const maw = new THREE.Mesh(new THREE.SphereGeometry(r * 0.45, 10, 8), new THREE.MeshBasicMaterial({ color: 0xb3261e }));
   maw.scale.set(1, 0.55, 0.8);

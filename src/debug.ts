@@ -1,4 +1,5 @@
 import type { GameMode } from './game/mode';
+import type { CombatState } from './sim/combat';
 import type { SubInput, SubState } from './sim/sub';
 import type { Vec3 } from './sim/vec3';
 
@@ -7,6 +8,7 @@ export interface DebugHandle {
   mode(): GameMode;
   steps(): number;
   state(): SubState;
+  combat(): CombatState;
   /** Put the sub at rest at a position (optionally with a heading). */
   teleport(pos: Vec3, yaw?: number): void;
   /** Hold these axes regardless of the keyboard; pass {} to release. */
