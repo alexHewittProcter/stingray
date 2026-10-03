@@ -30,15 +30,6 @@ export function createSea(world: World): Sea {
   surface.rotation.x = -Math.PI / 2;
   group.add(surface);
 
-  // Placeholder bed until the heightfield lands with the ocean.
-  const bed = new THREE.Mesh(
-    new THREE.PlaneGeometry(size, size, 1, 1),
-    new THREE.MeshLambertMaterial({ color: 0x8a7f5a }),
-  );
-  bed.rotation.x = -Math.PI / 2;
-  bed.position.y = -70;
-  group.add(bed);
-
   const sun = new THREE.DirectionalLight(0xffffff, 1.6);
   sun.position.set(300, 800, 200);
   group.add(sun);
