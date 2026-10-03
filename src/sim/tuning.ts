@@ -40,6 +40,16 @@ export const TUNING = {
   edgeZone: 150, // m from the bound where the current starts
   edgePush: 15, // m/s² inward at the bound itself (ramps from 0 at the zone's inner edge)
   edgeTurnRate: 50 * DEG, // rad/s the current swings the heading inward, at the bound
+
+  // Missiles
+  missileSpeed: 80, // m/s added to the sub's speed along its nose at launch
+  missileCooldown: 0.4, // s between launches while fire is held
+  missileLifetime: 6, // s before an unspent missile is gone
+  // Launch point ahead of the hull centre: past the 13 m half-length, with the hull sphere and missile radius clear.
+  missileNoseOffset: 18, // m
+  missileRadius: 0.5, // m — the missile's hit sphere
+  missileBedProbe: 1, // m between seabed samples along a step's travel, so thin ridges are not skipped
+  missileBedRefine: 12, // bisection passes that pin the seabed crossing point (≈ 0.25 mm at 1 m probes)
 } as const;
 
 export type Tuning = typeof TUNING;
