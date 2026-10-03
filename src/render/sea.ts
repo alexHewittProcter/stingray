@@ -16,17 +16,15 @@ export function createSea(world: World): Sea {
   const group = new THREE.Group();
   const size = world.bounds.halfSize * 2 * 3;
 
-  const surface = new THREE.Mesh(
-    new THREE.PlaneGeometry(size, size, 1, 1),
-    new THREE.MeshPhongMaterial({
-      color: 0x2f8fb5,
-      specular: 0xffffff,
-      shininess: 90,
-      transparent: true,
-      opacity: 0.82,
-      side: THREE.DoubleSide,
-    }),
-  );
+  const surfaceMaterial = new THREE.MeshPhongMaterial({
+    color: 0x2f8fb5,
+    specular: 0xffffff,
+    shininess: 90,
+    transparent: true,
+    opacity: 0.82,
+    side: THREE.DoubleSide,
+  });
+  const surface = new THREE.Mesh(new THREE.PlaneGeometry(size, size, 1, 1), surfaceMaterial);
   surface.rotation.x = -Math.PI / 2;
   group.add(surface);
 
@@ -43,6 +41,9 @@ export function createSea(world: World): Sea {
     update(camera, scene, timeSeconds) {
       scene.fog = fog;
       surface.position.y = Math.sin(timeSeconds * 0.6) * 0.15;
+      // From above the sea hides what lies beneath; from below the surface is a bright ceiling.
+      surfaceMaterial.opacity = camera.position.y >= 0 ? 0.94 : 0.6;
+      surfaceMaterial.color.setHex(camera.position.y >= 0 ? 0x1f6f96 : 0x8fd6ee);
       const y = camera.position.y;
       if (y < 0) {
         const depth = Math.min(-y / TRENCH_DEPTH, 1);

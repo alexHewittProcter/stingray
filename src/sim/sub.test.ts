@@ -141,6 +141,28 @@ describe('stepSub', () => {
     expect(climb.medium).toBe('submerged');
   });
 
+  it('5b. climbing off a fast surface run leaps; climbing at walking pace stays awash', () => {
+    // At speed, pulling the nose up throws the hull out of the water.
+    const fast = run(at(OPEN.x, -1, OPEN.z, EAST, { medium: 'surface' }), BOOST, 4);
+    expect(fast.medium).toBe('surface');
+    const seen = new Set<string>();
+    let apex = -Infinity;
+    run(fast, input({ throttle: 1, boost: true, pitch: 1 }), 4, (st) => {
+      seen.add(st.medium);
+      apex = Math.max(apex, st.pos.y);
+    });
+    expect(seen.has('airborne')).toBe(true);
+    expect(apex).toBeGreaterThan(15); // a real leap, not a hop: the nose rears up before the hull lets go
+
+    // Too slow to rise at 6 m/s: the hull stays on the surface however long climb is held.
+    const slow = at(OPEN.x, -1, OPEN.z, EAST, { medium: 'surface', vel: { x: 4, y: 0, z: 0 } });
+    const media = new Set<string>();
+    run(slow, input({ throttle: 0.15, pitch: 1 }), 6, (st) => {
+      media.add(st.medium);
+    });
+    expect([...media]).toEqual(['surface']);
+  });
+
   it('6. boosted 30° climb from 40 m leaps ≥ 26 m, re-enters submerged keeping ≥ 60 % of its speed', () => {
     let s = at(-700, -40, 600, EAST);
     let entrySpeed = 0;
