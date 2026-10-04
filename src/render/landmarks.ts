@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { ARCH, CLIFF_TOP, COAST_Z, type Collider, type World } from '../sim/world';
-import { hash3, mulberry32 } from './random';
+import { mulberry32 } from './random';
 import { Growth, KELP_HEIGHT, hullGeometry, ribsGeometry, strataBox, towerGeometry, type WreckFrame } from './natural';
 
 // Landmark scenery. Solid shapes are drawn inside their colliders, so what you see is what you hit.
