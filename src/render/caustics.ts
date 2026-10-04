@@ -16,6 +16,8 @@ export const causticUniforms = {
   /** Projects a point up to the surface along the sunlight: xz offset per metre of depth. */
   uCausticSlant: { value: new THREE.Vector2(SUN_DIRECTION.x / SUN_DIRECTION.y, SUN_DIRECTION.z / SUN_DIRECTION.y).multiplyScalar(0.75) },
   uCausticSun: { value: SUN_DIRECTION.clone() },
+  /** 1 at sea; 0 while the camera is inside Marineville, where no sunlight comes through the surface (L6). */
+  uCausticStrength: { value: 1 },
 };
 
 const VERTEX_PARS = /* glsl */ `
@@ -43,6 +45,7 @@ varying vec3 vCausticPos;
 uniform float uCausticTime;
 uniform vec2 uCausticSlant;
 uniform vec3 uCausticSun;
+uniform float uCausticStrength;
 
 // Bright seams between drifting cells (the gap between the nearest and second-nearest cell centre).
 float causticSeams(vec2 p, float t, float blur) {
@@ -79,7 +82,7 @@ if (vCausticPos.y < -0.4) {
   float causticNear = 1.0 - smoothstep(${NEAR_FADE[0].toFixed(1)}, ${NEAR_FADE[1].toFixed(1)}, distance(vCausticPos, cameraPosition));
   vec3 causticNormal = inverseTransformDirection(normal, viewMatrix);
   float causticFacing = max(dot(causticNormal, uCausticSun), 0.0);
-  float causticAmount = causticDepth * causticNear * causticFacing;
+  float causticAmount = causticDepth * causticNear * causticFacing * uCausticStrength;
   if (causticAmount > 0.001) {
     float net = causticNet(causticUv, uCausticTime * 0.9, causticBlur);
     reflectedLight.directDiffuse += diffuseColor.rgb * vec3(0.85, 1.0, 0.95) * net * causticAmount * ${STRENGTH.toFixed(2)};
@@ -98,7 +101,8 @@ function isLit(m: THREE.Material): boolean {
 
 /** Give one lit material caustics (idempotent; keeps any onBeforeCompile it already had). */
 export function addCausticsToMaterial(material: THREE.Material): void {
-  if (patched.has(material) || !isLit(material)) return;
+  // Interior meshes (indoors.ts) are lit by Marineville's own lamps, not the sun through the surface.
+  if (patched.has(material) || !isLit(material) || material.userData.noCaustics === true) return;
   patched.add(material);
   const previousHook = material.onBeforeCompile;
   const previousKey = material.customProgramCacheKey;
