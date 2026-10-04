@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { toSubInput } from './pilot';
+import { pressFor, toSubInput } from './pilot';
 
 const keys = (...codes: string[]) => new Set(codes);
 
@@ -34,5 +34,12 @@ describe('toSubInput', () => {
     expect(toSubInput(keys('ShiftLeft')).boost).toBe(true);
     expect(toSubInput(keys('ShiftRight')).boost).toBe(true);
     expect(toSubInput(keys('Space')).fire).toBe(true);
+  });
+
+  it('maps 1–4 to the launch controls (L5), and nothing else to a press', () => {
+    expect(['Digit1', 'Digit2', 'Digit3', 'Digit4'].map(pressFor)).toEqual(['cradle', 'engines', 'clamps', 'door']);
+    expect(pressFor('KeyW')).toBeNull();
+    expect(pressFor('Numpad1')).toBeNull();
+    expect(pressFor('constructor')).toBeNull();
   });
 });
