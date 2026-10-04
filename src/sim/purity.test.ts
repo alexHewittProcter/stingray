@@ -11,7 +11,7 @@ const BANNED: Array<[RegExp, string]> = [
   [/\bDate\.now\b|\bnew Date\b/, 'reads the clock (Date)'],
   [/\bperformance\.now\b/, 'reads the clock (performance)'],
   [/\b(window|document|navigator)\./, 'touches the DOM'],
-  [/from\s+['"]\.\.\/(render|input|game)\b/, 'imports from outside the sim'],
+  [/from\s+['"]\.\.\/(render|input|game|audio)\b/, 'imports from outside the sim'],
 ];
 
 function sources(dir: string): string[] {
