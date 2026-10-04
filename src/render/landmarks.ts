@@ -177,7 +177,7 @@ function stacks(world: World): THREE.Group {
     const ledges: THREE.Vector3[] = [];
     const phase = rand() * Math.PI * 2;
     const waist = (t: number) => 0.8 + 0.2 * (0.5 + 0.5 * Math.sin(t * 7 + phase)) - 0.12 * t;
-    group.add(strataBox(c, world.seed, { layer: 8, sides: 18, inset: 0.14, squareness: 2.8, profile: waist, moss: 0.5, jag: 0.3, grain: 5, rand }, ledges));
+    group.add(strataBox(c, world.seed, { layer: 11, sides: 22, inset: 0.16, squareness: 2.6, profile: waist, moss: 0.5, jag: 0.38, grain: 3.5, rand }, ledges));
     growth.onLedges(ledges, 0.45, 1.1);
     footGrowth(world, growth, c, rand);
     // A few kelp ribbons at each foot give the columns a soft, moving edge.

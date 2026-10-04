@@ -21,7 +21,7 @@ interface ClumpOptions {
   lift: [number, number];
   /** Noise roughness of each knob's surface. */
   rough: number;
-  /** Icosahedron detail per knob: 1 up close, 0 for the distant version. */
+  /** Icosahedron detail of the central knob: 1 up close, 0 for the distant version. */
   detail: number;
   seed: number;
 }
@@ -31,7 +31,8 @@ function clumpGeometry(o: ClumpOptions): THREE.BufferGeometry {
   const rand = mulberry32(o.seed ^ 0xc0a1);
   const parts: THREE.BufferGeometry[] = [];
   for (let k = 0; k < o.knobs; k++) {
-    const g = mergeVertices(withoutUvNormal(new THREE.IcosahedronGeometry(1, o.detail)));
+    // Only the central knob carries the finer mesh; the ring's knobs are mostly hidden behind it.
+    const g = mergeVertices(withoutUvNormal(new THREE.IcosahedronGeometry(1, k === 0 ? o.detail : 0)));
     const p = g.attributes.position as THREE.BufferAttribute;
     const a = (k / o.knobs) * Math.PI * 2 + rand();
     const centre =

@@ -25,7 +25,7 @@ const BUSH_COLOURS = [0x3fb7a8, 0x58c2c9, 0x8fc6d8, 0x6fd0c0, 0x9ad8e6];
 const FROND_COLOURS = [0x6f9a3a, 0x8aa83a, 0x4f7f2f, 0x9cae48, 0x5f8a34];
 
 /** Instances per square metre, before patchiness and depth thin them. */
-const DENSITY = { mound: 0.05, coral: 0.005, bush: 0.0045, frond: 0.016, clusters: 0.0001 };
+const DENSITY = { mound: 0.03, coral: 0.005, bush: 0.0045, frond: 0.016, clusters: 0.00014 };
 
 interface Instance {
   kind: KindName;
@@ -225,7 +225,8 @@ function dressCell(
       const d = r === 0 ? 0 : spread * Math.sqrt(rand());
       const x = ox + Math.cos(a) * d;
       const z = oz + Math.sin(a) * d;
-      const w = (r === 0 ? 3.2 : 1.4) + rand() * 2.8;
+      // The cluster's heart is a broad, flat-topped slab; its neighbours are smaller and rounder.
+      const w = r === 0 ? 4 + rand() * 5 : 1.4 + rand() * 2.8;
       // Unit top is 1: the scale.y is the height above the lowest bed, tilt included.
       const h = Math.min(w * (0.45 + rand() * 0.5), DRESSING_MAX_HEIGHT - 0.5);
       const kind = BOULDERS[Math.floor(rand() * BOULDERS.length)] ?? 'boulderA';
@@ -254,7 +255,11 @@ function dressCell(
       if (rand() < keep) place(x, z);
     }
   };
-  field(Math.round(area * DENSITY.mound), 11, (x, z) => mound(x, z, 1));
+  // Moss grows in drifts: each spot that takes is a knot of two or three overlapping cushions.
+  field(Math.round(area * DENSITY.mound), 11, (x, z) => {
+    const knot = 1 + Math.floor(rand() * 3);
+    for (let k = 0; k < knot; k++) mound(x + (rand() - 0.5) * 4, z + (rand() - 0.5) * 4, 1);
+  });
   field(Math.round(area * DENSITY.coral), 23, coral);
   field(Math.round(area * DENSITY.bush), 37, bush);
   field(Math.round(area * DENSITY.frond), 41, frond);
