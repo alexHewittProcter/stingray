@@ -4,6 +4,7 @@
 
 import type { Collider } from './collide';
 import { COAST_Z, TRENCH, makeSeabed } from './seabed';
+import { TUNING as T } from './tuning';
 import type { Vec3 } from './vec3';
 
 export type { Collider } from './collide';
@@ -21,6 +22,20 @@ export interface Marineville {
   tunnelMouth: Vec3;
   /** The heading pointing out of the tunnel into the open sea. */
   tunnelHeading: number;
+  /** Additive to C1 (phase 2, L1): the launch tunnel and Pen 3, built inward from tunnelMouth. */
+  interior: Interior;
+}
+
+/** L1: the inside of Marineville, north of the cliff face. Plain data; confinement is in interior.ts. */
+export interface Interior {
+  /** Polyline from the mouth inward; radius = the drawn bore. */
+  tunnel: { centreline: Vec3[]; radius: number };
+  /** The pen hall, pool included. The pool's surface is the sea's. */
+  pen: { min: Vec3; max: Vec3; waterY: 0 };
+  /** Hull-centre heights; yawOut faces the tunnel. */
+  cradle: { pos: Vec3; raisedY: number; loweredY: number; yawOut: number };
+  /** centre = tunnelMouth; range = how close the sub must be to request the door. */
+  door: { centre: Vec3; range: number };
 }
 
 export interface Spawn {
@@ -76,21 +91,70 @@ export type Env = World;
 export const OCEAN_HALF_SIZE = 1500;
 export const CLIFF_TOP = 25; // m above the surface
 
+const TUNNEL_MOUTH: Vec3 = Object.freeze({ x: 0, y: -40, z: COAST_Z });
+
+// ---- The interior (L1): door chamber, S-bend, Pen 3 ----
+
+// A level door chamber runs straight in from the mouth, then the S-bend swings east and back west
+// while it climbs to the pen's south wall. The bends hide the pen from the door and the door from the pen.
+const DOOR_CHAMBER = 70; // m of level, straight bore behind the door
+const BEND_RUN = 170; // m along z from the chamber's end to the pen's south wall
+const BEND_SWING = 13; // m: the S-bend's furthest reach either side of the axis
+const BEND_POINTS = 24; // polyline points along the bend (≈ 7 m apart)
+const TUNNEL_RADIUS = 13; // the drawn bore
+const PEN = { halfWidth: 32, southZ: -1340, northZ: -1450, floorY: -28, ceilingY: 20 };
+const CRADLE = { z: -1395, raisedY: 7, loweredY: -14 };
+const DOOR_RANGE = 120;
+
+// The S's shape, 0 at both ends with level tangents there: ½(cos πu − cos 3πu) peaks at ±0.77 near u ≈ 0.3, 0.7.
+const S_PEAK = 0.7698;
+const sShape = (u: number) => (Math.cos(Math.PI * u) - Math.cos(3 * Math.PI * u)) / 2 / S_PEAK;
+const ease = (u: number) => u * u * (3 - 2 * u);
+const cm = (n: number) => Math.round(n * 100) / 100 + 0; // + 0 turns -0 into 0
+
+function tunnelCentreline(): Vec3[] {
+  const m = TUNNEL_MOUTH;
+  const bendStart = m.z - DOOR_CHAMBER;
+  const rise = CRADLE.loweredY - m.y; // the pen end is level with the lowered cradle
+  const points: Vec3[] = [{ ...m }];
+  for (let k = 0; k <= BEND_POINTS; k++) {
+    const u = k / BEND_POINTS;
+    points.push({ x: cm(m.x + BEND_SWING * sShape(u)), y: cm(m.y + rise * ease(u)), z: cm(bendStart - BEND_RUN * u) });
+  }
+  return points;
+}
+
+const INTERIOR: Interior = {
+  tunnel: { centreline: tunnelCentreline(), radius: TUNNEL_RADIUS },
+  pen: {
+    min: { x: -PEN.halfWidth, y: PEN.floorY, z: PEN.northZ },
+    max: { x: PEN.halfWidth, y: PEN.ceilingY, z: PEN.southZ },
+    waterY: 0,
+  },
+  cradle: { pos: { x: 0, y: CRADLE.loweredY, z: CRADLE.z }, raisedY: CRADLE.raisedY, loweredY: CRADLE.loweredY, yawOut: Math.PI },
+  door: { centre: TUNNEL_MOUTH, range: DOOR_RANGE },
+};
+
 // Phase 2 builds inward from this anchor and must not move it.
-export const MARINEVILLE: Marineville = Object.freeze({
-  tunnelMouth: Object.freeze({ x: 0, y: -40, z: COAST_Z }),
+export const MARINEVILLE: Marineville = deepFreeze({
+  tunnelMouth: TUNNEL_MOUTH,
   tunnelHeading: Math.PI, // out of the cliff = south (+Z)
+  interior: INTERIOR,
 });
 
 export const SPAWN_DISTANCE = 60;
 
-// The mouth opening in the cliff face, plugged in phase 1 by the shut marine door.
-const MOUTH_HALF_WIDTH = 20;
-const MOUTH_HALF_HEIGHT = 12;
+// The cliff is a slab (phase 2, amendment 4): solid for SLAB_DEPTH north of the face; behind it the interior's
+// confinement (interior.ts) is the only limit. The mouth opening through the slab is a square about the tunnel
+// axis, so the hull sphere's centre passes within tunnelHullReach (5 m) of it, as in the bore: an 18 m square.
+const SLAB_DEPTH = 12;
+const MOUTH_HALF = T.tunnelHullReach + T.hullRadius;
+// The shut marine door: phase 1's box, kept exactly where phase 1 put it (it overlaps the slab round the opening).
+const DOOR_HALF_WIDTH = 20;
+const DOOR_HALF_HEIGHT = 12;
 const DOOR_THICKNESS = 6;
 // Land reaches past the bounds so no edge of the cliff is ever exposed.
 const LAND_X = OCEAN_HALF_SIZE + 100;
-const LAND_NORTH_Z = -OCEAN_HALF_SIZE - 100;
 const CLIFF_FOOT_Y = -400;
 
 const box = (min: Vec3, max: Vec3): Collider => ({ kind: 'box', min, max });
@@ -139,21 +203,25 @@ function buildLandmarks(bed: Bed): Landmark[] {
 
 function marineville(): Landmark {
   const m = MARINEVILLE.tunnelMouth;
-  const left = m.x - MOUTH_HALF_WIDTH;
-  const right = m.x + MOUTH_HALF_WIDTH;
-  const bottom = m.y - MOUTH_HALF_HEIGHT;
-  const top = m.y + MOUTH_HALF_HEIGHT;
+  const left = m.x - MOUTH_HALF;
+  const right = m.x + MOUTH_HALF;
+  const bottom = m.y - MOUTH_HALF;
+  const top = m.y + MOUTH_HALF;
+  const back = COAST_Z - SLAB_DEPTH;
   return {
     id: 'marineville',
     name: 'Marineville cliff and tunnel mouth',
     pos: { ...m },
     solid: true,
     colliders: [
-      box(v(-LAND_X, CLIFF_FOOT_Y, LAND_NORTH_Z), v(left, CLIFF_TOP, COAST_Z)), // west of the mouth
-      box(v(right, CLIFF_FOOT_Y, LAND_NORTH_Z), v(LAND_X, CLIFF_TOP, COAST_Z)), // east of the mouth
-      box(v(left, top, LAND_NORTH_Z), v(right, CLIFF_TOP, COAST_Z)), // above the mouth
-      box(v(left, CLIFF_FOOT_Y, LAND_NORTH_Z), v(right, bottom, COAST_Z)), // below the mouth
-      box(v(left, bottom, COAST_Z - DOOR_THICKNESS), v(right, top, COAST_Z)), // the shut marine door
+      box(v(-LAND_X, CLIFF_FOOT_Y, back), v(left, CLIFF_TOP, COAST_Z)), // west of the mouth
+      box(v(right, CLIFF_FOOT_Y, back), v(LAND_X, CLIFF_TOP, COAST_Z)), // east of the mouth
+      box(v(left, top, back), v(right, CLIFF_TOP, COAST_Z)), // above the mouth
+      box(v(left, CLIFF_FOOT_Y, back), v(right, bottom, COAST_Z)), // below the mouth
+      box(
+        v(m.x - DOOR_HALF_WIDTH, m.y - DOOR_HALF_HEIGHT, COAST_Z - DOOR_THICKNESS),
+        v(m.x + DOOR_HALF_WIDTH, m.y + DOOR_HALF_HEIGHT, COAST_Z),
+      ), // the shut marine door
     ],
   };
 }
