@@ -129,12 +129,12 @@ function createSurface(): Surface {
         vec2 s = vec2(0.0);
         float scale = 0.18; // cycles per metre
         float amp = cameraPosition.y < 0.0 ? 0.022 : 0.07; // seen from below, gentler or it reads as ice
-        for (int i = 0; i < 3; i++) {
+        for (int i = 0; i < 4; i++) {
           float fade = 1.0 - smoothstep(0.06, 0.2, scale * footprint);
           vec2 drift = vec2(cos(float(i) * 2.1), sin(float(i) * 2.1)) * t * (0.35 + 0.15 * float(i));
           s += amp * fade * noiseSlope(p * scale + drift + float(i) * 17.0);
           scale *= 2.3;
-          amp *= 0.6;
+          amp *= 0.78;
         }
         return s;
       }
@@ -158,14 +158,16 @@ function createSurface(): Surface {
           float shade = 0.85 + 0.6 * vHeight;
           colour = mix(SW_SEA_BODY * shade, skyGradient(r, uSunDir), fresnel);
           float glint = max(dot(r, uSunDir), 0.0);
-          colour += SUN_COLOUR * (pow(glint, 900.0) * 6.0 + pow(glint, 120.0) * 0.35);
+          // Broken into glitter: the smooth normals alone would give broad, flat patches of glare.
+          float glitter = smoothstep(0.5, 0.8, swNoise(vWorld.xz * 1.6 + vec2(uTime * 0.9, -uTime * 0.6)));
+          colour += SUN_COLOUR * (pow(glint, 700.0) * 1.3 * (0.15 + 0.85 * glitter) + pow(glint, 60.0) * 0.2);
 
           // Whitecaps: broken flecks of foam on the higher crests, in scattered patches.
           float patches = smoothstep(0.62, 0.85, swNoise(vWorld.xz * 0.025 + vec2(uTime * 0.02, 0.0)));
           float flecks = swNoise(vWorld.xz * 0.45 + vec2(0.0, uTime * 0.15)) * 0.6 + swNoise(vWorld.xz * 1.7 - uTime * 0.2) * 0.4;
           float crest = smoothstep(0.05, 0.35, vHeight);
           float foam = smoothstep(0.42, 0.6, flecks * crest * patches + crest * patches * 0.15)
-            * (1.0 - smoothstep(120.0, 700.0, dist)) * 0.4;
+            * (1.0 - smoothstep(120.0, 700.0, dist)) * 0.3;
           colour = mix(colour, vec3(0.9, 0.94, 0.97), foam);
 
           // Far off, the sea settles into one colour that meets the sky in a clean line.
