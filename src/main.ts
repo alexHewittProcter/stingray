@@ -1,12 +1,12 @@
 import * as THREE from 'three';
 import { createAudio } from './audio/audio';
-import { installDebugHandle } from './debug';
+import { installDebugHandle, runScript } from './debug';
 import { Game, launchStatus } from './game/game';
 import { pressFor } from './input/pilot';
 import { listenKeyboard } from './input/raw';
 import { createStepper } from './loop';
 import { addCaustics } from './render/caustics';
-import { createChaseCamera } from './render/chase-camera';
+import { createCameraRig } from './render/camera-rig';
 import { createCombatView } from './render/combat-view';
 import { createCraft } from './render/craft';
 import { createHud } from './render/hud';
@@ -14,6 +14,7 @@ import { createLandmarks } from './render/landmarks';
 import { createMarineville } from './render/marineville';
 import { createMotes } from './render/motes';
 import { createParticles } from './render/particles';
+import { createPen } from './render/pen';
 import { createSea } from './render/sea';
 import { createSeabed } from './render/seabed';
 import { updateScenery } from './render/sway';
@@ -54,9 +55,19 @@ scene.add(particles.points);
 const craft = createCraft(particles);
 scene.add(craft.group);
 
-const chase = createChaseCamera(camera, world.seabedHeight);
-const hud = createHud(document.body);
 const params = new URLSearchParams(location.search);
+
+// Pen 3 and its cradle (phase 2, T3); the camera rig blends the pen camera and phase 1's chase camera.
+const pen = createPen(world.marineville.interior);
+scene.add(pen.root);
+pen.reflect(craft.group);
+const rig = createCameraRig(camera, world);
+// Witnessing (debug): ?view=x,y,z,lookX,lookY,lookZ fixes the camera there, ignoring the rig.
+const viewNumbers = params.get('view')?.split(',').map(Number);
+const viewFrom = viewNumbers?.length === 6 && viewNumbers.every(Number.isFinite)
+  ? [new THREE.Vector3(...viewNumbers.slice(0, 3)), new THREE.Vector3(...viewNumbers.slice(3))] as const
+  : null;
+const hud = createHud(document.body);
 
 // One scene, one world, one GameState for the session (game.ts); the mode is derived from it and changes only
 // what is drawn. Until the pen and tunnel are drawn (phase 2, T5) the game starts at sea and R returns there;
@@ -100,12 +111,23 @@ let elapsed = 0;
 function draw(alpha: number, frameSeconds: number): void {
   const g = game.state;
   const target = craft.update(game.lastState.sub, g.sub, alpha, game.input, frameSeconds, g.launch.engines !== 'off');
+  const penView = {
+    cradle: game.lastState.launch.cradle + (g.launch.cradle - game.lastState.launch.cradle) * alpha,
+    clamps: g.launch.clamps,
+    craftYaw: target.yaw,
+  };
   if (game.jumped) {
-    chase.snap(target);
+    rig.snap(target, g.launch.clamps);
+    pen.snap(penView);
     game.jumped = false;
   } else {
-    chase.update(target, frameSeconds);
+    rig.update(target, g.launch.clamps, frameSeconds);
   }
+  if (viewFrom) {
+    camera.position.copy(viewFrom[0]);
+    camera.lookAt(viewFrom[1]);
+  }
+  pen.update(camera, penView, frameSeconds, elapsed);
   combatView.update(g.combat, frameSeconds);
   particles.update(frameSeconds);
   sea.update(camera, scene, elapsed);
@@ -171,12 +193,31 @@ window.addEventListener('resize', () => {
   renderer.setSize(window.innerWidth, window.innerHeight);
 });
 
+// Witnessing (debug): ?script=cradle,8,engines,2.1,clamps,1 presses controls and advances the sim before the first
+// frame (a control name presses it, a number runs that many seconds); ?hold then keeps the sim still while frames
+// draw, so a screenshot shows exactly the scripted moment; ?stats writes the renderer's counts into the page.
+const script = params.get('script');
+if (script) runScript(script, window.__stingray!);
+const hold = params.has('hold');
+const stats = params.has('stats') ? document.body.appendChild(document.createElement('pre')) : null;
+if (stats) {
+  stats.id = 'stats';
+  renderer.info.autoReset = false; // the pool's reflection is a nested render: count the whole frame
+
+  Object.assign(stats.style, { position: 'fixed', left: '8px', bottom: '8px', margin: '0', color: '#fff', font: '11px monospace' });
+}
+
 let last = performance.now();
 renderer.setAnimationLoop((now) => {
   const frame = Math.min((now - last) / 1000, 0.1);
   last = now;
   elapsed += frame;
-  const alpha = stepper.advance(frame);
+  const alpha = hold ? 1 : stepper.advance(frame);
+  if (stats) renderer.info.reset();
   draw(alpha, frame);
   audio.frame(game.state);
+  if (stats) {
+    const { calls, triangles } = renderer.info.render;
+    stats.textContent = `calls ${calls}  triangles ${triangles}  programs ${renderer.info.programs?.length ?? 0}  camera ${camera.position.toArray().map((n) => n.toFixed(1)).join(',')}  pen view ${rig.penWeight().toFixed(2)}`;
+  }
 });
