@@ -14,6 +14,7 @@ import { createMotes } from './render/motes';
 import { createParticles } from './render/particles';
 import { createSea } from './render/sea';
 import { createSeabed } from './render/seabed';
+import { updateScenery } from './render/sway';
 import { targetsLeft } from './sim/combat';
 import { forwardOf, speedOf } from './sim/sub';
 import { FIXED_DT, createWorld } from './sim/world';
@@ -93,6 +94,7 @@ function draw(alpha: number, frameSeconds: number): void {
   particles.update(frameSeconds);
   sea.update(camera, scene, elapsed);
   motes.update(camera, elapsed);
+  updateScenery(elapsed, camera, scene);
 
   const s = piloting.state;
   const home = world.marineville.tunnelMouth;
