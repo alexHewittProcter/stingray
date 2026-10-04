@@ -5,7 +5,7 @@ import { distanceTo, type Collider } from './collide';
 import { forwardOf, type SubState } from './sub';
 import { TUNING as T } from './tuning';
 import type { Vec3 } from './vec3';
-import { targetPos, type Env, type TargetSpec, type World } from './world';
+import { CLIFF_TOP, COAST_Z, targetPos, type Env, type TargetSpec, type World } from './world';
 
 export interface Missile {
   pos: Vec3;
@@ -62,13 +62,17 @@ export function stepCombat(c: CombatState, sub: SubState, fire: boolean, dt: num
 
   let cooldown = Math.max(c.cooldown - dt, 0);
   const flying = c.missiles.slice();
+  const detonations: Vec3[] = [];
   if (fire && cooldown <= 0) {
-    flying.push(launch(sub));
+    const m = launch(sub);
+    // A launch point already past the face (a nose pressed against the door) detonates where the launch crosses it.
+    const s = faceCrossing(sub.pos, m.pos);
+    if (s === null) flying.push(m);
+    else detonations.push(lerp(sub.pos, m.pos, s));
     cooldown = T.missileCooldown;
   }
 
   const missiles: Missile[] = [];
-  const detonations: Vec3[] = [];
   for (const m of flying) {
     const end = add(m.pos, scale(m.vel, dt));
     const hit = firstHit(m.pos, end, before, targets, env);
@@ -133,6 +137,7 @@ function firstHit(from: Vec3, to: Vec3, before: Target[], after: Target[], env: 
     for (const collider of landmark.colliders) consider(sweepCollider(from, to, collider), null);
   }
   consider(sweepSeabed(from, to, env.seabedHeight), null);
+  consider(faceCrossing(from, to), null);
 
   if (bestS === Infinity) return null;
   return { point: lerp(from, to, bestS), target: bestTarget };
@@ -187,6 +192,17 @@ function segmentBox(from: Vec3, to: Vec3, min: Vec3, max: Vec3, r: number): numb
     if (enter > exit) return null;
   }
   return enter;
+}
+
+/**
+ * L2: missiles never enter Marineville. The first s at which from→to crosses the cliff face northward below
+ * the clifftop, else null. The mouth is the case that matters (the door may be open to the sub, never to a
+ * missile); elsewhere on the face it keeps phase 1's "the land behind the face is rock" now the cliff is a slab.
+ */
+function faceCrossing(from: Vec3, to: Vec3): number | null {
+  if (from.z < COAST_Z || to.z >= COAST_Z) return null;
+  const s = (from.z - COAST_Z) / (from.z - to.z);
+  return from.y + (to.y - from.y) * s < CLIFF_TOP ? s : null;
 }
 
 /** Samples the bed every missileBedProbe metres along the travel, then bisects to the crossing. */
