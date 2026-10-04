@@ -3,7 +3,7 @@ import { type GameState, REFUSAL, oceanStart, standby } from '../sim/launch';
 import { initialSubState } from '../sim/sub';
 import type { Vec3 } from '../sim/vec3';
 import { COAST_Z, FIXED_DT as DT, createWorld } from '../sim/world';
-import { Game, launchStatus } from './game';
+import { Game, startState } from './game';
 import { modeOf } from './mode';
 
 const W = createWorld(1964);
@@ -17,7 +17,7 @@ function stepFor(game: Game, seconds: number, keys: ReadonlySet<string> = NOTHIN
 
 /** A session at sea that has shot buoy-1 dead, has a missile in flight and the door opening. */
 function sortie(): Game {
-  const game = new Game(W, oceanStart(W), 'standby');
+  const game = new Game(W, oceanStart(W));
   game.place(at({ x: 0, y: -30, z: -1000 }, Math.PI)); // buoy-1 is 100 m dead ahead
   stepFor(game, 0.1, held('Space'));
   stepFor(game, 2);
@@ -72,15 +72,16 @@ describe('the game owner (L3, L4)', () => {
     expect(game.state.launch.cradleDir).toBe(1);
   });
 
-  it("11. a game started at sea keeps phase 1's R: back to the spawn, released, engines on, the door left as it is", () => {
-    const game = new Game(W, oceanStart(W), 'spawn');
+  it('11. a game started at sea (?start=ocean) also returns to standby on R, keeping the targets and shutting the door', () => {
+    const game = new Game(W, oceanStart(W));
     game.place(at({ x: 0, y: -40, z: COAST_Z + 80 }, 0));
     game.press('door');
     stepFor(game, 1);
-    const door = game.state.launch.door;
+    expect(game.state.launch.doorDir).toBe(1);
+    const before = game.state;
     game.restartNow();
-    expect(game.state.sub).toEqual(initialSubState(W));
-    expect(game.state.launch).toMatchObject({ clamps: 'released', engines: 'on', cradle: 1, door, doorDir: 1 });
+    expect(game.state).toEqual(standby(W, before.combat));
+    expect(game.state.launch).toMatchObject({ door: 0, doorDir: 0, clamps: 'locked', cradle: 0 });
   });
 
   it("11. ?start=ocean's state is released, engines on, cradle lowered, door shut, at phase 1's spawn", () => {
@@ -93,8 +94,20 @@ describe('the game owner (L3, L4)', () => {
     expect(modeOf(standby(W).sub.pos)).toBe('launch');
   });
 
+  it.each<[string, 'standby' | 'ocean']>([
+    ['', 'standby'],
+    ['?seed=7', 'standby'],
+    ['?start=pen', 'standby'],
+    ['?start=ocean', 'ocean'],
+    ['?at=0,-40,-1040&yaw=0', 'ocean'],
+    ['?start=pen&at=0,-40,-900', 'ocean'],
+  ])('L4. the game starts in standby in Pen 3; ?start=ocean or ?at= start at sea (%s)', (search, expected) => {
+    const g = startState(W, new URLSearchParams(search));
+    expect(g).toEqual(expected === 'standby' ? standby(W) : oceanStart(W));
+  });
+
   it('11. presses queued in one frame are consumed one per step, first in first out', () => {
-    const game = new Game(W, standby(W), 'standby');
+    const game = new Game(W, standby(W));
     game.press('engines');
     game.press('cradle');
     game.press('cradle');
@@ -119,7 +132,7 @@ describe('the game owner (L3, L4)', () => {
   });
 
   it('nothing resets on crossing the mouth: the mode is derived from the one state', () => {
-    const game = new Game(W, oceanStart(W), 'spawn');
+    const game = new Game(W, oceanStart(W));
     game.place(at({ x: 0, y: -40, z: COAST_Z + 30 }, 0));
     game.press('door');
     stepFor(game, 5.2);
@@ -135,26 +148,11 @@ describe('the game owner (L3, L4)', () => {
     expect(seen).toEqual(['piloting', 'launch']);
     expect(game.jumped).toBe(true); // only the place() set it; stepping never does
   });
-
-  it('the status line: a fresh refusal first, then what the machinery is doing', () => {
-    const game = new Game(W, standby(W), 'standby');
-    expect(launchStatus(game.state)).toBe('STINGRAY DOCKED — PEN 3');
-    game.press('clamps');
-    game.step(NOTHING, DT);
-    expect(launchStatus(game.state)).toBe(REFUSAL.lowerCradle.toUpperCase());
-    stepFor(game, 2.9);
-    expect(launchStatus(game.state)).toBe(REFUSAL.lowerCradle.toUpperCase());
-    stepFor(game, 0.2);
-    expect(launchStatus(game.state)).toBe('STINGRAY DOCKED — PEN 3');
-    game.press('cradle');
-    game.step(NOTHING, DT);
-    expect(launchStatus(game.state)).toBe('CRADLE LOWERING');
-  });
 });
 
 describe('the step listener (L7)', () => {
   it('hears every fixed step once with its (previous, current) pair, and never a pair across a jump', () => {
-    const game = new Game(W, standby(W), 'standby');
+    const game = new Game(W, standby(W));
     const pairs: Array<[GameState, GameState]> = [];
     game.onStep = (previous, current) => pairs.push([previous, current]);
     game.press('cradle');

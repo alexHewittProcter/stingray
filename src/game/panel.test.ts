@@ -1,0 +1,331 @@
+import { describe, expect, it } from 'vitest';
+import { type GameState, REFUSAL, oceanStart, standby } from '../sim/launch';
+import type { Vec3 } from '../sim/vec3';
+import { COAST_Z, FIXED_DT as DT, createWorld } from '../sim/world';
+import { Game } from './game';
+import { type Lamp, MODE_HOLD, type PanelMemory, type PanelView, initialMemory, panelView, remember } from './panel';
+
+const W = createWorld(1964);
+const I = W.marineville.interior;
+const NOTHING = new Set<string>();
+const at = (pos: Vec3, yaw: number) => ({ pos, vel: { x: 0, y: 0, z: 0 }, yaw, pitch: 0, medium: 'submerged' as const });
+
+/** A session as main.ts runs it: the game stepped, the panel's memory updated every step (as every frame). */
+class Session {
+  readonly game: Game;
+  memory: PanelMemory;
+  constructor(start: GameState) {
+    this.game = new Game(W, start);
+    this.memory = initialMemory(start);
+  }
+  run(seconds: number): void {
+    for (let k = 0; k < Math.round(seconds / DT); k++) {
+      this.game.step(NOTHING, DT);
+      this.memory = remember(this.memory, this.game.state);
+    }
+  }
+  press(control: Parameters<Game['press']>[0]): void {
+    this.game.press(control);
+    this.run(DT);
+  }
+  place(pos: Vec3, yaw = Math.PI): void {
+    this.game.place(at(pos, yaw));
+    this.memory = remember(this.memory, this.game.state);
+  }
+  get view(): PanelView {
+    return panelView(this.game.state, this.memory, I);
+  }
+}
+
+const lamps = (v: PanelView): Record<string, Lamp> => Object.fromEntries(v.controls.map((c) => [c.control, c.lamp]));
+const words = (v: PanelView): string[] => v.controls.map((c) => c.word);
+const nextOf = (v: PanelView) => v.controls.find((c) => c.next)?.control ?? null;
+
+describe('the launch panel through a full launch (L6)', () => {
+  it('lamps, levers, words, status and the prompt at every stage, standby to the open sea', () => {
+    const s = new Session(standby(W));
+
+    // Standby: only the cradle can be pressed.
+    let v = s.view;
+    expect(lamps(v)).toEqual({ cradle: 'amber', engines: 'dark', clamps: 'dark', door: 'dark' });
+    expect(words(v)).toEqual(['RAISED', 'OFF', 'LOCKED', 'SHUT']);
+    expect(v.controls.map((c) => c.key)).toEqual(['1', '2', '3', '4']);
+    expect(v.controls.map((c) => c.lever)).toEqual([0, 0, 0, 0]);
+    expect(v.status).toBe('STINGRAY ON STANDBY — PEN 3');
+    expect(v.prompt).toBe('Press 1 — lower the cradle');
+    expect(nextOf(v)).toBe('cradle');
+
+    // Lowering: the cradle's lamp pulses amber and its lever follows the travel.
+    s.press('cradle');
+    s.run(4);
+    v = s.view;
+    expect(v.controls[0]).toMatchObject({ lamp: 'amber', moving: true, word: 'LOWERING', pressable: false });
+    expect(v.controls[0]!.lever).toBeCloseTo(4 / 8 + DT / 8, 6);
+    expect(v.status).toBe('CRADLE LOWERING');
+    expect(v.prompt).toBeNull();
+
+    // Lowered and submerged: the cradle is green, the engines are next.
+    s.run(4);
+    v = s.view;
+    expect(lamps(v)).toEqual({ cradle: 'green', engines: 'amber', clamps: 'dark', door: 'dark' });
+    expect(v.controls[0]!.lever).toBe(1);
+    expect(v.status).toBe('STINGRAY SUBMERGED — ENGINES OFF');
+    expect(v.prompt).toBe('Press 2 — start the engines');
+
+    // Engines starting.
+    s.press('engines');
+    v = s.view;
+    expect(v.controls[1]).toMatchObject({ lamp: 'amber', moving: true, word: 'STARTING', lever: 1 });
+    expect(v.status).toBe('ENGINES STARTING');
+    expect(v.prompt).toBeNull();
+
+    // Running: ready to release.
+    s.run(2);
+    v = s.view;
+    expect(lamps(v)).toEqual({ cradle: 'green', engines: 'green', clamps: 'amber', door: 'dark' });
+    expect(words(v)).toEqual(['LOWERED', 'RUNNING', 'LOCKED', 'SHUT']);
+    expect(v.status).toBe('ENGINES RUNNING — READY TO RELEASE');
+    expect(v.prompt).toBe('Press 3 — release the clamps');
+
+    // Released, away in the pen; the door is out of range from here.
+    s.press('clamps');
+    v = s.view;
+    expect(lamps(v)).toEqual({ cradle: 'green', engines: 'green', clamps: 'green', door: 'dark' });
+    // Only the clamps would act (re-locking while still over the cradle) — but they show green, not amber.
+    expect(v.controls.filter((c) => c.pressable).map((c) => c.control)).toEqual(['clamps']);
+    expect(v.status).toBe('STINGRAY AWAY — PEN 3');
+    expect(v.prompt).toBe('W to drive, A / D to steer — into the tunnel');
+
+    // In the tunnel, out of door range.
+    s.place({ x: 0, y: -40, z: COAST_Z - 150 });
+    v = s.view;
+    expect(v.status).toBe('LAUNCH TUNNEL — OCEAN DOOR 150 M');
+    expect(v.prompt).toBe('Follow the tunnel to the ocean door');
+    expect(lamps(v).door).toBe('dark');
+
+    // Within range of the door: request it.
+    s.place({ x: 0, y: -40, z: COAST_Z - 60 });
+    v = s.view;
+    expect(lamps(v).door).toBe('amber');
+    expect(v.status).toBe('LAUNCH TUNNEL — OCEAN DOOR 60 M');
+    expect(v.prompt).toBe('Press 4 — open the ocean door');
+
+    s.press('door');
+    s.run(2.5);
+    v = s.view;
+    expect(v.controls[3]).toMatchObject({ lamp: 'amber', moving: true, word: 'OPENING', pressable: false });
+    expect(v.controls[3]!.lever).toBeCloseTo(0.5 + DT / 5, 6);
+    expect(v.status).toBe('OCEAN DOOR OPENING');
+    expect(v.prompt).toBe('The ocean door is opening — drive on through');
+
+    s.run(2.5);
+    v = s.view;
+    expect(lamps(v)).toEqual({ cradle: 'green', engines: 'green', clamps: 'green', door: 'green' });
+    expect(v.status).toBe('OCEAN DOOR OPEN — CLEAR TO LAUNCH');
+    expect(v.prompt).toBe('Door open — W to drive out to sea');
+
+    // Out through the mouth: the sea HUD, only the door control (still in range), and no more prompts.
+    s.game.override = { throttle: 1 };
+    s.run(8);
+    expect(s.game.state.sub.pos.z).toBeGreaterThan(COAST_Z + MODE_HOLD);
+    expect(s.memory).toEqual({ shown: 'piloting', trip: 'home', launched: true });
+    v = s.view;
+    expect(v.status).toBeNull();
+    expect(v.prompt).toBeNull();
+    expect(v.controls.map((c) => c.control)).toEqual(['door']);
+    expect(v.controls[0]!.lamp).toBe('green');
+
+    // R: back to standby — docked, and the prompts stay gone for the session.
+    s.game.override = {};
+    s.game.restartNow();
+    s.run(DT);
+    v = s.view;
+    expect(s.memory).toEqual({ shown: 'launch', trip: 'out', launched: true });
+    expect(v.status).toBe('STINGRAY DOCKED — PEN 3');
+    expect(v.prompt).toBeNull();
+    expect(lamps(v)).toEqual({ cradle: 'amber', engines: 'dark', clamps: 'dark', door: 'dark' });
+    expect(nextOf(v)).toBe('cradle'); // the quiet marker stays; only the prompt line goes
+  });
+
+  it('the prompt names exactly one amber lamp at every prompted step of the launch', () => {
+    const s = new Session(standby(W));
+    const seen: string[] = [];
+    const check = () => {
+      const v = s.view;
+      if (v.prompt && seen[seen.length - 1] !== v.prompt) seen.push(v.prompt);
+      const next = nextOf(v);
+      if (next && v.prompt?.startsWith('Press')) expect(v.controls.filter((c) => c.lamp === 'amber').map((c) => c.control)).toEqual([next]);
+    };
+    check();
+    s.press('cradle'); s.run(8); check();
+    s.press('engines'); s.run(2); check();
+    s.press('clamps'); check();
+    s.place({ x: 0, y: -40, z: COAST_Z - 60 }); check();
+    s.press('door'); check(); s.run(5); check();
+    expect(seen).toEqual([
+      'Press 1 — lower the cradle',
+      'Press 2 — start the engines',
+      'Press 3 — release the clamps',
+      'W to drive, A / D to steer — into the tunnel',
+      'Press 4 — open the ocean door',
+      'The ocean door is opening — drive on through',
+      'Door open — W to drive out to sea',
+    ]);
+  });
+});
+
+describe('refusals on the panel (L3, L6)', () => {
+  it('a refused press flashes its lamp red and shows the reason for exactly refusalShow (3 s)', () => {
+    const s = new Session(standby(W));
+    s.press('engines');
+    let v = s.view;
+    expect(v.refusal).toEqual({ control: 'engines', reason: REFUSAL.lowerCradle });
+    expect(lamps(v)).toEqual({ cradle: 'amber', engines: 'red', clamps: 'dark', door: 'dark' });
+    s.run(2.9);
+    expect(s.view.refusal).toEqual({ control: 'engines', reason: REFUSAL.lowerCradle });
+    s.run(0.2);
+    v = s.view;
+    expect(v.refusal).toBeNull();
+    expect(lamps(v).engines).toBe('dark');
+
+    // The boundary itself, on the state's age.
+    const g = s.game.state;
+    const aged = (age: number): GameState => ({ ...g, launch: { ...g.launch, refusal: { control: 'clamps', reason: REFUSAL.lowerCradle, age } } });
+    expect(panelView(aged(2.999), s.memory, I).refusal).not.toBeNull();
+    expect(panelView(aged(3), s.memory, I).refusal).toBeNull();
+  });
+
+  it('a press on a moving cradle is refused and shown', () => {
+    const s = new Session(standby(W));
+    s.press('cradle');
+    s.press('cradle');
+    expect(s.view.refusal).toEqual({ control: 'cradle', reason: REFUSAL.cradleMoving });
+    expect(s.view.controls[0]!.lamp).toBe('red');
+  });
+
+  it('at sea a refused press shows its control and reason briefly, though the panel is otherwise hidden', () => {
+    const s = new Session(oceanStart(W));
+    // Phase 1's spawn is 60 m off the mouth — within door range, so the door control shows there.
+    expect(s.view.controls.map((c) => c.control)).toEqual(['door']);
+    s.place({ x: 200, y: -40, z: -800 }, 0);
+    expect(s.view.controls).toEqual([]);
+    s.press('door');
+    let v = s.view;
+    expect(v.controls.map((c) => c.control)).toEqual(['door']);
+    expect(v.refusal).toEqual({ control: 'door', reason: REFUSAL.outOfRange });
+    s.run(3.1);
+    v = s.view;
+    expect(v.controls).toEqual([]);
+    expect(v.refusal).toBeNull();
+  });
+});
+
+describe('the panel at sea (L6)', () => {
+  it('shows only the door control, and only within door range', () => {
+    const s = new Session(oceanStart(W));
+    s.place({ x: 0, y: -40, z: COAST_Z + 60 }, 0);
+    let v = s.view;
+    expect(s.memory.shown).toBe('piloting');
+    expect(v.status).toBeNull();
+    expect(v.prompt).toBeNull();
+    expect(v.controls.map((c) => c.control)).toEqual(['door']);
+    expect(v.controls[0]).toMatchObject({ lamp: 'amber', word: 'SHUT', pressable: true, next: true });
+
+    s.place({ x: 0, y: -40, z: COAST_Z + 119 }, 0);
+    expect(s.view.controls.map((c) => c.control)).toEqual(['door']);
+    s.place({ x: 0, y: -40, z: COAST_Z + 121 }, 0);
+    expect(s.view.controls).toEqual([]);
+    s.place({ x: 200, y: -40, z: -800 }, 0);
+    v = s.view;
+    expect(v.controls).toEqual([]);
+    expect(v.status).toBeNull();
+  });
+
+  it('holds the presented mode until the hull centre is 2 m past the face, either way', () => {
+    let m: PanelMemory = { shown: 'launch', trip: 'out', launched: false };
+    const g = oceanStart(W);
+    const atZ = (z: number): GameState => ({ ...g, sub: { ...g.sub, pos: { x: 0, y: -40, z } } });
+    m = remember(m, atZ(COAST_Z + 1.9));
+    expect(m.shown).toBe('launch');
+    m = remember(m, atZ(COAST_Z + 2.1));
+    expect(m.shown).toBe('piloting');
+    m = remember(m, atZ(COAST_Z - 1.9));
+    expect(m.shown).toBe('piloting');
+    m = remember(m, atZ(COAST_Z - 2.1));
+    expect(m.shown).toBe('launch');
+  });
+
+  it('?start=ocean begins on the way home with no prompts; prompts begin after R until a launch reaches the sea', () => {
+    const s = new Session(oceanStart(W));
+    expect(s.memory).toEqual({ shown: 'piloting', trip: 'home', launched: false });
+    s.game.restartNow();
+    s.run(DT);
+    expect(s.view.prompt).toBe('Press 1 — lower the cradle');
+    expect(s.view.status).toBe('STINGRAY ON STANDBY — PEN 3');
+  });
+});
+
+describe('the panel on the return (L6)', () => {
+  it('coming home: away in the tunnel, lock, engines off, raise, docked', () => {
+    const s = new Session(oceanStart(W));
+    // Back in through the open door, then up the tunnel: the door closes behind.
+    s.game.press('door');
+    s.place({ x: 0, y: -40, z: COAST_Z + 40 }, 0);
+    s.run(5.1);
+    expect(s.game.state.launch.door).toBe(1);
+    s.place({ x: 0, y: -40, z: COAST_Z - 60 }, 0);
+    let v = s.view;
+    expect(s.memory.trip).toBe('home');
+    expect(v.status).toBe('OCEAN DOOR OPEN');
+    // Cradle lowered and Stingray away: green, not pressable.
+    expect(lamps(v)).toEqual({ cradle: 'green', engines: 'green', clamps: 'green', door: 'green' });
+    expect(v.controls[0]!.pressable).toBe(false);
+
+    s.place({ x: 0, y: -14, z: COAST_Z - 200 }, 0);
+    s.run(DT); // the tower sees the hull beyond range and starts the door closing
+    v = s.view;
+    expect(v.status).toBe('OCEAN DOOR CLOSING BEHIND YOU');
+    s.run(5.1);
+    expect(s.view.status).toBe('LAUNCH TUNNEL — PEN 3 AHEAD');
+    expect(s.view.prompt).toBeNull();
+
+    // In the pen, short of the cradle.
+    s.place({ x: 0, y: -14, z: -1380 }, 0);
+    v = s.view;
+    expect(v.status).toBe('STINGRAY IN PEN 3');
+    expect(lamps(v).clamps).toBe('green');
+
+    // Over the cradle and lined up (either heading): lock is the next step.
+    s.place({ x: 2, y: -14, z: -1395 }, 0);
+    v = s.view;
+    expect(v.controls[2]).toMatchObject({ lamp: 'amber', pressable: true, next: true, word: 'RELEASED' });
+
+    s.press('clamps');
+    v = s.view;
+    expect(v.controls[2]!.word).toBe('LOCKING');
+    expect(v.status).toBe('CLAMPS LOCKING');
+    s.run(1);
+    v = s.view;
+    expect(v.status).toBe('CLAMPS LOCKED — ENGINES RUNNING');
+    expect(v.controls[2]).toMatchObject({ word: 'LOCKED', lever: 0 });
+    expect(nextOf(v)).toBe('engines');
+    expect(lamps(v)).toMatchObject({ cradle: 'green', engines: 'amber' });
+
+    s.press('engines');
+    v = s.view;
+    expect(v.status).toBe('ENGINES STOPPED — READY TO RAISE');
+    expect(nextOf(v)).toBe('cradle');
+    expect(lamps(v)).toMatchObject({ cradle: 'amber', clamps: 'dark' });
+
+    s.press('cradle');
+    v = s.view;
+    expect(v.status).toBe('CRADLE RAISING');
+    expect(v.controls[0]).toMatchObject({ lamp: 'amber', moving: true, word: 'RAISING' });
+
+    s.run(8);
+    v = s.view;
+    expect(s.memory.trip).toBe('out');
+    expect(v.status).toBe('STINGRAY ON STANDBY — PEN 3'); // started at sea: no launch from the pen yet
+    expect(v.prompt).toBe('Press 1 — lower the cradle');
+  });
+});
