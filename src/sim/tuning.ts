@@ -37,6 +37,12 @@ export const TUNING = {
   bedDrag: 0.6, // 1/s speed shed while sliding on the seabed
   contactDrag: 2, // 1/s speed shed while in contact with a solid landmark
 
+  // Inside Marineville (phase 2, L1)
+  // The hull centre stays this close to the tunnel's centreline: 8 m inside the 13 m bore, so keel, fins and
+  // periscope clear the wall when the craft points along the tunnel. The mouth through the slab is sized to match.
+  tunnelHullReach: 5, // m
+  cameraWallInset: 1, // m the camera is held inside the drawn walls (bore and pen)
+
   // Ocean edge current (east, west, south)
   edgeZone: 150, // m from the bound where the current starts
   edgePush: 15, // m/s² inward at the bound itself (ramps from 0 at the zone's inner edge)

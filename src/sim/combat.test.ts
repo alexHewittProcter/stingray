@@ -4,7 +4,7 @@ import type { Collider } from './collide';
 import { NO_INPUT, forwardOf, speedOf, stepSub, type SubInput, type SubState } from './sub';
 import { TUNING as T } from './tuning';
 import type { Vec3 } from './vec3';
-import { FIXED_DT, createWorld, targetPos, type Env, type TargetSpec } from './world';
+import { CLIFF_TOP, COAST_Z, FIXED_DT, createWorld, targetPos, type Env, type TargetSpec } from './world';
 
 const world = createWorld(1964);
 const DT = FIXED_DT;
@@ -353,6 +353,66 @@ describe('stepCombat', () => {
       if (t.kind === 'drone') expect(moved).toBeGreaterThan(10);
       else expect(moved).toBe(0);
     }
+  });
+});
+
+describe('missiles never enter Marineville (phase 2, L2)', () => {
+  const mouth = world.marineville.tunnelMouth;
+  const coast = world.landmarks.find((l) => l.id === 'marineville')!;
+  const door = coast.colliders.find((c) => c.kind === 'box' && c.min.z === COAST_Z - 6)!;
+  // stepCombat is always given the door as solid; this world without it shows the face rule holds on its own.
+  const doorless: Env = {
+    ...world,
+    landmarks: world.landmarks.map((l) => (l === coast ? { ...l, colliders: l.colliders.filter((c) => c !== door) } : l)),
+  };
+  const neverInside = (seen: Vec3[]) => expect(Math.min(...seen.map((p) => p.z), Infinity)).toBeGreaterThanOrEqual(COAST_Z);
+
+  it('9. a missile fired from the sea at the mouth detonates at the face, with the door shut and without it', () => {
+    const sea = subAt({ ...mouth, z: mouth.z + 60 }, NORTH);
+    const shut = fireUntilDetonation(initialCombatState(world), sea);
+    expect(shut.detonation!.z).toBeCloseTo(COAST_Z + T.missileRadius, 9); // on the door
+    neverInside(shut.seen);
+
+    const open = fireUntilDetonation(initialCombatState(world), sea, 3, doorless);
+    expect(open.detonation).not.toBeNull();
+    expect(open.detonation!.z).toBeCloseTo(COAST_Z, 9); // at the crossing
+    expect(open.detonation!.x).toBeCloseTo(mouth.x, 9);
+    expect(open.detonation!.y).toBeCloseTo(mouth.y, 9);
+    neverInside(open.seen);
+  });
+
+  it('9. a sub pressed against the shut door, launch point already past it: detonates at the crossing, z ≈ −1100', () => {
+    const pressed = subAt({ ...mouth, z: COAST_Z + T.hullRadius }, NORTH);
+    expect(pressed.pos.z - T.missileNoseOffset).toBeLessThan(COAST_Z - 12); // the nose's launch point is behind the slab
+    for (const env of [world, doorless]) {
+      const c = stepCombat(initialCombatState(world), pressed, true, DT, env);
+      expect(c.missiles).toEqual([]);
+      expect(c.detonations).toHaveLength(1);
+      expect(c.detonations[0]!.z).toBeCloseTo(COAST_Z, 9);
+      expect(c.detonations[0]!.x).toBeCloseTo(mouth.x, 9);
+      expect(c.cooldown).toBe(T.missileCooldown); // it still counts as a launch
+    }
+    // Pitched and yawed off the axis, the crossing is where the launch line meets the face.
+    const skew = subAt({ x: mouth.x + 2, y: mouth.y - 1, z: COAST_Z + T.hullRadius }, 10 * DEG, 5 * DEG);
+    const hit = stepCombat(initialCombatState(world), skew, true, DT, world).detonations[0]!;
+    expect(hit.z).toBeCloseTo(COAST_Z, 9);
+    const f = forwardOf(skew.yaw, skew.pitch);
+    const s = (skew.pos.z - COAST_Z) / -f.z;
+    expect(hit.x).toBeCloseTo(skew.pos.x + f.x * s, 9);
+    expect(hit.y).toBeCloseTo(skew.pos.y + f.y * s, 9);
+  });
+
+  it('a nose past the slab anywhere along the cliff detonates at the face, as phase 1\'s deep rock did', () => {
+    const c = stepCombat(initialCombatState(world), subAt({ x: 300, y: -40, z: COAST_Z + T.hullRadius }, NORTH), true, DT, world);
+    expect(c.missiles).toEqual([]);
+    expect(c.detonations[0]).toMatchObject({ x: 300, y: -40 });
+    expect(c.detonations[0]!.z).toBeCloseTo(COAST_Z, 9);
+  });
+
+  it('over the clifftop the face rule does not apply (phase 1: missiles may cross the land above the cliff)', () => {
+    const high = subAt({ x: 300, y: CLIFF_TOP + 10, z: COAST_Z + 30 }, NORTH, 0, 0, 'airborne');
+    const { seen } = fireUntilDetonation(initialCombatState(world), high, 1);
+    expect(Math.min(...seen.map((p) => p.z))).toBeLessThan(COAST_Z - 20);
   });
 });
 
