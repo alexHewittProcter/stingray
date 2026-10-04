@@ -1,6 +1,7 @@
 import * as THREE from 'three';
-import type { World } from '../sim/world';
+import { COAST_Z, type World } from '../sim/world';
 import { causticUniforms } from './caustics';
+import { cameraIndoors, indoorAmount } from './indoors';
 import { createLightShafts } from './light-shafts';
 import { NOISE_GLSL, SKY_GLSL, createSky } from './sky';
 import {
@@ -17,6 +18,11 @@ const GRID_OUTER = 6000; // m
 
 const SUN_INTENSITY = 2.4;
 const HEMI_INTENSITY = 1.15;
+// The sea's surface ends behind the cliff face, inside the rock: north of here is Marineville, whose pool has its
+// own still surface (pen.ts). A margin behind the face keeps the water in the face's flutes.
+const SURFACE_NORTH_LIMIT = COAST_Z - 40;
+/** How bright the water's own colour is inside Marineville, relative to the open sea under the sky. */
+const INDOOR_WATER_LIGHT = 0.45;
 
 export interface Sea {
   readonly group: THREE.Group;
@@ -77,7 +83,11 @@ vec3 swell(vec2 p, float t, float dist) {
 
 interface Surface {
   mesh: THREE.Mesh;
-  uniforms: { uTime: THREE.IUniform<number>; uHorizon: THREE.IUniform<THREE.Vector3>; uVisibility: THREE.IUniform<number> };
+  uniforms: {
+    uTime: THREE.IUniform<number>; uHorizon: THREE.IUniform<THREE.Vector3>; uVisibility: THREE.IUniform<number>;
+    /** 1 while the camera is inside Marineville (L6): swell, sun glint and sky reflection off. */
+    uCalm: THREE.IUniform<number>;
+  };
 }
 
 function createSurface(): Surface {
@@ -86,6 +96,7 @@ function createSurface(): Surface {
     uSunDir: { value: SUN_DIRECTION.clone() },
     uHorizon: { value: new THREE.Vector3() },
     uVisibility: { value: 400 },
+    uCalm: { value: 0 },
   };
   const material = new THREE.ShaderMaterial({
     uniforms,
@@ -93,13 +104,14 @@ function createSurface(): Surface {
     side: THREE.DoubleSide,
     vertexShader: /* glsl */ `
       uniform float uTime;
+      uniform float uCalm;
       varying vec3 vWorld;
       varying vec2 vSlope;
       varying float vHeight;
       ${WAVES_GLSL}
       void main() {
         vec4 world = modelMatrix * vec4(position, 1.0);
-        vec3 h = swell(world.xz, uTime, length(position.xz));
+        vec3 h = swell(world.xz, uTime, length(position.xz)) * (1.0 - uCalm);
         world.y += h.x;
         vWorld = world.xyz;
         vSlope = h.yz;
@@ -111,6 +123,7 @@ function createSurface(): Surface {
       uniform vec3 uSunDir;
       uniform vec3 uHorizon;
       uniform float uVisibility;
+      uniform float uCalm;
       varying vec3 vWorld;
       varying vec2 vSlope;
       varying float vHeight;
@@ -140,6 +153,7 @@ function createSurface(): Surface {
       }
 
       void main() {
+        if (vWorld.z < ${SURFACE_NORTH_LIMIT.toFixed(1)}) discard;
         vec3 ray = vWorld - cameraPosition;
         float dist = length(ray);
         vec3 v = ray / dist;
@@ -156,11 +170,11 @@ function createSurface(): Surface {
           vec3 r = reflect(v, n);
           r.y = abs(r.y);
           float shade = 0.85 + 0.6 * vHeight;
-          colour = mix(SW_SEA_BODY * shade, skyGradient(r, uSunDir), fresnel);
+          colour = mix(SW_SEA_BODY * shade, skyGradient(r, uSunDir) * (1.0 - 0.85 * uCalm), fresnel);
           float glint = max(dot(r, uSunDir), 0.0);
           // Broken into glitter: the smooth normals alone would give broad, flat patches of glare.
           float glitter = smoothstep(0.5, 0.8, swNoise(vWorld.xz * 1.6 + vec2(uTime * 0.9, -uTime * 0.6)));
-          colour += SUN_COLOUR * (pow(glint, 700.0) * 1.3 * (0.15 + 0.85 * glitter) + pow(glint, 60.0) * 0.2);
+          colour += SUN_COLOUR * (pow(glint, 700.0) * 1.3 * (0.15 + 0.85 * glitter) + pow(glint, 60.0) * 0.2) * (1.0 - uCalm);
 
           // Whitecaps: broken flecks of foam on the higher crests, in scattered patches.
           float patches = smoothstep(0.62, 0.85, swNoise(vWorld.xz * 0.025 + vec2(uTime * 0.02, 0.0)));
@@ -215,7 +229,8 @@ export function createSea(_world: World): Sea {
   const sun = new THREE.DirectionalLight(0xfff4e2, SUN_INTENSITY);
   sun.position.copy(SUN_DIRECTION).multiplyScalar(1000);
   group.add(sun);
-  group.add(new THREE.HemisphereLight(0xcfe6ff, 0x1b2c38, HEMI_INTENSITY));
+  const hemi = new THREE.HemisphereLight(0xcfe6ff, 0x1b2c38, HEMI_INTENSITY);
+  group.add(hemi);
 
   const fog = new THREE.Fog(0x000000, 100, 400);
   const water: WaterState = { colour: new THREE.Color(), visibility: 400, litRadius: 150 };
@@ -227,7 +242,12 @@ export function createSea(_world: World): Sea {
     update(camera, scene, time) {
       scene.fog = fog;
       const y = camera.position.y;
+      // L6: inside Marineville the sun and sky give way to the pen's lamps; no shafts, swell, glint or sky in the water.
+      const indoors = cameraIndoors(camera.position);
+      const outdoors = 1 - indoorAmount(camera.position);
       waterAt(Math.max(-y, 0), water);
+      // The same water, lit by a hall's lamps rather than the sky: dimmer.
+      water.colour.multiplyScalar(THREE.MathUtils.lerp(INDOOR_WATER_LIGHT, 1, outdoors));
       if (y < 0) {
         fog.color.copy(water.colour);
         fog.near = water.litRadius;
@@ -247,6 +267,12 @@ export function createSea(_world: World): Sea {
       surface.uniforms.uVisibility.value = water.visibility;
       shafts.update(camera, time);
       causticUniforms.uCausticTime.value = time;
+
+      sun.intensity = SUN_INTENSITY * outdoors;
+      hemi.intensity = HEMI_INTENSITY * outdoors;
+      causticUniforms.uCausticStrength.value = outdoors;
+      surface.uniforms.uCalm.value = indoors ? 1 : 0;
+      if (indoors) shafts.mesh.visible = false;
     },
   };
 }

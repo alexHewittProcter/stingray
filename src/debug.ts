@@ -33,3 +33,17 @@ declare global {
 export function installDebugHandle(handle: DebugHandle): void {
   window.__stingray = handle;
 }
+
+const CONTROLS: readonly string[] = ['cradle', 'engines', 'clamps', 'door'];
+
+/**
+ * Run a witnessing script once (the ?script= URL parameter): a comma list in which a control name presses that
+ * control and a number advances the sim that many seconds. "cradle,8.2,engines,2.1,clamps,1" lowers the cradle,
+ * starts the engines and releases the clamps. Unknown words are ignored.
+ */
+export function runScript(script: string, handle: DebugHandle): void {
+  for (const word of script.split(',').map((w) => w.trim()).filter(Boolean)) {
+    if (CONTROLS.includes(word)) handle.press(word as LaunchControl);
+    else if (Number.isFinite(Number(word))) handle.advance(Number(word));
+  }
+}
