@@ -3,6 +3,7 @@ import type { CombatState } from './sim/combat';
 import type { LaunchControl, LaunchState } from './sim/launch';
 import type { SubInput, SubState } from './sim/sub';
 import type { Vec3 } from './sim/vec3';
+import { MARINEVILLE } from './sim/world';
 
 // window.__stingray: how a browser-driven check witnesses behaviour without a human at the keys.
 export interface DebugHandle {
@@ -36,14 +37,75 @@ export function installDebugHandle(handle: DebugHandle): void {
 
 const CONTROLS: readonly string[] = ['cradle', 'engines', 'clamps', 'door'];
 
+/** Bounds on witnessing scripts and the handle's advance, so a typo'd or hostile URL cannot freeze the tab. */
+export const SCRIPT_LIMITS = Object.freeze({ secondsPerAdvance: 120, totalSeconds: 600, tokens: 64 });
+
+/** The seconds an advance may run: positive and finite, at most SCRIPT_LIMITS.secondsPerAdvance; anything else is 0. */
+export function clampAdvance(seconds: number): number {
+  return Number.isFinite(seconds) && seconds > 0 ? Math.min(seconds, SCRIPT_LIMITS.secondsPerAdvance) : 0;
+}
+
 /**
- * Run a witnessing script once (the ?script= URL parameter): a comma list in which a control name presses that
- * control and a number advances the sim that many seconds. "cradle,8.2,engines,2.1,clamps,1" lowers the cradle,
- * starts the engines and releases the clamps. Unknown words are ignored.
+ * A point on the tunnel's centreline `metres` in from the mouth (negative: out at sea along the tunnel's axis),
+ * and the heading that faces out to sea (`out`) or in toward the pen (`in`) there.
+ */
+export function onCentreline(metres: number, facing: 'in' | 'out'): { pos: Vec3; yaw: number } {
+  const line = MARINEVILLE.interior.tunnel.centreline;
+  let left = metres;
+  for (let k = 1; k < line.length; k++) {
+    const a = line[k - 1]!;
+    const b = line[k]!;
+    const len = Math.hypot(b.x - a.x, b.y - a.y, b.z - a.z);
+    const last = k === line.length - 1;
+    if (left <= len || last || (k === 1 && left < 0)) {
+      const t = Math.min(left, len) / len;
+      const d = { x: (b.x - a.x) / len, z: (b.z - a.z) / len };
+      // forwardOf(yaw) = (−sin yaw, ·, −cos yaw): yaw = atan2(−fx, −fz).
+      const f = facing === 'in' ? d : { x: -d.x, z: -d.z };
+      return {
+        pos: { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t, z: a.z + (b.z - a.z) * t },
+        yaw: Math.atan2(-f.x, -f.z),
+      };
+    }
+    left -= len;
+  }
+  return { pos: { ...line[0]! }, yaw: MARINEVILLE.tunnelHeading };
+}
+
+/**
+ * Run a witnessing script once (the ?script= URL parameter): a comma list of words, run in order.
+ *   - a control name (cradle, engines, clamps, door) presses it;
+ *   - a number advances the sim that many seconds (clamped to SCRIPT_LIMITS; zero, negative or not a number: skipped);
+ *   - out=M / in=M puts the released sub at rest on the tunnel's centreline M metres in from the mouth (negative:
+ *     out at sea), facing out to sea or in toward the pen;
+ *   - throttle=T holds the throttle at T (−1 … 1) until the script changes it.
+ * "cradle,8.2,engines,2.1,clamps,1" lowers the cradle, starts the engines and releases the clamps;
+ * "out=40,door,5" waits in the door chamber while the door opens. Unknown words are ignored. At most
+ * SCRIPT_LIMITS.tokens words run, and at most SCRIPT_LIMITS.totalSeconds in all.
  */
 export function runScript(script: string, handle: DebugHandle): void {
-  for (const word of script.split(',').map((w) => w.trim()).filter(Boolean)) {
-    if (CONTROLS.includes(word)) handle.press(word as LaunchControl);
-    else if (Number.isFinite(Number(word))) handle.advance(Number(word));
+  let total = 0;
+  const words = script.split(',').map((w) => w.trim()).filter(Boolean).slice(0, SCRIPT_LIMITS.tokens);
+  for (const word of words) {
+    if (CONTROLS.includes(word)) {
+      handle.press(word as LaunchControl);
+      continue;
+    }
+    const [key, value] = word.split('=');
+    if (value !== undefined) {
+      const n = Number(value);
+      if (!Number.isFinite(n)) continue;
+      if (key === 'out' || key === 'in') {
+        const at = onCentreline(Math.max(-1000, n), key);
+        handle.teleport(at.pos, at.yaw);
+      } else if (key === 'throttle') {
+        handle.setInput({ throttle: Math.max(-1, Math.min(1, n)) });
+      }
+      continue;
+    }
+    const seconds = Math.min(clampAdvance(Number(word)), SCRIPT_LIMITS.totalSeconds - total);
+    if (seconds <= 0) continue;
+    total += seconds;
+    handle.advance(seconds);
   }
 }
