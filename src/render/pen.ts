@@ -30,7 +30,8 @@ const TUNNEL_OPENING_RADIUS = 13.5; // a little over the 13 m bore: the centreli
 const COLLAR_DEPTH = 2.5;
 const WALKWAY = { y: 8.5, depth: 3, thick: 0.35 };
 const QUAY = { top: 0.6, depth: 2.2, bottom: -1.5 };
-const LAMP_INTENSITY = 260; // candela, each of the four hall lamps
+const LAMP_INTENSITY = 300; // candela, each of the four hall lamps
+const LAMP_Y = 11;
 const SPOT_INTENSITY = 900;
 const AMBIENT = 0.55;
 
@@ -554,7 +555,7 @@ function createPool(interior: Interior): { mesh: Reflector; time: { value: numbe
   const width = typeof window === 'undefined' ? 512 : Math.round(window.innerWidth * pixelRatio * 0.5);
   const height = typeof window === 'undefined' ? 512 : Math.round(window.innerHeight * pixelRatio * 0.5);
   const geometry = new THREE.PlaneGeometry(max.x - min.x, max.z - min.z);
-  const mesh = new Reflector(geometry, { textureWidth: width, textureHeight: height, clipBias: 0.003, shader: POOL_SHADER, multisample: 0 });
+  const mesh = new Reflector(geometry, { textureWidth: width, textureHeight: height, clipBias: 0.003, shader: POOL_SHADER, multisample: 4 });
   mesh.rotation.x = -Math.PI / 2;
   mesh.position.set((min.x + max.x) / 2, interior.pen.waterY, (min.z + max.z) / 2);
   mesh.name = 'pen-pool';
@@ -630,7 +631,8 @@ export function createPen(interior: Interior): Pen {
   for (const x of [-15, 15]) {
     for (const z of [midZ + 26, midZ - 26]) {
       const lamp = new THREE.PointLight(0xffefd6, 0, 0, 2);
-      lamp.position.set(x, max.y - 3, z);
+      // Floods hung at walkway height light the walls and the pool evenly; the ceiling stays dark, as in the series.
+      lamp.position.set(x, LAMP_Y, z);
       lamps.push(lamp);
     }
   }

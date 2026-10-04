@@ -54,7 +54,7 @@ export function createCradle(interior: Interior): Cradle {
   const floorY = interior.pen.min.y;
 
   const steel = phong(0x8d9397, 'cradle-steel', 40);
-  const dark = lambert(0x3a3f44, 'cradle-dark');
+  const dark = lambert(0x575d63, 'cradle-dark');
   const chrome = phong(0xd5d9dc, 'cradle-chrome', 90, { specular: 0xbbbbbb });
   const yellow = lambert(0xd8a722, 'cradle-yellow');
   const red = lambert(0xb7321f, 'cradle-red');

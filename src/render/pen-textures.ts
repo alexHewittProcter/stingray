@@ -144,9 +144,9 @@ export function wallTexture(floorY: number, ceilingY: number): THREE.CanvasTextu
 export function ceilingTexture(): THREE.CanvasTexture | null {
   const s = 192;
   const texture = canvasTexture(s, s, (ctx) => {
-    ctx.fillStyle = '#3d3f3f';
+    ctx.fillStyle = '#2e3030';
     ctx.fillRect(0, 0, s, s);
-    mottle(ctx, s, s, 19, 4, 0.18);
+    mottle(ctx, s, s, 19, 4, 0.12);
     ctx.strokeStyle = 'rgba(10,10,10,0.6)';
     ctx.lineWidth = 3;
     ctx.strokeRect(1.5, 1.5, s - 3, s - 3);
