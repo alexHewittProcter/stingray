@@ -151,3 +151,22 @@ describe('the game owner (L3, L4)', () => {
     expect(launchStatus(game.state)).toBe('CRADLE LOWERING');
   });
 });
+
+describe('the step listener (L7)', () => {
+  it('hears every fixed step once with its (previous, current) pair, and never a pair across a jump', () => {
+    const game = new Game(W, standby(W), 'standby');
+    const pairs: Array<[GameState, GameState]> = [];
+    game.onStep = (previous, current) => pairs.push([previous, current]);
+    game.press('cradle');
+    stepFor(game, 0.5);
+    expect(pairs.length).toBe(30);
+    expect(pairs[0]![0]).toEqual(standby(W));
+    for (let k = 1; k < pairs.length; k++) expect(pairs[k]![0]).toBe(pairs[k - 1]![1]);
+    expect(pairs[29]![1]).toBe(game.state);
+    // After a jump the next pair starts from where the sub was put, not from before it.
+    game.place(at({ x: 0, y: -40, z: -500 }, 0));
+    const placed = game.state;
+    game.step(NOTHING, DT);
+    expect(pairs[30]![0]).toBe(placed);
+  });
+});
