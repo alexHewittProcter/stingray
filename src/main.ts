@@ -4,6 +4,7 @@ import type { GameMode, ModeController } from './game/mode';
 import { PilotingMode } from './game/piloting';
 import { listenKeyboard } from './input/raw';
 import { createStepper } from './loop';
+import { addCaustics } from './render/caustics';
 import { createChaseCamera } from './render/chase-camera';
 import { createCombatView } from './render/combat-view';
 import { createCraft } from './render/craft';
@@ -29,6 +30,9 @@ const world = createWorld(seed);
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.15;
 document.body.appendChild(renderer.domElement);
 
 const scene = new THREE.Scene();
@@ -61,6 +65,7 @@ mode.enter(world);
 
 const combatView = createCombatView(world, piloting.combat, particles);
 scene.add(combatView.group);
+addCaustics(scene);
 
 const RETICLE_RANGE = 150; // metres ahead of the nose
 const aim = new THREE.Vector3();

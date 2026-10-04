@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { createStingray } from './render/stingray';
+import { createMine, createMissileModel, createTerrorFish } from './render/targets';
 
 // Standalone inspection page for the Stingray model (model.html).
 //
@@ -7,6 +8,7 @@ import { createStingray } from './render/stingray';
 //   ?angle=<deg>  fix the orbit angle (otherwise the camera orbits slowly)
 //   ?elev=<deg>   camera elevation above the horizontal (default 15)
 //   ?spin=1       spin the ratchet drive
+//   ?model=fish|mine|missile  show that combat model instead (animated with ?spin=1)
 //
 // Angle convention (camera around the model, which points its nose at −Z):
 //   0   = camera on −X, looking at the PORT side (nose on the left, like stingray.png)
@@ -23,8 +25,7 @@ declare global {
   }
 }
 
-const DISTANCE = 34;
-const TARGET = new THREE.Vector3(0, 1.5, 0);
+
 const ORBIT_DEG_PER_SECOND = 12;
 const DRIVE_RADIANS_PER_SECOND = 3;
 
@@ -32,6 +33,9 @@ const params = new URLSearchParams(location.search);
 const fixedAngle = params.has('angle') ? Number(params.get('angle')) : null;
 let elevation = Number(params.get('elev') ?? 15);
 const spin = params.get('spin') === '1';
+const other = params.get('model');
+const DISTANCE = other === 'missile' ? 7 : other ? 16 : 34;
+const TARGET = new THREE.Vector3(0, other ? 0 : 1.5, 0);
 
 const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -47,7 +51,8 @@ scene.add(sun);
 
 const camera = new THREE.PerspectiveCamera(40, window.innerWidth / window.innerHeight, 0.5, 500);
 const stingray = createStingray();
-scene.add(stingray.group);
+const extra = other === 'fish' ? createTerrorFish(3, 0) : other === 'mine' ? createMine(2.5, 12, 0) : other === 'missile' ? createMissileModel() : null;
+scene.add(extra ? extra.group : stingray.group);
 
 let angle = fixedAngle ?? 0;
 let orbiting = fixedAngle === null;
@@ -63,6 +68,7 @@ function draw(angleDeg: number, elevDeg: number): void {
   );
   camera.lookAt(TARGET);
   stingray.setDriveSpin(driveAngle);
+  extra?.animate(driveAngle);
   renderer.render(scene, camera);
 }
 
