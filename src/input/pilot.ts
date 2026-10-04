@@ -1,3 +1,4 @@
+import type { LaunchControl } from '../sim/launch';
 import type { SubInput } from '../sim/sub';
 import type { RawInput } from './raw';
 
@@ -13,4 +14,13 @@ export function toSubInput(held: RawInput): SubInput {
     boost: held.has('ShiftLeft') || held.has('ShiftRight'),
     fire: held.has('Space'),
   };
+}
+
+// L5: 1–4 press the launch controls. Presses are edge-triggered — the keyboard reports a key once per press.
+const PRESS_KEYS: ReadonlyMap<string, LaunchControl> = new Map([
+  ['Digit1', 'cradle'], ['Digit2', 'engines'], ['Digit3', 'clamps'], ['Digit4', 'door'],
+]);
+
+export function pressFor(code: string): LaunchControl | null {
+  return PRESS_KEYS.get(code) ?? null;
 }

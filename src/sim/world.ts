@@ -161,6 +161,17 @@ const box = (min: Vec3, max: Vec3): Collider => ({ kind: 'box', min, max });
 const sphere = (centre: Vec3, radius: number): Collider => ({ kind: 'sphere', centre, radius });
 const v = (x: number, y: number, z: number): Vec3 => ({ x, y, z });
 
+/**
+ * The ocean door's collider (phase 1's box, where phase 1 put it). It stays in the Marineville landmark's list;
+ * stepGame leaves this very object out of the world it gives stepSub only while the door is fully open (L2).
+ */
+export const MARINE_DOOR: Collider = Object.freeze(
+  box(
+    Object.freeze(v(TUNNEL_MOUTH.x - DOOR_HALF_WIDTH, TUNNEL_MOUTH.y - DOOR_HALF_HEIGHT, COAST_Z - DOOR_THICKNESS)),
+    Object.freeze(v(TUNNEL_MOUTH.x + DOOR_HALF_WIDTH, TUNNEL_MOUTH.y + DOOR_HALF_HEIGHT, COAST_Z)),
+  ),
+);
+
 export function createWorld(seed: number): World {
   const seabedHeight = makeSeabed(seed);
   const world: World = {
@@ -218,10 +229,7 @@ function marineville(): Landmark {
       box(v(right, CLIFF_FOOT_Y, back), v(LAND_X, CLIFF_TOP, COAST_Z)), // east of the mouth
       box(v(left, top, back), v(right, CLIFF_TOP, COAST_Z)), // above the mouth
       box(v(left, CLIFF_FOOT_Y, back), v(right, bottom, COAST_Z)), // below the mouth
-      box(
-        v(m.x - DOOR_HALF_WIDTH, m.y - DOOR_HALF_HEIGHT, COAST_Z - DOOR_THICKNESS),
-        v(m.x + DOOR_HALF_WIDTH, m.y + DOOR_HALF_HEIGHT, COAST_Z),
-      ), // the shut marine door
+      MARINE_DOOR, // the shut marine door
     ],
   };
 }

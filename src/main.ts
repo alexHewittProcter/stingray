@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { installDebugHandle } from './debug';
-import type { GameMode, ModeController } from './game/mode';
-import { PilotingMode } from './game/piloting';
+import { Game, launchStatus } from './game/game';
+import { pressFor } from './input/pilot';
 import { listenKeyboard } from './input/raw';
 import { createStepper } from './loop';
 import { addCaustics } from './render/caustics';
@@ -17,6 +17,7 @@ import { createSea } from './render/sea';
 import { createSeabed } from './render/seabed';
 import { updateScenery } from './render/sway';
 import { targetsLeft } from './sim/combat';
+import { oceanStart, standby } from './sim/launch';
 import { forwardOf, speedOf } from './sim/sub';
 import { FIXED_DT, createWorld } from './sim/world';
 
@@ -54,16 +55,21 @@ scene.add(craft.group);
 
 const chase = createChaseCamera(camera, world.seabedHeight);
 const hud = createHud(document.body);
-const keyboard = listenKeyboard(window);
+const params = new URLSearchParams(location.search);
+
+// One scene, one world, one GameState for the session (game.ts); the mode is derived from it and changes only
+// what is drawn. Until the pen and tunnel are drawn (phase 2, T5) the game starts at sea and R returns there;
+// ?start=pen opts in to starting docked in the (undrawn) pen, with R returning to standby.
+const startInPen = params.get('start') === 'pen' && !params.has('at');
+const game = startInPen ? new Game(world, standby(world), 'standby') : new Game(world, oceanStart(world), 'spawn');
+
+const keyboard = listenKeyboard(window, (code) => {
+  const control = pressFor(code);
+  if (control) game.press(control);
+});
 window.addEventListener('keydown', () => hud.dismissLegend(), { once: true });
 
-// One scene, one world: modes swap controllers, nothing reloads.
-const modeName: GameMode = 'piloting';
-const piloting = new PilotingMode();
-const mode: ModeController = piloting;
-mode.enter(world);
-
-const combatView = createCombatView(world, piloting.combat, particles);
+const combatView = createCombatView(world, game.state.combat, particles);
 scene.add(combatView.group);
 addCaustics(scene);
 
@@ -71,11 +77,10 @@ const RETICLE_RANGE = 150; // metres ahead of the nose
 const aim = new THREE.Vector3();
 
 // ?at=x,y,z&yaw=degrees&pitch=degrees starts the sub there (at rest) — for inspecting a view or taking a screenshot.
-const params = new URLSearchParams(location.search);
 const at = params.get('at')?.split(',').map(Number);
 if (at && at.length === 3 && at.every(Number.isFinite)) {
   const [x = 0, y = 0, z = 0] = at;
-  piloting.place({
+  game.place({
     pos: { x, y, z },
     vel: { x: 0, y: 0, z: 0 },
     yaw: (Number(params.get('yaw') ?? 0) * Math.PI) / 180,
@@ -84,24 +89,25 @@ if (at && at.length === 3 && at.every(Number.isFinite)) {
   });
 }
 
-const stepper = createStepper((dt) => mode.step(keyboard.held, dt), FIXED_DT);
+const stepper = createStepper((dt) => game.step(keyboard.held, dt), FIXED_DT);
 
 let elapsed = 0;
 function draw(alpha: number, frameSeconds: number): void {
-  const target = craft.update(piloting.lastState, piloting.state, alpha, piloting.input, frameSeconds);
-  if (piloting.jumped) {
+  const g = game.state;
+  const target = craft.update(game.lastState.sub, g.sub, alpha, game.input, frameSeconds, g.launch.engines !== 'off');
+  if (game.jumped) {
     chase.snap(target);
-    piloting.jumped = false;
+    game.jumped = false;
   } else {
     chase.update(target, frameSeconds);
   }
-  combatView.update(piloting.combat, frameSeconds);
+  combatView.update(g.combat, frameSeconds);
   particles.update(frameSeconds);
   sea.update(camera, scene, elapsed);
   motes.update(camera, elapsed);
   updateScenery(elapsed, camera, scene);
 
-  const s = piloting.state;
+  const s = g.sub;
   const home = world.marineville.tunnelMouth;
   hud.update({
     depthMetres: -s.pos.y,
@@ -110,9 +116,11 @@ function draw(alpha: number, frameSeconds: number): void {
     headingDegrees: compass(-s.yaw * DEG),
     homeBearingDegrees: compass(Math.atan2(home.x - s.pos.x, -(home.z - s.pos.z)) * DEG),
     homeDistanceMetres: Math.hypot(home.x - s.pos.x, home.y - s.pos.y, home.z - s.pos.z),
-    targetsLeft: targetsLeft(piloting.combat),
+    targetsLeft: targetsLeft(g.combat),
     targetsTotal: world.targets.length,
-    airborne: s.medium === 'airborne',
+    // L3: the airborne marker is hidden while the clamps hold the sub.
+    airborne: s.medium === 'airborne' && g.launch.clamps === 'released',
+    status: game.mode === 'launch' ? launchStatus(g) : null,
   });
 
   // The reticle marks where the nose points, 150 m ahead.
@@ -128,21 +136,23 @@ function draw(alpha: number, frameSeconds: number): void {
 }
 
 installDebugHandle({
-  mode: () => modeName,
-  steps: () => piloting.steps,
-  state: () => piloting.state,
-  combat: () => piloting.combat,
+  mode: () => game.mode,
+  steps: () => game.steps,
+  state: () => game.state.sub,
+  combat: () => game.state.combat,
+  launch: () => game.state.launch,
+  press: (control) => game.press(control),
   teleport: (pos, yaw) => {
-    piloting.place({
-      pos: { ...pos }, vel: { x: 0, y: 0, z: 0 }, yaw: yaw ?? piloting.state.yaw, pitch: 0, medium: pos.y > 0 ? 'airborne' : 'submerged',
+    game.place({
+      pos: { ...pos }, vel: { x: 0, y: 0, z: 0 }, yaw: yaw ?? game.state.sub.yaw, pitch: 0, medium: pos.y > 0 ? 'airborne' : 'submerged',
     });
   },
-  setInput: (input) => { piloting.override = input; },
+  setInput: (input) => { game.override = input; },
   advance: (seconds) => {
     const steps = Math.round(seconds / FIXED_DT);
     // Draw every few steps so the camera and effects follow as they would at 60 fps.
     for (let i = 0; i < steps; i++) {
-      mode.step(keyboard.held, FIXED_DT);
+      game.step(keyboard.held, FIXED_DT);
       elapsed += FIXED_DT;
       if (i % 2 === 1 || i === steps - 1) draw(1, FIXED_DT * 2);
     }
