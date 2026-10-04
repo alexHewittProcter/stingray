@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { createAudio } from './audio/audio';
 import { installDebugHandle } from './debug';
 import { Game, launchStatus } from './game/game';
 import { pressFor } from './input/pilot';
@@ -68,6 +69,10 @@ const keyboard = listenKeyboard(window, (code) => {
   if (control) game.press(control);
 });
 window.addEventListener('keydown', () => hud.dismissLegend(), { once: true });
+
+// L7: sound hears every fixed step's pair and sets its continuous sounds once per drawn frame; M mutes.
+const audio = createAudio(window);
+game.onStep = (previous, current) => audio.step(previous, current);
 
 const combatView = createCombatView(world, game.state.combat, particles);
 scene.add(combatView.group);
@@ -173,4 +178,5 @@ renderer.setAnimationLoop((now) => {
   elapsed += frame;
   const alpha = stepper.advance(frame);
   draw(alpha, frame);
+  audio.frame(game.state);
 });
