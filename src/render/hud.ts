@@ -9,6 +9,8 @@ export interface HudReadout {
   targetsLeft: number;
   targetsTotal: number;
   airborne: boolean;
+  /** Phase 2: a one-line launch status shown in place of the targets line, or null at sea. */
+  status: string | null;
 }
 
 export interface Hud {
@@ -89,7 +91,7 @@ export function createHud(parent: HTMLElement): Hud & { reticle: HTMLElement } {
       speed.textContent = `${Math.round(r.speedKnots)} kn`;
       heading.textContent = `${pad3(r.headingDegrees)}° ${compassPoint(r.headingDegrees)}`;
       home.textContent = `${pad3(r.homeBearingDegrees)}° · ${Math.round(r.homeDistanceMetres)} m`;
-      targets.textContent = r.targetsLeft === 0
+      targets.textContent = r.status !== null ? r.status : r.targetsLeft === 0
         ? 'ALL TARGETS DESTROYED — RETURN TO MARINEVILLE'
         : `TARGETS ${r.targetsTotal - r.targetsLeft} / ${r.targetsTotal}`;
     },

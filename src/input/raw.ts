@@ -10,12 +10,15 @@ const GAME_KEYS = new Set([
   'KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyQ', 'KeyE', 'KeyR',
   'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight',
   'ShiftLeft', 'ShiftRight', 'Space',
+  'Digit1', 'Digit2', 'Digit3', 'Digit4',
 ]);
 
-export function listenKeyboard(target: Window): Keyboard {
+/** onPress hears each key once per press (auto-repeat ignored), for edge-triggered controls. */
+export function listenKeyboard(target: Window, onPress?: (code: string) => void): Keyboard {
   const held = new Set<string>();
   const down = (e: KeyboardEvent) => {
     if (GAME_KEYS.has(e.code)) e.preventDefault();
+    if (!e.repeat && !held.has(e.code)) onPress?.(e.code);
     held.add(e.code);
   };
   const up = (e: KeyboardEvent) => held.delete(e.code);

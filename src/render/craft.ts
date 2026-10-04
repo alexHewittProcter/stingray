@@ -15,8 +15,8 @@ const STERN_OFFSET = 12; // m behind the hull's centre
 
 export interface Craft {
   readonly group: THREE.Group;
-  /** Pose the model between two sim states; returns what the chase camera should follow. */
-  update(prev: SubState, next: SubState, alpha: number, input: SubInput, dtSeconds: number): ChaseTarget;
+  /** Pose the model between two sim states; returns what the chase camera should follow. The drive turns only while running. */
+  update(prev: SubState, next: SubState, alpha: number, input: SubInput, dtSeconds: number, running?: boolean): ChaseTarget;
 }
 
 const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
@@ -49,7 +49,7 @@ export function createCraft(particles: Particles): Craft {
 
   return {
     group,
-    update(prev, next, alpha, input, dt) {
+    update(prev, next, alpha, input, dt, running = true) {
       pos.x = lerp(prev.pos.x, next.pos.x, alpha);
       pos.y = lerp(prev.pos.y, next.pos.y, alpha);
       pos.z = lerp(prev.pos.z, next.pos.z, alpha);
@@ -64,11 +64,11 @@ export function createCraft(particles: Particles): Craft {
       group.position.set(pos.x, pos.y, pos.z);
       group.rotation.set(pitch, yaw, bank);
 
-      spin += (DRIVE_SPIN_IDLE + speed * DRIVE_SPIN_PER_SPEED) * (input.throttle < 0 ? -1 : 1) * dt;
+      if (running) spin += (DRIVE_SPIN_IDLE + speed * DRIVE_SPIN_PER_SPEED) * (input.throttle < 0 ? -1 : 1) * dt;
       model.setDriveSpin(spin);
 
       // Bubbles stream from the drive while it is under water and working.
-      if (!airborne && (input.throttle !== 0 || speed > 4)) {
+      if (running && !airborne && (input.throttle !== 0 || speed > 4)) {
         bubbleDebt += (8 + speed * 1.6) * dt;
         const count = Math.floor(bubbleDebt);
         bubbleDebt -= count;
