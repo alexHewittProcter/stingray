@@ -47,6 +47,9 @@ export function confineCamera(pos: Vec3, interior: Interior): Confined {
   return confineTo(pos, interior, { reach: interior.tunnel.radius - inset, inset });
 }
 
+// On the wall counts as inside, with a hair of slack so a corrected position is left alone on the next step.
+const ON_WALL = 1e-9;
+
 const hullVolume = (): Volume => ({ reach: T.tunnelHullReach, inset: T.hullRadius });
 
 function confineTo(pos: Vec3, interior: Interior, volume: Volume): Confined {
@@ -64,7 +67,7 @@ function confineTo(pos: Vec3, interior: Interior, volume: Volume): Confined {
   for (let k = 1; k < line.length; k++) {
     const q = closestOnSegment(pos, line[k - 1]!, line[k]!);
     const d = distance(pos, q);
-    if (d <= volume.reach) return untouched;
+    if (d <= volume.reach + ON_WALL) return untouched;
     consider(add(q, scale(sub(pos, q), volume.reach / d)));
   }
 
@@ -72,7 +75,7 @@ function confineTo(pos: Vec3, interior: Interior, volume: Volume): Confined {
   const lo = { x: min.x + volume.inset, y: min.y + volume.inset, z: min.z + volume.inset };
   const hi = { x: max.x - volume.inset, y: max.y - volume.inset, z: max.z - volume.inset };
   const inPen = { x: clamp(pos.x, lo.x, hi.x), y: clamp(pos.y, lo.y, hi.y), z: clamp(pos.z, lo.z, hi.z) };
-  if (distance(inPen, pos) === 0) return untouched;
+  if (distance(inPen, pos) <= ON_WALL) return untouched;
   consider(inPen);
 
   return { pos: nearest.pos, normal: scale(sub(nearest.pos, pos), 1 / nearest.distance) };
