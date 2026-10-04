@@ -7,7 +7,7 @@ export const LEVELS = {
 
   // Buses (each sound below is scaled by its bus)
   ambienceBus: 0.55,
-  engineBus: 0.7,
+  engineBus: 0.5,
   effectsBus: 0.9,
 
   // Ambience beds (continuous, crossfaded by where the sub is)
@@ -27,20 +27,20 @@ export const LEVELS = {
 
   // Pen machinery
   klaxon: 0.32,
-  hydraulics: 0.4, // continuous while the cradle moves
+  hydraulics: 0.22, // continuous while the cradle moves
   clunk: 0.7, // the cradle stopping
   clamps: 0.55,
   water: 0.5, // the hull going under / coming out on the cradle
-  refusal: 0.22,
+  refusal: 0.1,
 
   // The ocean door (both scaled by distance from the door's centre)
-  doorMachinery: 0.55,
+  doorMachinery: 0.3,
   doorSeal: 0.9,
   doorReference: 60, // m — the door is at full level within about this distance, half at twice it
 
   // Sea and weapons
-  splash: 0.6, // leap and re-entry, scaled by speed
-  missile: 0.5,
+  splash: 0.85, // leap and re-entry, scaled by speed
+  missile: 0.8,
   detonation: 1.0, // at the listener; falls with distance
   detonationReference: 80, // m — half level at this distance
   detonationMaxPerStep: 3, // more detonations in one step than this play as this many
