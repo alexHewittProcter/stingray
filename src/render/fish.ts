@@ -22,15 +22,15 @@ interface School {
 
 // Loops are placed clear of the solid landmarks: beside the arch's opening, east of the stacks, over the wreck.
 const SCHOOLS: School[] = [
-  { x: -150, z: -790, above: 22, rx: 28, rz: 16, count: 40, size: 0.8, color: 0xb8c8d4 },
-  { x: 235, z: -760, above: 30, rx: 26, rz: 70, count: 45, size: 0.7, color: 0xe2c24a },
-  { x: 100, z: -500, above: 26, rx: 40, rz: 22, count: 36, size: 0.9, color: 0xd8873a },
-  { x: -250, z: -600, above: 14, rx: 50, rz: 40, count: 40, size: 0.7, color: 0xa8d0c8 },
-  { x: 10, z: -960, above: 20, rx: 30, rz: 22, count: 30, size: 0.8, color: 0xe2c24a },
-  { x: 0, z: -250, above: 60, rx: 70, rz: 30, count: 45, size: 0.9, color: 0x9fb8c8 },
-  { x: 420, z: -320, above: 25, rx: 40, rz: 30, count: 30, size: 0.8, color: 0xd8873a },
-  { x: -520, z: -900, above: 22, rx: 35, rz: 30, count: 30, size: 0.7, color: 0xb8c8d4 },
-  { x: -60, z: -680, above: 35, rx: 22, rz: 18, count: 8, size: 2.2, color: 0x7f97a8 },
+  { x: -150, z: -790, above: 22, rx: 28, rz: 16, count: 40, size: 1.8, color: 0xb8c8d4 },
+  { x: 235, z: -760, above: 30, rx: 26, rz: 70, count: 45, size: 1.5, color: 0xe2c24a },
+  { x: 100, z: -500, above: 26, rx: 40, rz: 22, count: 36, size: 2.1, color: 0xd8873a },
+  { x: -250, z: -600, above: 14, rx: 50, rz: 40, count: 40, size: 1.5, color: 0xa8d0c8 },
+  { x: 10, z: -960, above: 20, rx: 30, rz: 22, count: 30, size: 1.8, color: 0xe2c24a },
+  { x: 0, z: -250, above: 60, rx: 70, rz: 30, count: 45, size: 2.1, color: 0x9fb8c8 },
+  { x: 420, z: -320, above: 25, rx: 40, rz: 30, count: 30, size: 1.8, color: 0xd8873a },
+  { x: -520, z: -900, above: 22, rx: 35, rz: 30, count: 30, size: 1.5, color: 0xb8c8d4 },
+  { x: -60, z: -680, above: 35, rx: 22, rz: 18, count: 8, size: 3.0, color: 0x7f97a8 },
 ];
 
 /** A small fish along +x: a diamond-section body and a forked tail, about 1 m long. */

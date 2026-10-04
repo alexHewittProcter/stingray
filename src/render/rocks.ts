@@ -93,11 +93,11 @@ export function strataRock(o: StrataOptions): THREE.BufferGeometry {
     const tint = ROCK_BLUES[Math.floor(rand() * ROCK_BLUES.length)]!;
     const detailed = sides >= 12;
     const rings: Ring[] = [
-      { y: y0, scale: 0.975, light: 0.45 },
+      { y: y0, scale: 0.985, light: 0.5 },
       { y: y0 + h * (0.12 + 0.08 * rand()), scale: 1, light: 0.7 },
       ...(detailed ? [{ y: y0 + h * (0.45 + 0.15 * rand()), scale: 0.97 + 0.03 * rand(), light: 0.9 }] : []),
       { y: y1 - dome - h * (0.08 + 0.08 * rand()), scale: 0.98 + 0.02 * rand(), light: 1 },
-      { y: y1 - dome, scale: 0.94 + 0.04 * rand(), light: 1.15 },
+      { y: y1 - dome, scale: 0.975 + 0.015 * rand(), light: 1.1 },
     ];
     const at = (ring: Ring, k: number): THREE.Vector3 => {
       const [ux, uz] = unit[k % sides]!;
@@ -174,7 +174,7 @@ function rockColour(tint: THREE.Color, up: number, light: number, mossy: boolean
   if (up > 0.75) {
     // Tops weather pale; mossy strata grow a green-ochre cushion instead.
     if (mossy) c.copy(MOSS[Math.floor(rand() * MOSS.length)]!).multiplyScalar(0.85 + 0.3 * rand());
-    else c.lerp(WEATHERED, 0.45 + 0.35 * rand());
+    else c.lerp(WEATHERED, 0.3 + 0.3 * rand());
   } else if (up < -0.4) {
     c.lerp(SEAM, 0.7);
   } else {

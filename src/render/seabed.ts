@@ -14,14 +14,14 @@ const TILE = 300; // m: tiles let the camera skip the ground behind it
 const STEP = 6; // m between vertices
 const TEXTURE_METRES = 11; // one repeat of the moss-cushion texture
 
-const COVER = [0x5d7a34, 0x7d7a35, 0xa08a3c, 0x4a6a2c, 0x8c7a38].map((h) => new THREE.Color(h));
+const COVER = [0x4a6a2c, 0x5d7a34, 0x7d7a35, 0xa08a3c, 0x3f5a28, 0x8c7a38].map((h) => new THREE.Color(h));
 const RUST = new THREE.Color(0x9a4f2e);
 const TEAL = new THREE.Color(0x3f8a7c);
 const SILT = new THREE.Color(0x6e6c58);
 const ROCK = new THREE.Color(0x5a6a80);
 const ROCK_PALE = new THREE.Color(0x8b98a8);
 const DEEP = new THREE.Color(0x24344a);
-const BRIGHTEN = 1.25; // the cushion texture averages a little under 1
+const BRIGHTEN = 1.15; // the cushion texture averages a little under 1
 
 export function createSeabed(world: World): THREE.Group {
   const group = new THREE.Group();
@@ -112,7 +112,13 @@ function triplanar(material: THREE.Material): void {
           vec3 groundP = vGroundPos * uGroundScale;
           diffuseColor *= texture2D(map, groundP.zy) * groundW.x + texture2D(map, groundP.xz) * groundW.y
             + texture2D(map, groundP.xy) * groundW.z;
-        #endif`,
+        #endif
+        // Strata on steep faces: layers a few metres thick, each its own shade, with a dark seam beneath.
+        float groundSteep = 1.0 - smoothstep(0.5, 0.8, vGroundNormal.y);
+        float groundLayer = vGroundPos.y / 3.6 + 0.6 * sin(vGroundPos.x * 0.031 + vGroundPos.z * 0.023);
+        float groundShade = 0.7 + 0.45 * fract(sin(floor(groundLayer) * 12.9898) * 43758.5453);
+        float groundSeam = smoothstep(0.0, 0.12, fract(groundLayer));
+        diffuseColor.rgb *= mix(1.0, groundShade * mix(0.45, 1.0, groundSeam), groundSteep);`,
       );
   });
 }
@@ -133,13 +139,13 @@ function groundColour(c: THREE.Color, seed: number, x: number, y: number, z: num
   const silt = fbm2(x / 24, z / 24, seed + 109, 2);
   if (silt > 0.66) c.lerp(SILT, (silt - 0.66) * 2);
 
-  // Steep ground: grey-blue strata in bands a few metres thick.
+  // Steep ground is bare grey-blue rock (its strata are drawn per pixel, in the shader: walls are too steep for
+  // the vertex grid to carry bands).
   const rockiness = THREE.MathUtils.smoothstep(steep, 0.12, 0.3);
+  c.lerp(DEEP, THREE.MathUtils.clamp((-y - 160) / 200, 0, 0.55) * (1 - rockiness));
   if (rockiness > 0) {
-    const band = noise2(y / 3.2, x / 90 + z / 90, seed + 113);
-    rock.copy(ROCK).lerp(ROCK_PALE, band * band).multiplyScalar(0.75 + 0.35 * band);
+    rock.copy(ROCK).lerp(ROCK_PALE, noise2(x / 50, z / 50, seed + 113) * 0.5);
     c.lerp(rock, rockiness);
   }
   c.multiplyScalar(BRIGHTEN * (0.85 + 0.3 * local));
-  c.lerp(DEEP, THREE.MathUtils.clamp((-y - 140) / 170, 0, 0.8));
 }
