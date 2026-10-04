@@ -14,10 +14,10 @@ function landmark(world: World, id: string) {
 const boxes = (colliders: readonly Collider[]) =>
   colliders.filter((c): c is Extract<Collider, { kind: 'box' }> => c.kind === 'box');
 
-// ---- The Marineville cliff and the ocean door (built in cliff-face.ts and ocean-door.ts) ----
+// ---- The Marineville cliff (built in cliff-face.ts; its ocean door is the tunnel's, in tunnel.ts) ----
 
 import { createCliffFace } from './cliff-face';
-import { DOOR_RING_RADIUS, createOceanDoor } from './ocean-door';
+import { DOOR_RING_RADIUS } from './ocean-door';
 
 function cliff(world: World): THREE.Group {
   const m = world.marineville.tunnelMouth;
@@ -28,12 +28,8 @@ function cliff(world: World): THREE.Group {
     door: { x: m.x, y: m.y, radius: DOOR_RING_RADIUS },
   });
   const group = new THREE.Group();
-  group.add(face, oceanDoor(world));
+  group.add(face);
   return group;
-}
-
-function oceanDoor(world: World): THREE.Group {
-  return createOceanDoor(world.marineville.tunnelMouth);
 }
 
 // ---- Arch, stacks, wreck, kelp ----

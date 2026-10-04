@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { createAudio } from './audio/audio';
-import { installDebugHandle, runScript } from './debug';
+import { clampAdvance, installDebugHandle, runScript } from './debug';
 import { Game, launchStatus } from './game/game';
 import { pressFor } from './input/pilot';
 import { listenKeyboard } from './input/raw';
@@ -17,6 +17,7 @@ import { createParticles } from './render/particles';
 import { createPen } from './render/pen';
 import { createSea } from './render/sea';
 import { createSeabed } from './render/seabed';
+import { createTunnel } from './render/tunnel';
 import { updateScenery } from './render/sway';
 import { targetsLeft } from './sim/combat';
 import { oceanStart, standby } from './sim/launch';
@@ -61,6 +62,9 @@ const params = new URLSearchParams(location.search);
 const pen = createPen(world.marineville.interior);
 scene.add(pen.root);
 pen.reflect(craft.group);
+// The launch tunnel and the ocean door (phase 2, T4): the bore is culled when it could not be seen.
+const tunnel = createTunnel(world.marineville.interior);
+scene.add(tunnel.root);
 const rig = createCameraRig(camera, world);
 // Witnessing (debug): ?view=x,y,z,lookX,lookY,lookZ fixes the camera there, ignoring the rig.
 const viewNumbers = params.get('view')?.split(',').map(Number);
@@ -128,6 +132,8 @@ function draw(alpha: number, frameSeconds: number): void {
     camera.lookAt(viewFrom[1]);
   }
   pen.update(camera, penView, frameSeconds, elapsed);
+  const door = game.lastState.launch.door + (g.launch.door - game.lastState.launch.door) * alpha;
+  tunnel.update(camera, { door, doorMoving: g.launch.doorDir !== 0 }, elapsed);
   combatView.update(g.combat, frameSeconds);
   particles.update(frameSeconds);
   sea.update(camera, scene, elapsed);
@@ -176,7 +182,7 @@ installDebugHandle({
   },
   setInput: (input) => { game.override = input; },
   advance: (seconds) => {
-    const steps = Math.round(seconds / FIXED_DT);
+    const steps = Math.round(clampAdvance(seconds) / FIXED_DT);
     // Draw every few steps so the camera and effects follow as they would at 60 fps.
     for (let i = 0; i < steps; i++) {
       game.step(keyboard.held, FIXED_DT);
@@ -209,7 +215,9 @@ if (stats) {
 
 let last = performance.now();
 renderer.setAnimationLoop((now) => {
-  const frame = Math.min((now - last) / 1000, 0.1);
+  // rAF's timestamp can precede `last` on the first frame (after a long scripted advance): never run time backwards,
+  // which would fling the camera's springs.
+  const frame = THREE.MathUtils.clamp((now - last) / 1000, 0, 0.1);
   last = now;
   elapsed += frame;
   const alpha = hold ? 1 : stepper.advance(frame);
