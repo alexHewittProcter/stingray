@@ -20,6 +20,8 @@ export class Game {
   input: SubInput = NO_INPUT;
   /** Debug: axes that replace the keyboard's while set. */
   override: Partial<SubInput> = {};
+  /** Hears every fixed step's (previous, current) pair once, for sound (L7). Never straddles a jump. */
+  onStep: ((previous: GameState, current: GameState) => void) | null = null;
 
   private current: GameState;
   private previous: GameState;
@@ -56,6 +58,7 @@ export class Game {
     this.current = stepGame(this.current, input, pressed, dt, this.world);
     this.input = this.current.launch.clamps === 'locked' ? NO_INPUT : input;
     this.steps += 1;
+    this.onStep?.(this.previous, this.current);
   }
 
   /** What the R key does. */
