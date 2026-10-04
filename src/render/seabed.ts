@@ -1,121 +1,145 @@
 import * as THREE from 'three';
 import type { World } from '../sim/world';
-import { hash3, mulberry32 } from './random';
+import { createDressing } from './dressing';
+import { createFish } from './fish';
+import { fbm2, noise2 } from './noise';
+import { plantMaterials } from './plants';
+import { chainPatch, onSceneryFrame } from './sway';
 
-// The seabed as the series dressed it: grey-blue crags under a dense, colourful cover of plants.
-// The mesh is sampled from the same seabedHeight() the collision uses.
+// The seabed as the series dressed it: a carpet of moss and weed in ochres and greens over grey-blue rock.
+// The mesh is sampled from the same seabedHeight() the collision uses; the cushion texture and the colour
+// patches are what make it read as growth rather than sand.
 
-const SEGMENTS = 320;
-const MOSS = new THREE.Color(0x5d7a34);
-const OCHRE = new THREE.Color(0xa08a3c);
-const ROCK = new THREE.Color(0x5a6b82);
-const DEEP = new THREE.Color(0x27384f);
+const TILE = 300; // m: tiles let the camera skip the ground behind it
+const STEP = 6; // m between vertices
+const TEXTURE_METRES = 11; // one repeat of the moss-cushion texture
+
+const COVER = [0x5d7a34, 0x7d7a35, 0xa08a3c, 0x4a6a2c, 0x8c7a38].map((h) => new THREE.Color(h));
+const RUST = new THREE.Color(0x9a4f2e);
+const TEAL = new THREE.Color(0x3f8a7c);
+const SILT = new THREE.Color(0x6e6c58);
+const ROCK = new THREE.Color(0x5a6a80);
+const ROCK_PALE = new THREE.Color(0x8b98a8);
+const DEEP = new THREE.Color(0x24344a);
+const BRIGHTEN = 1.25; // the cushion texture averages a little under 1
 
 export function createSeabed(world: World): THREE.Group {
   const group = new THREE.Group();
   const size = world.bounds.halfSize * 2 + 600;
+  const tiles = Math.ceil(size / TILE);
+  const { ground } = plantMaterials(world.seed);
+  const material = new THREE.MeshLambertMaterial({ vertexColors: true, map: ground.map, bumpMap: ground.bump, bumpScale: 2.5 });
+  triplanar(material);
+  const meshes: THREE.Mesh[] = [];
+  for (let j = 0; j < tiles; j++) {
+    for (let i = 0; i < tiles; i++) {
+      const cx = -size / 2 + (i + 0.5) * TILE;
+      const cz = -size / 2 + (j + 0.5) * TILE;
+      meshes.push(new THREE.Mesh(tileGeometry(world, cx, cz), material));
+    }
+  }
+  group.add(...meshes);
+  // Tiles wholly past the fog's far edge would draw as flat fog colour: skip them.
+  onSceneryFrame((camera, range) => {
+    for (const mesh of meshes) {
+      const sphere = mesh.geometry.boundingSphere!;
+      mesh.visible = sphere.center.distanceTo(camera.position) - sphere.radius < range;
+    }
+  });
+  group.add(createDressing(world), createFish(world));
+  return group;
+}
 
-  const geometry = new THREE.PlaneGeometry(size, size, SEGMENTS, SEGMENTS);
+function tileGeometry(world: World, cx: number, cz: number): THREE.BufferGeometry {
+  const segments = TILE / STEP;
+  const geometry = new THREE.PlaneGeometry(TILE, TILE, segments, segments);
   geometry.rotateX(-Math.PI / 2);
+  geometry.translate(cx, 0, cz);
   const position = geometry.attributes.position as THREE.BufferAttribute;
+  const normal = geometry.attributes.normal as THREE.BufferAttribute;
+  const uv = geometry.attributes.uv as THREE.BufferAttribute;
   const colors = new Float32Array(position.count * 3);
   const c = new THREE.Color();
-  const step = size / SEGMENTS;
+  const n = new THREE.Vector3();
+  const bed = world.seabedHeight;
+  const d = 1.5; // m: finite-difference span for the normal
   for (let i = 0; i < position.count; i++) {
     const x = position.getX(i);
     const z = position.getZ(i);
-    const y = world.seabedHeight(x, z);
+    const y = bed(x, z);
     position.setY(i, y);
-
-    // Steep ground shows bare rock; flatter ground carries moss and ochre weed; the trench goes dark.
-    const slope = Math.hypot(world.seabedHeight(x + step, z) - y, world.seabedHeight(x, z + step) - y) / step;
-    const patch = hash3(Math.floor(x / 45), 0, Math.floor(z / 45));
-    c.copy(patch < 0.55 ? MOSS : OCHRE).lerp(ROCK, Math.min(slope * 2.2, 1));
-    c.lerp(DEEP, THREE.MathUtils.clamp((-y - 120) / 160, 0, 0.85));
-    c.multiplyScalar(0.85 + 0.3 * hash3(x, y, z));
+    // Normals from the heightfield itself, so neighbouring tiles shade without seams.
+    n.set(bed(x - d, z) - bed(x + d, z), 2 * d, bed(x, z - d) - bed(x, z + d)).normalize();
+    normal.setXYZ(i, n.x, n.y, n.z);
+    uv.setXY(i, x / TEXTURE_METRES, z / TEXTURE_METRES);
+    groundColour(c, world.seed, x, y, z, 1 - n.y);
     colors.set([c.r, c.g, c.b], i * 3);
   }
   geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-  geometry.computeVertexNormals();
-  group.add(new THREE.Mesh(geometry, new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true })));
-
-  group.add(dressing(world));
-  return group;
+  geometry.computeBoundingSphere();
+  return geometry;
 }
 
-// ---- Scattered rocks and plants (instanced, never solid, all lower than the hull's bed clearance) ----
+/**
+ * The cushion texture is projected from all three axes and blended by the surface normal, so the trench walls
+ * keep its scale instead of smearing it into streaks; the bump fades out on the steeps for the same reason.
+ */
+function triplanar(material: THREE.Material): void {
+  chainPatch(material, 'triplanar-ground', (shader) => {
+    shader.uniforms.uGroundScale = { value: 1 / TEXTURE_METRES };
+    shader.vertexShader = shader.vertexShader
+      .replace('#include <common>', '#include <common>\nvarying vec3 vGroundPos;\nvarying vec3 vGroundNormal;')
+      .replace(
+        '#include <begin_vertex>',
+        `#include <begin_vertex>
+        vGroundPos = (modelMatrix * vec4(transformed, 1.0)).xyz;
+        vGroundNormal = normalize(mat3(modelMatrix) * objectNormal);`,
+      );
+    shader.fragmentShader = shader.fragmentShader
+      .replace(
+        '#include <common>',
+        '#include <common>\nvarying vec3 vGroundPos;\nvarying vec3 vGroundNormal;\nuniform float uGroundScale;',
+      )
+      .replace(
+        '#include <bumpmap_pars_fragment>',
+        THREE.ShaderChunk.bumpmap_pars_fragment.replace(/bumpScale \*/g, 'bumpScale * smoothstep(0.72, 0.92, vGroundNormal.y) *'),
+      )
+      .replace(
+        '#include <map_fragment>',
+        `#ifdef USE_MAP
+          vec3 groundW = pow(abs(normalize(vGroundNormal)), vec3(4.0));
+          groundW /= groundW.x + groundW.y + groundW.z;
+          vec3 groundP = vGroundPos * uGroundScale;
+          diffuseColor *= texture2D(map, groundP.zy) * groundW.x + texture2D(map, groundP.xz) * groundW.y
+            + texture2D(map, groundP.xy) * groundW.z;
+        #endif`,
+      );
+  });
+}
 
-const DRESS_CENTRE = { x: 0, z: -620 };
-const DRESS_RADIUS = 1150;
-const PLANT_COLORS = [0x6f8f2f, 0x8a9a35, 0xb89a3a, 0xd2622f, 0xc7453a, 0x3fb7a8, 0x58c2c9, 0x7da33a];
+const rock = new THREE.Color();
 
-function scatter(world: World, count: number, rand: () => number, place: (x: number, y: number, z: number, i: number) => void): void {
-  for (let i = 0; i < count; i++) {
-    const r = DRESS_RADIUS * Math.sqrt(rand());
-    const a = rand() * Math.PI * 2;
-    const x = DRESS_CENTRE.x + r * Math.cos(a);
-    const z = Math.max(DRESS_CENTRE.z + r * Math.sin(a), -1090);
-    place(x, world.seabedHeight(x, z), z, i);
+/** Growth on the flats in broad patches; bare stratified rock on the steeps; everything darkens into the deep. */
+function groundColour(c: THREE.Color, seed: number, x: number, y: number, z: number, steep: number): void {
+  const broad = fbm2(x / 160, z / 160, seed + 101, 3);
+  const local = fbm2(x / 38, z / 38, seed + 103, 3);
+  const pick = THREE.MathUtils.clamp(broad * 1.4 - 0.2 + (local - 0.5) * 0.9, 0, 0.999) * (COVER.length - 1);
+  const k = Math.floor(pick);
+  c.copy(COVER[k]!).lerp(COVER[k + 1]!, pick - k);
+  // Occasional beds of rust-red and teal growth, and threads of bare silt between patches.
+  const accent = fbm2(x / 55 + 40, z / 55, seed + 107, 2);
+  if (accent > 0.62) c.lerp(RUST, (accent - 0.62) * 2.2);
+  else if (accent < 0.3) c.lerp(TEAL, (0.3 - accent) * 1.6);
+  const silt = fbm2(x / 24, z / 24, seed + 109, 2);
+  if (silt > 0.66) c.lerp(SILT, (silt - 0.66) * 2);
+
+  // Steep ground: grey-blue strata in bands a few metres thick.
+  const rockiness = THREE.MathUtils.smoothstep(steep, 0.12, 0.3);
+  if (rockiness > 0) {
+    const band = noise2(y / 3.2, x / 90 + z / 90, seed + 113);
+    rock.copy(ROCK).lerp(ROCK_PALE, band * band).multiplyScalar(0.75 + 0.35 * band);
+    c.lerp(rock, rockiness);
   }
-}
-
-function dressing(world: World): THREE.Group {
-  const group = new THREE.Group();
-  const rand = mulberry32(world.seed ^ 0x51ab);
-  const m = new THREE.Matrix4();
-  const q = new THREE.Quaternion();
-  const e = new THREE.Euler();
-  const s = new THREE.Vector3();
-  const p = new THREE.Vector3();
-  const tint = new THREE.Color();
-
-  const ROCKS = 2600;
-  const rocks = new THREE.InstancedMesh(
-    new THREE.IcosahedronGeometry(1, 0),
-    new THREE.MeshLambertMaterial({ color: 0xffffff, flatShading: true }),
-    ROCKS,
-  );
-  scatter(world, ROCKS, rand, (x, y, z, i) => {
-    const w = 1.2 + rand() * 3.2;
-    s.set(w, 0.8 + rand() * 2.2, w * (0.6 + rand() * 0.8));
-    q.setFromEuler(e.set(rand() * 0.6, rand() * Math.PI * 2, rand() * 0.6));
-    rocks.setMatrixAt(i, m.compose(p.set(x, y + s.y * 0.2, z), q, s));
-    rocks.setColorAt(i, tint.setHSL(0.6 + rand() * 0.05, 0.16 + rand() * 0.1, 0.3 + rand() * 0.18));
-  });
-  group.add(rocks);
-
-  // Bushy plants: squashed low-poly blobs in the series' ochres, greens, corals and turquoises.
-  const PLANTS = 9000;
-  const plants = new THREE.InstancedMesh(
-    new THREE.IcosahedronGeometry(1, 1),
-    new THREE.MeshLambertMaterial({ color: 0xffffff, flatShading: true }),
-    PLANTS,
-  );
-  scatter(world, PLANTS, rand, (x, y, z, i) => {
-    const w = 0.9 + rand() * 2.6;
-    s.set(w, 1.1 + rand() * 2.2, w);
-    q.setFromEuler(e.set(0, rand() * Math.PI * 2, 0));
-    plants.setMatrixAt(i, m.compose(p.set(x, y + s.y * 0.35, z), q, s));
-    const base = PLANT_COLORS[Math.floor(rand() * PLANT_COLORS.length)] ?? 0x6f8f2f;
-    plants.setColorAt(i, tint.setHex(base).multiplyScalar(0.8 + rand() * 0.4));
-  });
-  group.add(plants);
-
-  // Fronds: thin upright cones that read as weed at a distance.
-  const FRONDS = 4200;
-  const fronds = new THREE.InstancedMesh(
-    new THREE.ConeGeometry(0.35, 1, 5),
-    new THREE.MeshLambertMaterial({ color: 0xffffff, flatShading: true }),
-    FRONDS,
-  );
-  scatter(world, FRONDS, rand, (x, y, z, i) => {
-    const h = 1.5 + rand() * 2.4;
-    s.set(1 + rand(), h, 1 + rand());
-    q.setFromEuler(e.set((rand() - 0.5) * 0.4, rand() * Math.PI * 2, (rand() - 0.5) * 0.4));
-    fronds.setMatrixAt(i, m.compose(p.set(x, y + h / 2, z), q, s));
-    fronds.setColorAt(i, tint.setHSL(0.24 + rand() * 0.2, 0.55, 0.3 + rand() * 0.2));
-  });
-  group.add(fronds);
-
-  return group;
+  c.multiplyScalar(BRIGHTEN * (0.85 + 0.3 * local));
+  c.lerp(DEEP, THREE.MathUtils.clamp((-y - 140) / 170, 0, 0.8));
 }
