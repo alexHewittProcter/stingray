@@ -12,6 +12,7 @@ import { createCameraRig } from './render/camera-rig';
 import { createCombatView } from './render/combat-view';
 import { createCraft } from './render/craft';
 import { createDockGuide } from './render/dock-guide';
+import { createFpsReadout } from './render/fps';
 import { createHud } from './render/hud';
 import { oceanInView } from './render/indoors';
 import { createLandmarks } from './render/landmarks';
@@ -236,9 +237,12 @@ const script = params.get('script');
 if (script) runScript(script, window.__stingray!);
 const hold = params.has('hold');
 const stats = params.has('stats') ? document.body.appendChild(document.createElement('pre')) : null;
+// ?fps: the on-screen frame-rate readout (T8) for measuring a real window; off by default.
+const fps = params.has('fps') ? createFpsReadout(document.body) : null;
+// The pool's reflection is a nested render: count the whole frame.
+if (stats || fps) renderer.info.autoReset = false;
 if (stats) {
   stats.id = 'stats';
-  renderer.info.autoReset = false; // the pool's reflection is a nested render: count the whole frame
 
   Object.assign(stats.style, { position: 'fixed', left: '8px', bottom: '8px', margin: '0', color: '#fff', font: '11px monospace' });
 }
@@ -254,13 +258,15 @@ let last = performance.now();
 renderer.setAnimationLoop((now) => {
   // rAF's timestamp can precede `last` on the first frame (after a long scripted advance): never run time backwards,
   // which would fling the camera's springs.
-  const frame = THREE.MathUtils.clamp((now - last) / 1000, 0, 0.1);
+  const wallMs = now - last;
+  const frame = THREE.MathUtils.clamp(wallMs / 1000, 0, 0.1);
   last = now;
   elapsed += frame;
   const alpha = hold ? 1 : stepper.advance(frame);
-  if (stats) renderer.info.reset();
+  if (stats || fps) renderer.info.reset();
   draw(alpha, frame);
   audio.frame(game.state);
+  if (fps) fps.frame(wallMs, renderer.info.render.calls, renderer.info.render.triangles);
   if (stats) {
     const { calls, triangles } = renderer.info.render;
     stats.textContent = `calls ${calls}  triangles ${triangles}  programs ${renderer.info.programs?.length ?? 0}  camera ${camera.position.toArray().map((n) => n.toFixed(1)).join(',')}  pen view ${rig.penWeight().toFixed(2)}`;
