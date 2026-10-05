@@ -27,6 +27,8 @@ const COLUMN_STEPS: ReadonlyArray<readonly [number, number]> = [
   [Infinity, 15],
 ];
 
+/** Depth the rock inside the ring would sit at; faceGeometry leaves it out, so the ring's bore is open. */
+const PLUG_DEPTH = 9;
 const COLUMN_WIDTH = 11; // m between flutes, before warping
 const STRATA = 6.5; // m between strata ledges
 const CREST_ROWS = 6;
@@ -102,7 +104,7 @@ function sampleRock(x: number, y: number, door: CliffSpec['door']): Sample {
   const apron = 2.4 + grain + 0.8 * strata;
   const dressed = 1 - smooth((r - door.radius - 4) / 9);
   depth += (apron - depth) * dressed;
-  if (r < door.radius - 0.5) depth = 9; // behind the ring's collar
+  if (r < door.radius - 0.5) depth = PLUG_DEPTH; // behind the ring's collar: cut away (faceGeometry)
 
   return { depth: Math.max(depth, 0.05), groove, column };
 }
@@ -175,14 +177,22 @@ function faceGeometry(spec: CliffSpec): THREE.BufferGeometry {
     }
   }
 
+  // Phase 2 (T4): the rock that stood inside the ring, behind the door, is left out — the ring's bore runs on
+  // into the tunnel. A triangle is dropped only if all its corners are inside the ring, so the rock that remains
+  // still reaches in behind the ring's face (inside its outer wall) and no gap opens round it.
+  const inRing = (k: number) => k < ys.length * cols && Math.hypot(positions[k * 3]! - spec.door.x, positions[k * 3 + 1]! - spec.door.y) < spec.door.radius - 0.5;
   const indices: number[] = [];
+  const tri = (a: number, b: number, c: number) => {
+    if (!(inRing(a) && inRing(b) && inRing(c))) indices.push(a, b, c);
+  };
   for (let j = 0; j < rows - 1; j++) {
     for (let i = 0; i < cols - 1; i++) {
       const a = j * cols + i;
       const b = a + 1;
       const c = a + cols;
       const d = c + 1;
-      indices.push(a, b, c, b, d, c);
+      tri(a, b, c);
+      tri(b, d, c);
     }
   }
   const geometry = new THREE.BufferGeometry();
