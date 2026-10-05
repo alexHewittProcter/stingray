@@ -15,7 +15,9 @@ const DEBRIS = 120;
 const FLASH_LIFE = 0.45;
 const RING_LIFE = 0.7;
 const LIGHT_LIFE = 0.7;
-const LIGHT_PEAK = 60_000; // candela: a brief, strong wash over everything near
+// T8: toned from 60 000 cd, a 0.95 flash and a 90 m glow, which whited the whole screen from 20 m: still a punchy
+// wash nearby, but the scene stays readable through it.
+const LIGHT_PEAK = 10_000; // candela: a brief, strong wash over everything near
 const DEBRIS_SINK = 7; // m/s² — chunks fall through the water
 const SEDIMENT_REACH = 14; // m above the bed within which a blast stirs it up
 
@@ -232,10 +234,10 @@ export function createEffects(particles: Particles): Effects {
         if (b.age > RING_LIFE) continue;
         b.age += dt;
         const k = Math.min(b.age / FLASH_LIFE, 1);
-        b.flash.scale.setScalar((4 + 18 * Math.sqrt(k)) * b.scale);
-        b.flashMaterial.opacity = 0.95 * (1 - k) ** 2;
-        b.glow.scale.setScalar(90 * b.scale * (0.6 + 0.4 * k));
-        b.glow.material.opacity = 0.9 * (1 - k);
+        b.flash.scale.setScalar((3 + 9 * Math.sqrt(k)) * b.scale);
+        b.flashMaterial.opacity = 0.7 * (1 - k) ** 2.5;
+        b.glow.scale.setScalar(48 * b.scale * (0.6 + 0.4 * k));
+        b.glow.material.opacity = 0.5 * (1 - k) ** 1.5;
         // The shock bubble outruns the flash and lasts a little longer.
         const kr = Math.min(b.age / RING_LIFE, 1);
         b.ring.scale.setScalar(4 + 44 * b.scale * Math.sqrt(kr));
