@@ -26,6 +26,26 @@ export function oceanInView(p: Vec3 | THREE.Vector3, door: number): boolean {
   return !cameraIndoors(p) || door > 0;
 }
 
+/** How far out from the mouth the chase camera starts to tighten (m) — beyond this it is phase 1's, exactly. */
+export const TIGHT_ZONE = 60;
+/** How far in past the face the camera is fully tight wherever it is across the mouth (m). */
+const TIGHT_IN = 10;
+
+/**
+ * How tight the chase boom should be for a sub at p (T8): 1 inside Marineville (the tunnel and the pen), falling
+ * smoothly to 0 at TIGHT_ZONE from the mouth out at sea, and 0 everywhere else at sea — so the open-sea camera is
+ * phase 1's. Continuous across the face: at the face it depends only on the distance from the mouth's centre.
+ */
+export function tunnelTightness(p: Vec3 | THREE.Vector3, mouth: Vec3): number {
+  const lateral = Math.hypot(p.x - mouth.x, p.y - mouth.y);
+  const inward = COAST_Z - p.z; // > 0 north of the face
+  const d = inward >= 0
+    ? lateral * Math.max(0, 1 - inward / TIGHT_IN)
+    : Math.hypot(lateral, inward);
+  const u = THREE.MathUtils.clamp(1 - d / TIGHT_ZONE, 0, 1);
+  return u * u * (3 - 2 * u);
+}
+
 /** How far north of the face the sun and sky have fully faded (m). */
 const FADE_DEPTH = 30;
 
