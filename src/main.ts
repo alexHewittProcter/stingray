@@ -17,6 +17,7 @@ import { createHud } from './render/hud';
 import { oceanInView } from './render/indoors';
 import { createLandmarks } from './render/landmarks';
 import { createLaunchPanel } from './render/launch-panel';
+import { initialLegend, legendOn, legendTick } from './render/legend';
 import { createMarineville } from './render/marineville';
 import { createMotes } from './render/motes';
 import { createParticles } from './render/particles';
@@ -86,9 +87,15 @@ const hud = createHud(document.body);
 // R returns to standby from anywhere, either way.
 const game = new Game(world, startState(world, params));
 
+// The key legend's timing (T8, render/legend.ts).
+let legend = initialLegend();
+
 // The launch panel (L6): its decisions are pure (game/panel.ts); its memory is presentation only.
 let panelMemory = initialMemory(game.state);
-const launchPanel = createLaunchPanel(document.body, (control) => game.press(control));
+const launchPanel = createLaunchPanel(document.body, (control) => {
+  game.press(control);
+  legend = legendOn(legend, 'launch');
+});
 // The docking guide (T6): on the way home, from the tunnel's last bend to the lock.
 const dockGuide = createDockGuide(document.body);
 
@@ -96,14 +103,16 @@ const keyboard = listenKeyboard(window, (code) => {
   const control = pressFor(code);
   if (control) game.press(control);
 });
-// The legend fades once the player starts driving (the launch keys come first, and the panel shows those).
+// The legend (T8, render/legend.ts): fades a few seconds after the first launch control, sooner once the player
+// drives; H brings it back.
 const DRIVING_KEYS = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyQ', 'KeyE', 'ArrowUp', 'ArrowDown', 'Space']);
-const dismissOnDrive = (e: KeyboardEvent) => {
-  if (!DRIVING_KEYS.has(e.code)) return;
-  hud.dismissLegend();
-  window.removeEventListener('keydown', dismissOnDrive);
-};
-window.addEventListener('keydown', dismissOnDrive);
+const LAUNCH_KEYS = new Set(['Digit1', 'Digit2', 'Digit3', 'Digit4']);
+window.addEventListener('keydown', (e) => {
+  if (e.repeat) return;
+  if (e.code === 'KeyH') legend = legendOn(legend, 'help');
+  else if (LAUNCH_KEYS.has(e.code)) legend = legendOn(legend, 'launch');
+  else if (DRIVING_KEYS.has(e.code)) legend = legendOn(legend, 'drive');
+});
 
 // L7: sound hears every fixed step's pair and sets its continuous sounds once per drawn frame; M mutes.
 const audio = createAudio(window);
@@ -170,6 +179,8 @@ function draw(alpha: number, frameSeconds: number): void {
 
   launchPanel.update(panel);
   dockGuide.update(dock);
+  legend = legendTick(legend, frameSeconds);
+  hud.showLegend(legend.shown);
 
   const s = g.sub;
   const home = world.marineville.tunnelMouth;
@@ -206,7 +217,10 @@ installDebugHandle({
   state: () => game.state.sub,
   combat: () => game.state.combat,
   launch: () => game.state.launch,
-  press: (control) => game.press(control),
+  press: (control) => {
+    game.press(control);
+    legend = legendOn(legend, 'launch');
+  },
   teleport: (pos, yaw) => {
     game.place({
       pos: { ...pos }, vel: { x: 0, y: 0, z: 0 }, yaw: yaw ?? game.state.sub.yaw, pitch: 0, medium: pos.y > 0 ? 'airborne' : 'submerged',
