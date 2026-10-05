@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createStepper } from './loop';
+import { createStepper, frameTimes } from './loop';
 
 const DT = 1 / 60;
 
@@ -53,5 +53,29 @@ describe('createStepper', () => {
     const s = createStepper(() => { steps += 1; }, DT);
     s.advance(-1);
     expect(steps).toBe(0);
+  });
+});
+
+describe('frameTimes (T9: the menus gate the sim)', () => {
+  it('in play, both the sim and the effects run the clamped wall time', () => {
+    expect(frameTimes(0.016, { hold: false, menu: null })).toEqual({ sim: 0.016, effects: 0.016 });
+    expect(frameTimes(3, { hold: false, menu: null })).toEqual({ sim: 0.1, effects: 0.1 });
+    expect(frameTimes(-1, { hold: false, menu: null })).toEqual({ sim: 0, effects: 0 });
+  });
+
+  it('the title menu stops the sim but keeps the scene alive', () => {
+    expect(frameTimes(0.016, { hold: false, menu: 'title' })).toEqual({ sim: 0, effects: 0.016 });
+  });
+
+  it('the pause menu and ?hold stop both', () => {
+    expect(frameTimes(0.016, { hold: false, menu: 'pause' })).toEqual({ sim: 0, effects: 0 });
+    expect(frameTimes(0.016, { hold: true, menu: null })).toEqual({ sim: 0, effects: 0 });
+  });
+
+  it('a stepper fed the gated time runs no fixed steps while a menu is up, and resumes cleanly', () => {
+    let steps = 0;
+    const s = createStepper(() => { steps += 1; }, DT);
+    for (let i = 0; i < 120; i++) s.advance(frameTimes(DT, { hold: false, menu: i < 60 ? 'pause' : null }).sim);
+    expect(steps).toBe(60);
   });
 });

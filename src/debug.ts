@@ -23,6 +23,10 @@ export interface DebugHandle {
   /** Run the sim for this many seconds of fixed steps and draw one frame — works in a hidden tab, where requestAnimationFrame is paused. */
   advance(seconds: number): void;
   camera(): Vec3;
+  /** T9: which menu is up, if any. advance() steps the sim whether or not one is (it is a debug tool). */
+  menu(): 'title' | 'pause' | null;
+  /** T9: close whichever menu is up, as if Launch / Resume had been chosen. */
+  closeMenu(): void;
 }
 
 declare global {

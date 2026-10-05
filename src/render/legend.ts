@@ -34,3 +34,24 @@ export function legendTick(s: LegendState, dtSeconds: number): LegendState {
   const left = s.left - Math.max(dtSeconds, 0);
   return left > 0 ? { ...s, left } : { shown: false, left: null, settled: true };
 }
+
+/**
+ * The keys, in the legend's reading order (two columns, row by row) — the one list the HUD's legend and the menu's
+ * Controls page both draw (T9).
+ */
+export const LEGEND_KEYS: readonly (readonly [key: string, action: string])[] = [
+  ['1 2 3 4', 'launch'],
+  ['Shift', 'boost'],
+  ['W / S', 'throttle'],
+  ['Space', 'fire'],
+  ['A / D', 'turn'],
+  ['R', 'to pen'],
+  ['↓ / E', 'climb'],
+  ['M', 'mute'],
+  ['↑ / Q', 'dive'],
+  ['H', 'this help'],
+  ['Esc', 'menu'],
+];
+
+/** The keys as HTML rows (`<div><b>key</b> action</div>`), for either drawing. */
+export const legendRowsHtml = (): string => LEGEND_KEYS.map(([k, a]) => `<div><b>${k}</b> ${a}</div>`).join('');

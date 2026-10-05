@@ -3,10 +3,11 @@ import { createAudio } from './audio/audio';
 import { clampAdvance, installDebugHandle, runScript } from './debug';
 import { dockView } from './game/dock';
 import { Game, startState } from './game/game';
+import { CLOSED, type MenuEvent, type MenuState, Swallow, menuEventFor, menuOn, openMenu, titleOnLoad } from './game/menu';
 import { initialMemory, panelView, remember } from './game/panel';
 import { pressFor } from './input/pilot';
 import { listenKeyboard } from './input/raw';
-import { createStepper } from './loop';
+import { createStepper, frameTimes } from './loop';
 import { addCaustics } from './render/caustics';
 import { createCameraRig } from './render/camera-rig';
 import { createCombatView } from './render/combat-view';
@@ -19,6 +20,7 @@ import { createLandmarks } from './render/landmarks';
 import { createLaunchPanel } from './render/launch-panel';
 import { initialLegend, legendOn, legendTick } from './render/legend';
 import { createMarineville } from './render/marineville';
+import { createMenu } from './render/menu';
 import { createMotes } from './render/motes';
 import { createParticles } from './render/particles';
 import { createPen } from './render/pen';
@@ -117,6 +119,63 @@ window.addEventListener('keydown', (e) => {
 // L7: sound hears every fixed step's pair and sets its continuous sounds once per drawn frame; M mutes.
 const audio = createAudio(window);
 game.onStep = (previous, current) => audio.step(previous, current);
+
+// The menus (T9, game/menu.ts): the title over the live Pen 3 standby on load, the pause menu on Esc. An overlay on
+// the one world, never a separate screen. While one is up the sim does not step (frameTimes) and the keys only
+// move through it: a capture listener on the window sees every key first and keeps menu keys from the game, the
+// legend and the sound's M; the key that closes a menu is swallowed until it is released, so Space on Resume does
+// not also fire and Enter on Launch does not press anything.
+let menu: MenuState = titleOnLoad(params) ? openMenu('title') : CLOSED;
+const swallow = new Swallow();
+const menuView = createMenu(document.body, (e) => menuEvent(e));
+function menuEvent(e: MenuEvent): void {
+  const { state, action } = menuOn(menu, e);
+  menu = state;
+  if (action === 'standby') game.toStandby();
+  else if (action === 'ocean') game.toOcean();
+  else if (action === 'toggleSound') audio.toggleMute();
+  showMenu();
+}
+function showMenu(): void {
+  audio.setPaused(menu.kind === 'pause');
+  menuView.update(menu, audio.muted);
+}
+window.addEventListener('keydown', (e) => {
+  if (swallow.down(e.code)) {
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    return;
+  }
+  if (menu.kind === null) {
+    if (e.code !== 'Escape' || e.repeat) return;
+    e.stopImmediatePropagation();
+    swallow.add(e.code);
+    menuEvent({ type: 'pause' });
+    return;
+  }
+  e.preventDefault();
+  e.stopImmediatePropagation();
+  audio.gesture();
+  if (e.code === 'KeyM' && !e.repeat) {
+    audio.toggleMute();
+    showMenu();
+    return;
+  }
+  const event = menuEventFor(e.code);
+  // Held arrows step through the items; a held Enter or Esc acts once.
+  if (!event || (e.repeat && event.type !== 'up' && event.type !== 'down')) return;
+  menuEvent(event);
+  if (menu.kind === null) swallow.add(e.code);
+}, { capture: true });
+window.addEventListener('keyup', (e) => swallow.up(e.code), { capture: true });
+// Losing the window pauses play — except under the witness tooling or an explicit ?menu=, whose driven pages must
+// never stop on their own.
+const pauseOnBlur = !['script', 'at', 'start', 'hold', 'view', 'menu'].some((k) => params.has(k));
+window.addEventListener('blur', () => {
+  swallow.clear();
+  if (pauseOnBlur && menu.kind === null) menuEvent({ type: 'pause' });
+});
+showMenu();
 
 const combatView = createCombatView(world, game.state.combat, particles);
 scene.add(combatView.group);
@@ -237,6 +296,11 @@ installDebugHandle({
     }
   },
   camera: () => ({ x: camera.position.x, y: camera.position.y, z: camera.position.z }),
+  menu: () => menu.kind,
+  closeMenu: () => {
+    menu = CLOSED;
+    showMenu();
+  },
 });
 
 window.addEventListener('resize', () => {
@@ -250,6 +314,11 @@ window.addEventListener('resize', () => {
 // draw, so a screenshot shows exactly the scripted moment; ?stats writes the renderer's counts into the page.
 const script = params.get('script');
 if (script) runScript(script, window.__stingray!);
+// ?menu=pause (witnessing): open the pause menu over the scripted moment.
+if (params.get('menu') === 'pause') {
+  menu = openMenu('pause');
+  showMenu();
+}
 const hold = params.has('hold');
 const stats = params.has('stats') ? document.body.appendChild(document.createElement('pre')) : null;
 // ?fps: the on-screen frame-rate readout (T8) for measuring a real window; off by default.
@@ -276,12 +345,13 @@ renderer.setAnimationLoop((now) => {
   const wallMs = now - last;
   // ?hold freezes the scripted moment whole: no sim steps and no effect, water or camera time either, so a
   // screenshot taken seconds later still shows a detonation's flash or a splash as the script left it.
-  const frame = hold ? 0 : THREE.MathUtils.clamp(wallMs / 1000, 0, 0.1);
+  // A menu stops the sim too (T9): the title keeps the water and light alive; the pause menu freezes the frame.
+  const time = frameTimes(wallMs / 1000, { hold, menu: menu.kind });
   last = now;
-  elapsed += frame;
-  const alpha = hold ? 1 : stepper.advance(frame);
+  elapsed += time.effects;
+  const alpha = hold ? 1 : stepper.advance(time.sim);
   if (stats || fps) renderer.info.reset();
-  draw(alpha, frame);
+  draw(alpha, time.effects);
   audio.frame(game.state);
   if (fps) fps.frame(wallMs, renderer.info.render.calls, renderer.info.render.triangles);
   if (stats) {

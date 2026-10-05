@@ -2,6 +2,8 @@
 // (phase 2, L6) the sea readouts that make no sense inside — the way home and the targets — give way to a one-line
 // status, and the launch panel (launch-panel.ts) sits bottom centre.
 
+import { legendRowsHtml } from './legend';
+
 export interface HudReadout {
   depthMetres: number;
   speedKnots: number;
@@ -87,16 +89,7 @@ export function createHud(parent: HTMLElement): Hud & { reticle: HTMLElement } {
     </div>
     <div class="hud-panel hud-legend" data-k="legend">
       <span class="hud-label">CONTROLS</span>
-      <div><b>1 2 3 4</b> launch</div>
-      <div><b>Shift</b> boost</div>
-      <div><b>W / S</b> throttle</div>
-      <div><b>Space</b> fire</div>
-      <div><b>A / D</b> turn</div>
-      <div><b>R</b> to pen</div>
-      <div><b>↓ / E</b> climb</div>
-      <div><b>M</b> mute</div>
-      <div><b>↑ / Q</b> dive</div>
-      <div><b>H</b> this help</div>
+      ${legendRowsHtml()}
     </div>`;
   parent.appendChild(root);
 
