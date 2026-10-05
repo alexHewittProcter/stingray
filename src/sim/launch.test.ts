@@ -555,8 +555,83 @@ describe('determinism', () => {
   });
 });
 
-describe('return and dock (L3 — test 10, partly: T6 owns it)', () => {
-  it.each([0, Math.PI])('10. locked over the cradle at heading %s, engines off and raised, ends in standby facing yawOut', (yaw) => {
+describe('return and dock (L3, test 10)', () => {
+  /** The lowered cradle's place on the pen floor plan, at the cradle's height. */
+  const POOL = (x: number, z: number): Vec3 => ({ x, y: I.cradle.loweredY, z });
+  // Arriving nose-first (heading north, as the tunnel leaves the sub) or turned round in the pool to face the
+  // tunnel (yawOut): out past the cradle, a loop at the north end, and back down the axis onto it.
+  const ARRIVALS: Array<[string, Vec3[]]> = [
+    ['nose-in (north)', [...RETURN_PATH]],
+    ['turned round (facing yawOut)', [SEA(200), ...INWARD, POOL(0, -1360), POOL(8, -1395), POOL(12, -1425), POOL(4, -1438), POOL(-4, -1432), POOL(0, -1418), CRADLE_DOWN]],
+  ];
+
+  /** From the open sea: ask for the door in range, drive the path at the cap, and slow to a creep in the pool. */
+  function driveHome(start: GameState, path: Vec3[], trace: Trace): { g: GameState; doorShutBehind: boolean } {
+    let g = start;
+    let asked = false;
+    let doorShutBehind = false;
+    for (let k = 0; k < steps(120); k++) {
+      if (dist(g.sub.pos, CRADLE_DOWN) < 1 && speedOf(g.sub) < 1) break;
+      const ask: boolean = !asked && dist(g.sub.pos, I.door.centre) <= I.door.range;
+      asked ||= ask;
+      const inPool = g.sub.pos.z < I.pen.max.z;
+      g = scriptStep(g, follow(path, g.sub, inPool ? 5 : T.cruiseSpeed), ask ? 'door' : null, trace);
+      if (inPool && g.launch.door === 0 && g.launch.doorDir === 0) doorShutBehind = true;
+    }
+    return { g, doorShutBehind };
+  }
+
+  it.each(ARRIVALS)('10a. from the open sea, %s: door, tunnel, pool, lock, engines off, raise — exactly standby, facing yawOut, door shut behind', (_, path) => {
+    const trace: Trace = {
+      modes: ['piloting'],
+      each: (prev, next) => {
+        expectNoJump(prev, next);
+        expect(outside(next.sub.pos)).toBeLessThanOrEqual(1e-6);
+      },
+    };
+    const start = freeAt(SEA(200), 0); // out at sea, facing home, door shut
+    const { g: arrived, doorShutBehind } = driveHome(start, path, trace);
+    expect(trace.modes).toEqual(['piloting', 'launch']);
+    expect(doorShutBehind).toBe(true); // the tower shut it behind the returning sub before it reached the pool
+    expect(dist(arrived.sub.pos, CRADLE_DOWN)).toBeLessThan(1);
+    expect(refusalFor('clamps', arrived.launch, arrived.sub, I)).toBeNull();
+    const facing = Math.abs(wrap(arrived.sub.yaw - I.cradle.yawOut));
+    if (path === ARRIVALS[0]![1]) expect(facing).toBeGreaterThan(Math.PI - T.lockHeading);
+    else expect(facing).toBeLessThan(T.lockHeading);
+
+    let g = press(arrived, 'clamps');
+    expect(g.launch.clamps).toBe('locked');
+    // Raise is refused while the engines run.
+    g = press(g, 'cradle');
+    expect(g.launch.refusal?.reason).toBe(REFUSAL.stopEngines);
+    expect(g.launch.cradleDir).toBe(0);
+    g = run(g, steps(1)); // the carry onto the cradle: under a second
+    expect(g.sub.pos).toEqual(CRADLE_DOWN);
+    g = press(g, 'engines');
+    expect(g.launch.engines).toBe('off');
+    g = press(g, 'cradle');
+    expect(g.launch.cradleDir).toBe(-1);
+    g = run(g, steps(T.cradleTravel), NO_INPUT, (_, next) => expect(northOfFace(next.sub.pos)).toBe(true));
+
+    const docked = standby(W, g.combat);
+    expect(g.sub).toEqual(docked.sub);
+    expect(g.sub.yaw).toBe(I.cradle.yawOut);
+    expect({ ...g.launch, refusal: null }).toEqual(docked.launch);
+  });
+
+  it('10b. a second launch straight after a return reaches the sea: launch → sea → home → dock → launch again', () => {
+    const trace: Trace = { modes: ['launch'], each: expectNoJump };
+    let g = scriptedLaunch(standby(W), trace, 150);
+    expect(g.sub.pos.z).toBeGreaterThanOrEqual(COAST_Z + 150);
+    g = scriptedReturn(g, trace);
+    expect({ ...g.launch, refusal: null }).toEqual(standby(W).launch);
+    g = scriptedLaunch(g, trace, 150);
+    expect(g.sub.pos.z).toBeGreaterThanOrEqual(COAST_Z + 150);
+    expect(trace.modes).toEqual(['launch', 'piloting', 'launch', 'piloting']);
+    expect(g.launch).toMatchObject({ clamps: 'released', engines: 'on', cradle: 1 });
+  });
+
+  it.each([0, Math.PI])('10c. locked over the cradle at heading %s (a little off), engines off and raised, ends in standby facing yawOut', (yaw) => {
     let g = freeAt(add(CRADLE_DOWN, { x: 1, y: 0.5, z: -1 }), yaw + 0.2, {}, { x: 0, y: 0, z: 1 });
     g = press(g, 'clamps');
     g = press(g, 'cradle');
@@ -567,5 +642,39 @@ describe('return and dock (L3 — test 10, partly: T6 owns it)', () => {
     const docked = standby(W, g.combat);
     expect(g.sub).toEqual(docked.sub);
     expect(g.launch).toMatchObject({ cradle: 0, cradleDir: 0, engines: 'off', clamps: 'locked', door: 0 });
+  });
+
+  it('10d. lock is refused outside the zone, at or above 3 m/s, and misaligned — and the refused press changes nothing else', () => {
+    const DEG = Math.PI / 180;
+    const cases: Array<[string, Vec3, number, number, Vec3, string]> = [
+      ['4.1 m ahead', add(CRADLE_DOWN, { x: 0, y: 0, z: -4.1 }), 0, 0, { x: 0, y: 0, z: 0 }, REFUSAL.notOver],
+      ['4.1 m below', add(CRADLE_DOWN, { x: 0, y: -4.1, z: 0 }), 0, 0, { x: 0, y: 0, z: 0 }, REFUSAL.notOver],
+      ['3 m/s', CRADLE_DOWN, 0, 0, { x: 0, y: 0, z: -3 }, REFUSAL.tooFast],
+      ['3 m/s sideways', CRADLE_DOWN, Math.PI, 0, { x: 3, y: 0, z: 0 }, REFUSAL.tooFast],
+      ['broadside', CRADLE_DOWN, Math.PI / 2, 0, { x: 0, y: 0, z: 0 }, REFUSAL.notLinedUp],
+      ['21° off north', CRADLE_DOWN, 21 * DEG, 0, { x: 0, y: 0, z: 0 }, REFUSAL.notLinedUp],
+      ['21° off south', CRADLE_DOWN, Math.PI + 21 * DEG, 0, { x: 0, y: 0, z: 0 }, REFUSAL.notLinedUp],
+      ['nose 16° down', CRADLE_DOWN, 0, -16 * DEG, { x: 0, y: 0, z: 0 }, REFUSAL.notLinedUp],
+    ];
+    for (const [name, pos, yaw, pitch, vel, reason] of cases) {
+      const g0 = freeAt(pos, yaw, {}, vel);
+      const g = { ...g0, sub: { ...g0.sub, pitch } };
+      const pressed = stepGame(g, NO_INPUT, 'clamps', DT, W);
+      expect(pressed.launch.refusal, name).toEqual({ control: 'clamps', reason, age: 0 });
+      expect(pressed.launch.clamps, name).toBe('released');
+      expect({ ...pressed, launch: { ...pressed.launch, refusal: null } }, name).toEqual(stepGame(g, NO_INPUT, null, DT, W));
+    }
+  });
+
+  it('10e. raise is refused while the engines run or start, and the cradle stays down', () => {
+    let g = press(freeAt(CRADLE_DOWN, 0), 'clamps');
+    expect(g.launch.engines).toBe('on');
+    g = press(g, 'cradle');
+    expect(g.launch).toMatchObject({ cradle: 1, cradleDir: 0, refusal: { control: 'cradle', reason: REFUSAL.stopEngines } });
+    g = press(g, 'engines');
+    g = press(g, 'engines'); // restarting
+    expect(g.launch.engines).toBe('starting');
+    g = press(g, 'cradle');
+    expect(g.launch).toMatchObject({ cradle: 1, cradleDir: 0, refusal: { control: 'cradle', reason: REFUSAL.stopEngines } });
   });
 });
