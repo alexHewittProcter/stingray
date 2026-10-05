@@ -21,6 +21,7 @@ import { createLaunchPanel } from './render/launch-panel';
 import { initialLegend, legendOn, legendTick } from './render/legend';
 import { createMarineville } from './render/marineville';
 import { createMenu } from './render/menu';
+import { initialOrbit, orbitBy, orbitDrag, orbitFromParam, orbitRecenter, orbitRelease, orbitTick, orbitView, orbitZoom, KEY_RATE } from './render/orbit';
 import { createMotes } from './render/motes';
 import { createParticles } from './render/particles';
 import { createPen } from './render/pen';
@@ -98,9 +99,14 @@ const launchPanel = createLaunchPanel(document.body, (control) => game.press(con
 // The docking guide (T6): on the way home, from the tunnel's last bend to the lock.
 const dockGuide = createDockGuide(document.body);
 
+// T9: orbit the camera around the craft (render/orbit.ts) — drag on the game view or J/L/I/K, the wheel zooms, C or
+// a double-click re-centres. ?orbit=yawDeg,pitchDeg[,zoom] (witnessing) starts orbited.
+let orbit = orbitFromParam(params.get('orbit')) ?? initialOrbit();
+
 const keyboard = listenKeyboard(window, (code) => {
   const control = pressFor(code);
   if (control) game.press(control);
+  if (code === 'KeyC') orbit = orbitRecenter(orbit);
 });
 // The legend (T9, render/legend.ts): back whenever no key has been touched for a moment, gone on the next press;
 // H pins it. Keys only — the mouse does not count. (Menu keys never get here: the menu's listener keeps them.)
@@ -200,6 +206,18 @@ function draw(alpha: number, frameSeconds: number): void {
   const panel = panelView(g, panelMemory, world.marineville.interior);
   const dock = dockView(g, panelMemory, world.marineville.interior);
   const target = craft.update(game.lastState.sub, g.sub, alpha, game.input, frameSeconds, g.launch.engines !== 'off', g.launch.clamps === 'locked');
+  // The orbit: keys while held, the drive-away return, nothing while a menu is up.
+  if (menu.kind !== null) {
+    orbit = orbitRelease(orbit);
+    drag = null;
+  } else {
+    const held = keyboard.held;
+    const swing = (held.has('KeyJ') ? 1 : 0) - (held.has('KeyL') ? 1 : 0);
+    const lift = (held.has('KeyI') ? 1 : 0) - (held.has('KeyK') ? 1 : 0);
+    if (swing !== 0 || lift !== 0) orbit = orbitBy(orbit, swing * KEY_RATE * frameSeconds, lift * KEY_RATE * frameSeconds);
+    const i = game.input;
+    orbit = orbitTick(orbit, frameSeconds, i.throttle !== 0 || i.yaw !== 0 || i.pitch !== 0);
+  }
   const penView = {
     cradle: game.lastState.launch.cradle + (g.launch.cradle - game.lastState.launch.cradle) * alpha,
     clamps: g.launch.clamps,
@@ -207,11 +225,11 @@ function draw(alpha: number, frameSeconds: number): void {
     guide: dock === null ? 'off' as const : dock.ready ? 'ready' as const : 'on' as const,
   };
   if (game.jumped) {
-    rig.snap(target, g.launch.clamps);
+    rig.snap(target, g.launch.clamps, orbitView(orbit));
     pen.snap(penView);
     game.jumped = false;
   } else {
-    rig.update(target, g.launch.clamps, frameSeconds);
+    rig.update(target, g.launch.clamps, frameSeconds, orbitView(orbit));
   }
   if (viewFrom) {
     camera.position.copy(viewFrom[0]);
@@ -256,12 +274,53 @@ function draw(alpha: number, frameSeconds: number): void {
   aim.set(target.pos.x + nose.x * RETICLE_RANGE, target.pos.y + nose.y * RETICLE_RANGE, target.pos.z + nose.z * RETICLE_RANGE);
   camera.updateMatrixWorld();
   aim.project(camera);
-  hud.reticle.hidden = aim.z > 1;
+  // Orbited, the reticle would sit wherever the nose happens to point across the view: hidden until it returns.
+  hud.reticle.hidden = aim.z > 1 || orbit.weight > 0;
   hud.reticle.style.left = `${(aim.x * 0.5 + 0.5) * 100}%`;
   hud.reticle.style.top = `${(-aim.y * 0.5 + 0.5) * 100}%`;
 
   renderer.render(scene, camera);
 }
+
+// Orbit by mouse: only drags that start on the game view itself (the panel, the guide and the menu are not it).
+// Pointer capture keeps a drag that leaves the window ending cleanly; a click without movement does nothing.
+const canvas = renderer.domElement;
+const DRAG_START_PX = 4;
+let drag: { id: number; x: number; y: number; moved: boolean } | null = null;
+canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+canvas.addEventListener('pointerdown', (e) => {
+  if (menu.kind !== null || drag || (e.button !== 0 && e.button !== 2)) return;
+  e.preventDefault();
+  canvas.setPointerCapture(e.pointerId);
+  drag = { id: e.pointerId, x: e.clientX, y: e.clientY, moved: false };
+});
+canvas.addEventListener('pointermove', (e) => {
+  if (!drag || e.pointerId !== drag.id || menu.kind !== null) return;
+  const dx = e.clientX - drag.x;
+  const dy = e.clientY - drag.y;
+  if (!drag.moved && Math.hypot(dx, dy) < DRAG_START_PX) return;
+  drag.moved = true;
+  drag.x = e.clientX;
+  drag.y = e.clientY;
+  orbit = orbitDrag(orbit, dx, dy);
+});
+const endDrag = (e: PointerEvent) => {
+  if (!drag || e.pointerId !== drag.id) return;
+  drag = null;
+  orbit = orbitRelease(orbit);
+  if (canvas.hasPointerCapture(e.pointerId)) canvas.releasePointerCapture(e.pointerId);
+};
+canvas.addEventListener('pointerup', endDrag);
+canvas.addEventListener('pointercancel', endDrag);
+canvas.addEventListener('lostpointercapture', endDrag);
+canvas.addEventListener('dblclick', () => {
+  if (menu.kind === null) orbit = orbitRecenter(orbit);
+});
+canvas.addEventListener('wheel', (e) => {
+  if (menu.kind !== null) return;
+  e.preventDefault();
+  orbit = orbitZoom(orbit, e.deltaY * (e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? 400 : 1));
+}, { passive: false });
 
 installDebugHandle({
   mode: () => game.mode,

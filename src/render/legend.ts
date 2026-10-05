@@ -40,7 +40,7 @@ export function legendTick(s: LegendState, dtSeconds: number, now: { held: boole
 export type LegendSituation = 'docked' | 'driving';
 
 const FIRST: Record<LegendSituation, readonly string[]> = {
-  docked: ['1 2 3 4', 'M', 'H', 'Esc'],
+  docked: ['1 2 3 4', 'J L I K', 'M', 'H', 'Esc', 'C'],
   driving: ['W / S', 'A / D', '↓ / E', '↑ / Q', 'Shift', 'Space', 'R', 'Esc'],
 };
 
@@ -67,7 +67,9 @@ export const LEGEND_KEYS: readonly (readonly [key: string, action: string])[] = 
   ['M', 'mute'],
   ['↑ / Q', 'dive'],
   ['H', 'this help'],
+  ['J L I K', 'look round'],
   ['Esc', 'menu'],
+  ['C', 'recentre'],
 ];
 
 /** The keys as HTML rows (`<div><b>key</b> action</div>`), for either drawing. */
