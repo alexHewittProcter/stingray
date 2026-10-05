@@ -1,4 +1,6 @@
-// Plain DOM overlay: depth, speed, heading, the way home, targets left, and a key legend.
+// Plain DOM overlay: depth, speed, heading, the way home, targets left, and a key legend. In 'launch' presentation
+// (phase 2, L6) the sea readouts that make no sense inside — the way home and the targets — give way to a one-line
+// status, and the launch panel (launch-panel.ts) sits bottom centre.
 
 export interface HudReadout {
   depthMetres: number;
@@ -9,7 +11,9 @@ export interface HudReadout {
   targetsLeft: number;
   targetsTotal: number;
   airborne: boolean;
-  /** Phase 2: a one-line launch status shown in place of the targets line, or null at sea. */
+  /** Held by the cradle's clamps (no airborne marker; above the pool the depth reads as height above water). */
+  clamped: boolean;
+  /** Phase 2: a one-line launch status shown in place of the targets line and the way home, or null at sea. */
   status: string | null;
 }
 
@@ -29,9 +33,12 @@ const STYLE = `
 .hud-top { left: 50%; top: 16px; transform: translateX(-50%); text-align: center; letter-spacing: .08em; }
 .hud-label { opacity: .7; font-weight: 400; }
 .hud-big { font-size: 22px; }
-.hud-legend { left: 50%; bottom: 18px; transform: translateX(-50%); text-align: center; font-weight: 400;
+.hud-legend { left: 18px; top: 16px; font-weight: 400; font-size: 12.5px; line-height: 1.55;
   transition: opacity 1.2s ease; }
-.hud-legend b { color: #ffe066; }
+.hud-legend b { color: #ffe066; display: inline-block; min-width: 4.3em; }
+.hud-legend .hud-label { display: block; margin-bottom: 2px; letter-spacing: .1em; }
+.hud-status { letter-spacing: .1em; }
+.hud-home-row[hidden] { display: none; }
 .hud-reticle { position: absolute; left: 50%; top: 50%; width: 26px; height: 26px; margin: -13px 0 0 -13px;
   border: 2px solid rgba(255,224,102,.85); border-radius: 50%; box-shadow: 0 0 6px rgba(0,0,0,.5); }
 .hud-reticle::after { content: ''; position: absolute; left: 50%; top: 50%; width: 4px; height: 4px;
@@ -42,6 +49,17 @@ const COMPASS = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
 
 function compassPoint(degrees: number): string {
   return COMPASS[Math.round(degrees / 45) % 8] ?? 'N';
+}
+
+/**
+ * Depth below the surface; above it, height above the water with a small note — "AIR" in a leap, "ABOVE WATER" held on the
+ * raised cradle (which used to read a misleading "0 m").
+ */
+export function depthText(r: Pick<HudReadout, 'depthMetres' | 'airborne' | 'clamped'>): { value: string; note: string } {
+  const height = -r.depthMetres;
+  if (r.airborne) return { value: `+${Math.max(height, 0).toFixed(0)} m`, note: 'AIR' };
+  if (r.clamped && height >= 0.5) return { value: `+${height.toFixed(0)} m`, note: 'ABOVE WATER' };
+  return { value: `${Math.max(r.depthMetres, 0).toFixed(0)} m`, note: '' };
 }
 
 function pad3(degrees: number): string {
@@ -56,19 +74,27 @@ export function createHud(parent: HTMLElement): Hud & { reticle: HTMLElement } {
   const root = document.createElement('div');
   root.className = 'hud';
   root.innerHTML = `
-    <div class="hud-panel hud-top"><span data-k="targets"></span></div>
+    <div class="hud-panel hud-top"><span class="hud-status" data-k="targets"></span></div>
     <div class="hud-reticle" data-k="reticle"></div>
     <div class="hud-panel hud-left">
-      <div><span class="hud-label">DEPTH</span> <span class="hud-big" data-k="depth"></span></div>
+      <div><span class="hud-label">DEPTH</span> <span class="hud-big" data-k="depth"></span> <span class="hud-label" data-k="depth-note"></span></div>
       <div><span class="hud-label">SPEED</span> <span class="hud-big" data-k="speed"></span></div>
     </div>
     <div class="hud-panel hud-right">
       <div><span class="hud-label">HEADING</span> <span class="hud-big" data-k="heading"></span></div>
-      <div><span class="hud-label">MARINEVILLE</span> <span data-k="home"></span></div>
+      <div class="hud-home-row" data-k="home-row"><span class="hud-label">MARINEVILLE</span> <span data-k="home"></span></div>
     </div>
     <div class="hud-panel hud-legend" data-k="legend">
-      <b>W</b>/<b>S</b> throttle &nbsp; <b>A</b>/<b>D</b> turn &nbsp; <b>↓</b>/<b>E</b> climb &nbsp; <b>↑</b>/<b>Q</b> dive &nbsp;
-      <b>Shift</b> boost &nbsp; <b>Space</b> fire &nbsp; <b>R</b> restart
+      <span class="hud-label">CONTROLS</span>
+      <div><b>1 2 3 4</b> launch panel</div>
+      <div><b>W / S</b> throttle</div>
+      <div><b>A / D</b> turn</div>
+      <div><b>↓ / E</b> climb</div>
+      <div><b>↑ / Q</b> dive</div>
+      <div><b>Shift</b> boost</div>
+      <div><b>Space</b> fire</div>
+      <div><b>R</b> return to pen</div>
+      <div><b>M</b> mute</div>
     </div>`;
   parent.appendChild(root);
 
@@ -78,18 +104,23 @@ export function createHud(parent: HTMLElement): Hud & { reticle: HTMLElement } {
     return found;
   };
   const depth = el('depth');
+  const depthNote = el('depth-note');
   const speed = el('speed');
   const heading = el('heading');
   const home = el('home');
+  const homeRow = el('home-row');
   const targets = el('targets');
   const legend = el('legend');
 
   return {
     reticle: el('reticle'),
     update(r) {
-      depth.textContent = r.airborne ? `+${Math.max(-r.depthMetres, 0).toFixed(0)} m AIR` : `${Math.max(r.depthMetres, 0).toFixed(0)} m`;
+      const d = depthText(r);
+      depth.textContent = d.value;
+      depthNote.textContent = d.note;
       speed.textContent = `${Math.round(r.speedKnots)} kn`;
       heading.textContent = `${pad3(r.headingDegrees)}° ${compassPoint(r.headingDegrees)}`;
+      homeRow.hidden = r.status !== null;
       home.textContent = `${pad3(r.homeBearingDegrees)}° · ${Math.round(r.homeDistanceMetres)} m`;
       targets.textContent = r.status !== null ? r.status : r.targetsLeft === 0
         ? 'ALL TARGETS DESTROYED — RETURN TO MARINEVILLE'
