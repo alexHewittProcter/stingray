@@ -161,7 +161,8 @@ function draw(alpha: number, frameSeconds: number): void {
   tunnel.update(camera, { door, doorMoving: g.launch.doorDir !== 0 }, elapsed);
   const ocean = oceanInView(camera.position, door);
   for (const o of oceanSide) o.visible = ocean;
-  combatView.update(g.combat, frameSeconds);
+  // Every detonation since the last frame, not only the last step's: a frame that runs two steps keeps both (T8).
+  combatView.update({ ...g.combat, detonations: game.takeDetonations() }, frameSeconds);
   particles.update(frameSeconds);
   sea.update(camera, scene, elapsed);
   motes.update(camera, elapsed);
@@ -259,7 +260,9 @@ renderer.setAnimationLoop((now) => {
   // rAF's timestamp can precede `last` on the first frame (after a long scripted advance): never run time backwards,
   // which would fling the camera's springs.
   const wallMs = now - last;
-  const frame = THREE.MathUtils.clamp(wallMs / 1000, 0, 0.1);
+  // ?hold freezes the scripted moment whole: no sim steps and no effect, water or camera time either, so a
+  // screenshot taken seconds later still shows a detonation's flash or a splash as the script left it.
+  const frame = hold ? 0 : THREE.MathUtils.clamp(wallMs / 1000, 0, 0.1);
   last = now;
   elapsed += frame;
   const alpha = hold ? 1 : stepper.advance(frame);

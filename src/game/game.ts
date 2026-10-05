@@ -2,6 +2,7 @@ import { toSubInput } from '../input/pilot';
 import type { RawInput } from '../input/raw';
 import { type GameState, type LaunchControl, oceanStart, released, standby, stepGame } from '../sim/launch';
 import { type SubInput, type SubState, NO_INPUT } from '../sim/sub';
+import type { Vec3 } from '../sim/vec3';
 import type { World } from '../sim/world';
 import { type GameMode, modeOf } from './mode';
 
@@ -21,6 +22,8 @@ export class Game {
 
   private current: GameState;
   private previous: GameState;
+  /** Detonations from every step since the last drawn frame (T8): a frame that ran two steps used to lose the first's. */
+  private unseenDetonations: Vec3[] = [];
   private readonly queue: LaunchControl[] = [];
   private restartHeld = false;
 
@@ -51,6 +54,7 @@ export class Game {
     const pressed = this.queue.shift() ?? null;
     this.previous = this.current;
     this.current = stepGame(this.current, input, pressed, dt, this.world);
+    if (this.current.combat.detonations.length > 0) this.unseenDetonations.push(...this.current.combat.detonations);
     this.input = this.current.launch.clamps === 'locked' ? NO_INPUT : input;
     this.steps += 1;
     this.onStep?.(this.previous, this.current);
@@ -71,6 +75,13 @@ export class Game {
     this.set({ sub, combat: this.current.combat, launch: released(this.current.launch) });
   }
 
+  /** The detonations of every step since the last call — for the frame that draws them, so none is skipped. */
+  takeDetonations(): Vec3[] {
+    const all = this.unseenDetonations;
+    this.unseenDetonations = [];
+    return all;
+  }
+
   get state(): GameState {
     return this.current;
   }
@@ -89,6 +100,7 @@ export class Game {
     this.previous = g;
     this.input = NO_INPUT;
     this.jumped = true;
+    this.unseenDetonations = [];
   }
 }
 

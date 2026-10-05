@@ -89,7 +89,7 @@ export function nearCradle(metres: number): { pos: Vec3; yaw: number } {
  *   - out=M / in=M puts the released sub at rest on the tunnel's centreline M metres in from the mouth (negative:
  *     out at sea), facing out to sea or in toward the pen;
  *   - throttle=T, steer=Y, climb=P hold those axes at T / Y / P (−1 … 1; steer > 0 turns left, climb > 0 climbs)
- *     until the script changes them;
+ *     until the script changes them; fire=1 / boost=1 hold the trigger / boost (0 lets go);
  *   - dock=M puts the released sub at rest on the pen's axis at the lowered cradle's height, M metres south of the
  *     cradle (negative: north), facing it; dx= / dy= / dz= move it that many metres and turn= turns it (degrees,
  *     left), each at rest (all within ±100).
@@ -112,6 +112,8 @@ export function runScript(script: string, handle: DebugHandle): void {
       if (key === 'out' || key === 'in') {
         const at = onCentreline(Math.max(-1000, n), key);
         handle.teleport(at.pos, at.yaw);
+      } else if (key === 'fire' || key === 'boost') {
+        handle.setInput({ [key]: n !== 0 });
       } else if (key === 'throttle' || key === 'steer' || key === 'climb') {
         const axis = key === 'throttle' ? 'throttle' : key === 'steer' ? 'yaw' : 'pitch';
         handle.setInput({ [axis]: Math.max(-1, Math.min(1, n)) });
