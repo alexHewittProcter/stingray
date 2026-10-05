@@ -38,7 +38,11 @@ export interface ControlView {
   control: LaunchControl;
   key: '1' | '2' | '3' | '4';
   label: string;
-  /** dark = a press would be refused; amber = accepted, or moving; green = in its launch position; red = just refused. */
+  /**
+   * dark = a press would be refused; amber = accepted, or moving; green = in its launch position — or, on the way
+   * home, already in its docking position (clamps locked, engines off), so only the next step home is amber; red =
+   * just refused.
+   */
   lamp: Lamp;
   /** The machine is moving (amber, pulsing). */
   moving: boolean;
@@ -96,6 +100,7 @@ export function remember(m: PanelMemory, g: GameState): PanelMemory {
 export function panelView(g: GameState, m: PanelMemory, interior: Interior): PanelView {
   const l = g.launch;
   const next = nextControl(g, m, interior);
+  const home = m.trip === 'home';
   const fresh = l.refusal && l.refusal.age < T.refusalShow ? l.refusal : null;
 
   const shownControls = LAUNCH_CONTROLS.filter((c) => {
@@ -105,20 +110,25 @@ export function panelView(g: GameState, m: PanelMemory, interior: Interior): Pan
   });
 
   return {
-    controls: shownControls.map((c) => controlView(c, g, interior, next, fresh?.control === c)),
+    controls: shownControls.map((c) => controlView(c, g, interior, next, fresh?.control === c, home)),
     refusal: fresh && shownControls.includes(fresh.control) ? { control: fresh.control, reason: fresh.reason } : null,
     status: m.shown === 'launch' ? statusLine(g, m, interior) : null,
     prompt: promptLine(g, m, interior, next),
   };
 }
 
-function controlView(c: LaunchControl, g: GameState, interior: Interior, next: LaunchControl | null, refused: boolean): ControlView {
+function controlView(
+  c: LaunchControl, g: GameState, interior: Interior, next: LaunchControl | null, refused: boolean, home: boolean,
+): ControlView {
   const l = g.launch;
-  const moving = isMoving(c, g);
-  const inPosition = c === 'cradle' ? l.cradle >= 1 && l.cradleDir === 0
+  const moving = isMoving(c, g, interior);
+  // Coming home, the clamps once locked and the engines once stopped are where the trip wants them: green, so the
+  // one amber lamp is the next step home (a press on them would still be accepted — it would undo the step).
+  const docking = home && l.clamps === 'locked' && (c === 'clamps' || (c === 'engines' && l.engines === 'off'));
+  const inPosition = docking || (c === 'cradle' ? l.cradle >= 1 && l.cradleDir === 0
     : c === 'engines' ? l.engines === 'on'
     : c === 'clamps' ? l.clamps === 'released'
-    : l.door >= 1;
+    : l.door >= 1);
   const pressable = wouldAct(c, g, interior);
   // Green wins over amber unless the press that would take it out of position is the next step (coming home).
   const lamp: Lamp = refused ? 'red'
@@ -129,12 +139,12 @@ function controlView(c: LaunchControl, g: GameState, interior: Interior, next: L
   return { control: c, key: KEYS[c], label: LABELS[c], lamp, moving, lever: leverOf(c, g), word: wordOf(c, g, interior), pressable, next: next === c };
 }
 
-function isMoving(c: LaunchControl, g: GameState): boolean {
+function isMoving(c: LaunchControl, g: GameState, interior: Interior): boolean {
   const l = g.launch;
   if (c === 'cradle') return l.cradleDir !== 0;
   if (c === 'engines') return l.engines === 'starting';
   if (c === 'door') return l.doorDir !== 0;
-  return false;
+  return l.clamps === 'locked' && carrying(g, interior); // the lock's carry onto the cradle
 }
 
 /** The press would be accepted and would change something (a press on an open or opening door does nothing). */
@@ -200,9 +210,20 @@ const PROMPT: Record<LaunchControl, string> = {
   door: 'Press 4 — open the ocean door',
 };
 
-/** First-time guidance: one quiet line naming the next step, until a launch has reached the open sea once. */
+const HOME_PROMPT: Record<LaunchControl, string> = {
+  cradle: 'Press 1 — raise the cradle',
+  engines: 'Press 2 — stop the engines',
+  clamps: 'Press 3 — lock the clamps',
+  door: 'Press 4 — request the ocean door',
+};
+
+/**
+ * One quiet line naming the next step. On the way out: first-time guidance, until a launch has reached the open sea
+ * once. On the way home (after a launch from the pen): every return, from door range at sea to the raise.
+ */
 function promptLine(g: GameState, m: PanelMemory, interior: Interior, next: LaunchControl | null): string | null {
-  if (m.launched || m.trip !== 'out' || m.shown !== 'launch') return null;
+  if (m.trip === 'home') return m.launched ? homePrompt(g, m, interior, next) : null;
+  if (m.launched || m.shown !== 'launch') return null;
   if (next) return PROMPT[next];
   const l = g.launch;
   if (l.clamps === 'locked') return null; // a machine is moving; the status line says which
@@ -210,6 +231,26 @@ function promptLine(g: GameState, m: PanelMemory, interior: Interior, next: Laun
   if (l.door >= 1) return 'Door open — W to drive out to sea';
   if (inPen(g.sub.pos, interior)) return 'W to drive, A / D to steer — into the tunnel';
   return 'Follow the tunnel to the ocean door';
+}
+
+function homePrompt(g: GameState, m: PanelMemory, interior: Interior, next: LaunchControl | null): string | null {
+  if (next) return HOME_PROMPT[next];
+  const l = g.launch;
+  if (l.clamps === 'locked') return null; // locking or raising; the status line says which
+  if (m.shown !== 'launch') {
+    // At sea: only within door range, where the door control shows.
+    if (refusalFor('door', l, g.sub, interior) !== null) return null;
+    // Opening or open: words only for a sub facing the mouth (one just launched is heading away from it).
+    const to = interior.door.centre;
+    const facing = -Math.sin(g.sub.yaw) * (to.x - g.sub.pos.x) - Math.cos(g.sub.yaw) * (to.z - g.sub.pos.z);
+    if (facing <= 0.5 * Math.hypot(to.x - g.sub.pos.x, to.z - g.sub.pos.z)) return null;
+    if (l.doorDir === 1) return 'The ocean door is opening — wait for it, then drive in';
+    if (l.door >= 1) return 'Door open — drive in through the mouth';
+    return null;
+  }
+  if (inPen(g.sub.pos, interior)) return 'Settle over the cradle — guide on the right';
+  if (l.doorDir === 1) return 'The ocean door is opening — drive on through';
+  return 'Follow the tunnel to Pen 3';
 }
 
 /** The HUD's one line in 'launch' presentation. */
@@ -234,8 +275,30 @@ function statusLine(g: GameState, m: PanelMemory, interior: Interior): string {
     if (inPen(g.sub.pos, interior)) return 'STINGRAY AWAY — PEN 3';
     return `LAUNCH TUNNEL — OCEAN DOOR ${toDoor} M`;
   }
-  if (inPen(g.sub.pos, interior)) return 'STINGRAY IN PEN 3';
-  return l.door >= 1 ? 'OCEAN DOOR OPEN' : 'LAUNCH TUNNEL — PEN 3 AHEAD';
+  if (inPen(g.sub.pos, interior)) {
+    return refusalFor('clamps', l, g.sub, interior) === null ? 'OVER THE CRADLE — READY TO LOCK' : 'STINGRAY IN PEN 3 — DOCKING';
+  }
+  const toPen = Math.max(0, Math.round(alongTunnelToPen(g.sub.pos, interior)));
+  return l.door >= 1 ? `OCEAN DOOR OPEN — PEN 3 ${toPen} M` : `LAUNCH TUNNEL — PEN 3 ${toPen} M`;
+}
+
+/** Metres left along the tunnel's centreline from the point nearest p to the pen's south wall. */
+export function alongTunnelToPen(p: Vec3, interior: Interior): number {
+  const line = interior.tunnel.centreline;
+  let best = Infinity;
+  let bestArc = 0;
+  let arc = 0;
+  for (let k = 1; k < line.length; k++) {
+    const a = line[k - 1]!;
+    const b = line[k]!;
+    const ab = { x: b.x - a.x, y: b.y - a.y, z: b.z - a.z };
+    const len = Math.hypot(ab.x, ab.y, ab.z);
+    const t = Math.min(Math.max(((p.x - a.x) * ab.x + (p.y - a.y) * ab.y + (p.z - a.z) * ab.z) / (len * len), 0), 1);
+    const d = distance(p, { x: a.x + ab.x * t, y: a.y + ab.y * t, z: a.z + ab.z * t });
+    if (d < best) [best, bestArc] = [d, arc + t * len];
+    arc += len;
+  }
+  return arc - bestArc;
 }
 
 function inPen(p: Vec3, interior: Interior): boolean {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { type DebugHandle, SCRIPT_LIMITS, clampAdvance, onCentreline, runScript } from './debug';
+import { type DebugHandle, SCRIPT_LIMITS, clampAdvance, nearCradle, onCentreline, runScript } from './debug';
 import { MARINEVILLE } from './sim/world';
 
 // The witnessing script runner: bounded, so no URL can freeze the tab, and its placement words land on the tunnel.
@@ -69,5 +69,41 @@ describe('onCentreline', () => {
     expect(Math.cos(sea.yaw)).toBeCloseTo(1, 9); // yaw 0 faces north, into the cliff
     const end = MARINEVILLE.interior.tunnel.centreline.at(-1)!;
     expect(onCentreline(1e6, 'in').pos).toEqual(end);
+  });
+});
+
+describe('placement near the cradle and steering holds (T6)', () => {
+  function placingHandle() {
+    const state = { pos: { x: 0, y: 0, z: 0 }, vel: { x: 0, y: 0, z: 0 }, yaw: 0, pitch: 0, medium: 'submerged' as const };
+    const inputs: Array<Record<string, number>> = [];
+    const handle = {
+      press: () => {},
+      advance: () => {},
+      state: () => state,
+      teleport: (pos: typeof state.pos, yaw?: number) => { state.pos = { ...pos }; state.yaw = yaw ?? state.yaw; },
+      setInput: (i: Record<string, number>) => inputs.push(i),
+    } as unknown as DebugHandle;
+    return { handle, state, inputs };
+  }
+
+  it('dock=M puts the sub on the pen axis at the lowered cradle height, facing the cradle; dx/dy/dz/turn nudge it', () => {
+    const c = MARINEVILLE.interior.cradle;
+    const { handle, state } = placingHandle();
+    runScript('dock=20', handle);
+    expect(state.pos).toEqual({ x: c.pos.x, y: c.loweredY, z: c.pos.z + 20 });
+    expect(state.yaw).toBe(0);
+    runScript('dock=-10', handle);
+    expect(state.pos.z).toBe(c.pos.z - 10);
+    expect(state.yaw).toBe(Math.PI);
+    runScript('dock=0,dx=2,dy=-3,dz=1e9,turn=90', handle);
+    expect(state.pos).toEqual({ x: c.pos.x + 2, y: c.loweredY - 3, z: c.pos.z + 100 });
+    expect(state.yaw).toBeCloseTo(Math.PI / 2, 12);
+    expect(nearCradle(1e9).pos.z).toBe(c.pos.z + 1e9); // the script clamps; nearCradle itself does not
+  });
+
+  it('steer= and climb= hold the turn and pitch axes, clamped to ±1', () => {
+    const { handle, inputs } = placingHandle();
+    runScript('steer=0.5,climb=-7,throttle=2', handle);
+    expect(inputs).toEqual([{ yaw: 0.5 }, { pitch: -1 }, { throttle: 1 }]);
   });
 });
