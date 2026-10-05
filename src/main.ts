@@ -138,7 +138,7 @@ function draw(alpha: number, frameSeconds: number): void {
   panelMemory = remember(panelMemory, g);
   const panel = panelView(g, panelMemory, world.marineville.interior);
   const dock = dockView(g, panelMemory, world.marineville.interior);
-  const target = craft.update(game.lastState.sub, g.sub, alpha, game.input, frameSeconds, g.launch.engines !== 'off');
+  const target = craft.update(game.lastState.sub, g.sub, alpha, game.input, frameSeconds, g.launch.engines !== 'off', g.launch.clamps === 'locked');
   const penView = {
     cradle: game.lastState.launch.cradle + (g.launch.cradle - game.lastState.launch.cradle) * alpha,
     clamps: g.launch.clamps,
