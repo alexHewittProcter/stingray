@@ -114,7 +114,7 @@ function hintFor(v: DockView, reason: string | null): string {
     }
     return v.berth.ahead > 0 ? `CRADLE ${metres(v.berth.ahead)} AHEAD — W` : `CRADLE ${metres(-v.berth.ahead)} ASTERN — S TO BACK UP`;
   }
-  if (reason === REFUSAL.tooFast) return 'TOO FAST — LET GO OF W, UNDER 3 M/S';
+  if (reason === REFUSAL.tooFast) return 'TOO FAST — LET GO OF W';
   // Not lined up: heading first (the cradle turns the craft only once locked), then pitch.
   if (Math.abs(v.berthTurn) > T.lockHeading) {
     return `LINE UP — TURN ${v.berthTurn > 0 ? 'LEFT (A)' : 'RIGHT (D)'} ${Math.round(v.alignDegrees)}°`;

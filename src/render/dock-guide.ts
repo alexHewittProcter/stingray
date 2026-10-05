@@ -7,7 +7,7 @@
 //     axis; the ring round the berth is the lock zone at the craft's height (it shrinks when she is too high or low).
 //     The small diamond is where she would come to rest if the pilot let go of W now.
 //   - The height bar beside it: the berth's level across the middle, the craft's marker above or below it.
-//   - Speed with the 3 m/s lock limit marked; alignment; the one thing to do next — green with "PRESS 3" exactly
+//   - Speed (in knots, as the HUD) with the 3 m/s (5.8 kn) lock limit marked; alignment; the one thing to do next — green with "PRESS 3" exactly
 //     when the sim would accept the lock.
 
 import type { DockView } from '../game/dock';
@@ -22,6 +22,8 @@ const SCOPE_M = 16; // metres from the centre to the scope's edge at true scale
 const PX = SCOPE / 2 / SCOPE_M; // px per metre
 const BAR_M = 8; // metres either side of the berth's level on the height bar
 const SPEED_MAX = 8; // m/s across the speed bar
+/** The HUD reads speed in knots; the guide does too, so the two agree. */
+const KNOTS = 1.943844;
 
 const STYLE = `
 .dg { position: fixed; right: 18px; top: 50%; transform: translateY(-58%); z-index: 1; pointer-events: none;
@@ -41,7 +43,7 @@ const STYLE = `
 .dg-track { position: relative; flex: 1; height: 8px; border-radius: 4px; background: rgba(255,255,255,.12); }
 .dg-fill { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 4px; background: #ffb12a; }
 .dg-tick { position: absolute; top: -3px; bottom: -3px; width: 2px; margin-left: -1px; background: #e8f6ff; }
-.dg-val { width: 4.6em; text-align: right; }
+.dg-val { width: 5.2em; text-align: right; white-space: nowrap; }
 .ok { color: #6be37c; }
 .bad { color: #ffb12a; }
 .dg-fill.ok { background: #52ef6b; }
@@ -194,7 +196,7 @@ export function createDockGuide(parent: HTMLElement): DockGuide {
 
       fill.style.width = `${Math.min(v.speed / SPEED_MAX, 1) * 100}%`;
       fill.className = `dg-fill${v.slow ? ' ok' : ''}`;
-      speed.textContent = `${v.speed.toFixed(1)} m/s`;
+      speed.textContent = `${(v.speed * KNOTS).toFixed(1)} kn`;
       speed.className = `dg-val ${v.slow ? 'ok' : 'bad'}`;
       const headingOk = v.alignDegrees <= (T.lockHeading * 180) / Math.PI;
       align.textContent = `${Math.round(v.alignDegrees)}° off axis`;

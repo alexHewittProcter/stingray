@@ -117,7 +117,7 @@ describe('dock guidance (L6, T6)', () => {
     expect(hint(free({ z: 1, y: 4.5 }, 0))).toBe('DIVE 4.5 M — Q');
     expect(hint(free({ z: 13 }, 0, { z: -15 }))).toBe('LET GO OF W — SHE WILL COAST ONTO THE CRADLE');
     expect(hint(free({ z: 5 }, 0, { z: -15 }))).toBe('EASE OFF — YOU WILL OVERSHOOT');
-    expect(hint(free({ z: 1 }, 0, { z: -3.5 }))).toBe('TOO FAST — LET GO OF W, UNDER 3 M/S');
+    expect(hint(free({ z: 1 }, 0, { z: -3.5 }))).toBe('TOO FAST — LET GO OF W');
     expect(hint(free({ z: 1 }, Math.PI - 40 * DEG))).toBe('LINE UP — TURN LEFT (A) 40°');
     expect(hint(free({ z: 1 }, 0, {}, 20 * DEG))).toBe('LEVEL OFF');
     expect(hint(free({ z: 1 }, 0))).toBe('PRESS 3 — LOCK THE CLAMPS');
