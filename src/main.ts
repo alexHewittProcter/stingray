@@ -94,10 +94,7 @@ let legend = initialLegend();
 
 // The launch panel (L6): its decisions are pure (game/panel.ts); its memory is presentation only.
 let panelMemory = initialMemory(game.state);
-const launchPanel = createLaunchPanel(document.body, (control) => {
-  game.press(control);
-  legend = legendOn(legend, 'launch');
-});
+const launchPanel = createLaunchPanel(document.body, (control) => game.press(control));
 // The docking guide (T6): on the way home, from the tunnel's last bend to the lock.
 const dockGuide = createDockGuide(document.body);
 
@@ -105,15 +102,11 @@ const keyboard = listenKeyboard(window, (code) => {
   const control = pressFor(code);
   if (control) game.press(control);
 });
-// The legend (T8, render/legend.ts): fades a few seconds after the first launch control, sooner once the player
-// drives; H brings it back.
-const DRIVING_KEYS = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyQ', 'KeyE', 'ArrowUp', 'ArrowDown', 'Space']);
-const LAUNCH_KEYS = new Set(['Digit1', 'Digit2', 'Digit3', 'Digit4']);
+// The legend (T9, render/legend.ts): back whenever no key has been touched for a moment, gone on the next press;
+// H pins it. Keys only — the mouse does not count. (Menu keys never get here: the menu's listener keeps them.)
 window.addEventListener('keydown', (e) => {
   if (e.repeat) return;
-  if (e.code === 'KeyH') legend = legendOn(legend, 'help');
-  else if (LAUNCH_KEYS.has(e.code)) legend = legendOn(legend, 'launch');
-  else if (DRIVING_KEYS.has(e.code)) legend = legendOn(legend, 'drive');
+  legend = legendOn(legend, e.code === 'KeyH' ? 'help' : 'key');
 });
 
 // L7: sound hears every fixed step's pair and sets its continuous sounds once per drawn frame; M mutes.
@@ -238,8 +231,8 @@ function draw(alpha: number, frameSeconds: number): void {
 
   launchPanel.update(panel);
   dockGuide.update(dock);
-  legend = legendTick(legend, frameSeconds);
-  hud.showLegend(legend.shown);
+  legend = legendTick(legend, frameSeconds, { held: keyboard.held.size > 0, menu: menu.kind !== null });
+  hud.showLegend(legend.shown, g.launch.clamps === 'locked' ? 'docked' : 'driving');
 
   const s = g.sub;
   const home = world.marineville.tunnelMouth;
@@ -276,10 +269,7 @@ installDebugHandle({
   state: () => game.state.sub,
   combat: () => game.state.combat,
   launch: () => game.state.launch,
-  press: (control) => {
-    game.press(control);
-    legend = legendOn(legend, 'launch');
-  },
+  press: (control) => game.press(control),
   teleport: (pos, yaw) => {
     game.place({
       pos: { ...pos }, vel: { x: 0, y: 0, z: 0 }, yaw: yaw ?? game.state.sub.yaw, pitch: 0, medium: pos.y > 0 ? 'airborne' : 'submerged',
