@@ -96,6 +96,7 @@ const STYLE = `
 .lp.compact .lp-grille { width: 0; opacity: 0; margin: 0 -.275em; }
 .lp.compact .lp-slot { height: 0; opacity: 0; margin: -.3em 0 0; }
 .lp.compact .lp-ctl { padding: .35em .3em .35em; }
+.lp.compact.lp-solo-msg .lp-main { min-width: 33em; } /* the longest sea prompt, whole, at the compact size */
 @keyframes lp-pulse { 0%, 100% { filter: brightness(1.15); } 50% { filter: brightness(.55); } }
 @keyframes lp-blink { 0%, 100% { opacity: 1; } 50% { opacity: .55; } }
 @keyframes lp-flash { 0%, 100% { filter: brightness(1.2); } 50% { filter: brightness(.6); } }
