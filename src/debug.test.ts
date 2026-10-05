@@ -106,4 +106,10 @@ describe('placement near the cradle and steering holds (T6)', () => {
     runScript('steer=0.5,climb=-7,throttle=2', handle);
     expect(inputs).toEqual([{ yaw: 0.5 }, { pitch: -1 }, { throttle: 1 }]);
   });
+
+  it('fire= and boost= hold the trigger and the boost, 0 letting go', () => {
+    const { handle, inputs } = placingHandle();
+    runScript('fire=1,boost=1,fire=0,fire=x', handle);
+    expect(inputs).toEqual([{ fire: true }, { boost: true }, { fire: false }]);
+  });
 });
