@@ -3,10 +3,11 @@ import { createAudio } from './audio/audio';
 import { clampAdvance, installDebugHandle, runScript } from './debug';
 import { dockView } from './game/dock';
 import { Game, startState } from './game/game';
+import { CLOSED, type MenuEvent, type MenuState, Swallow, menuEventFor, menuOn, openMenu, titleOnLoad } from './game/menu';
 import { initialMemory, panelView, remember } from './game/panel';
 import { pressFor } from './input/pilot';
 import { listenKeyboard } from './input/raw';
-import { createStepper } from './loop';
+import { createStepper, frameTimes } from './loop';
 import { addCaustics } from './render/caustics';
 import { createCameraRig } from './render/camera-rig';
 import { createCombatView } from './render/combat-view';
@@ -19,6 +20,8 @@ import { createLandmarks } from './render/landmarks';
 import { createLaunchPanel } from './render/launch-panel';
 import { initialLegend, legendOn, legendTick } from './render/legend';
 import { createMarineville } from './render/marineville';
+import { createMenu } from './render/menu';
+import { initialOrbit, orbitBy, orbitDrag, orbitFromParam, orbitRecenter, orbitRelease, orbitTick, orbitView, orbitZoom, KEY_RATE } from './render/orbit';
 import { createMotes } from './render/motes';
 import { createParticles } from './render/particles';
 import { createPen } from './render/pen';
@@ -92,31 +95,86 @@ let legend = initialLegend();
 
 // The launch panel (L6): its decisions are pure (game/panel.ts); its memory is presentation only.
 let panelMemory = initialMemory(game.state);
-const launchPanel = createLaunchPanel(document.body, (control) => {
-  game.press(control);
-  legend = legendOn(legend, 'launch');
-});
+const launchPanel = createLaunchPanel(document.body, (control) => game.press(control));
 // The docking guide (T6): on the way home, from the tunnel's last bend to the lock.
 const dockGuide = createDockGuide(document.body);
+
+// T9: orbit the camera around the craft (render/orbit.ts) — drag on the game view or J/L/I/K, the wheel zooms, C or
+// a double-click re-centres. ?orbit=yawDeg,pitchDeg[,zoom] (witnessing) starts orbited.
+let orbit = orbitFromParam(params.get('orbit')) ?? initialOrbit();
 
 const keyboard = listenKeyboard(window, (code) => {
   const control = pressFor(code);
   if (control) game.press(control);
+  if (code === 'KeyC') orbit = orbitRecenter(orbit);
 });
-// The legend (T8, render/legend.ts): fades a few seconds after the first launch control, sooner once the player
-// drives; H brings it back.
-const DRIVING_KEYS = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyQ', 'KeyE', 'ArrowUp', 'ArrowDown', 'Space']);
-const LAUNCH_KEYS = new Set(['Digit1', 'Digit2', 'Digit3', 'Digit4']);
+// The legend (T9, render/legend.ts): back whenever no key has been touched for a moment, gone on the next press;
+// H pins it. Keys only — the mouse does not count. (Menu keys never get here: the menu's listener keeps them.)
 window.addEventListener('keydown', (e) => {
   if (e.repeat) return;
-  if (e.code === 'KeyH') legend = legendOn(legend, 'help');
-  else if (LAUNCH_KEYS.has(e.code)) legend = legendOn(legend, 'launch');
-  else if (DRIVING_KEYS.has(e.code)) legend = legendOn(legend, 'drive');
+  legend = legendOn(legend, e.code === 'KeyH' ? 'help' : 'key');
 });
 
 // L7: sound hears every fixed step's pair and sets its continuous sounds once per drawn frame; M mutes.
 const audio = createAudio(window);
 game.onStep = (previous, current) => audio.step(previous, current);
+
+// The menus (T9, game/menu.ts): the title over the live Pen 3 standby on load, the pause menu on Esc. An overlay on
+// the one world, never a separate screen. While one is up the sim does not step (frameTimes) and the keys only
+// move through it: a capture listener on the window sees every key first and keeps menu keys from the game, the
+// legend and the sound's M; the key that closes a menu is swallowed until it is released, so Space on Resume does
+// not also fire and Enter on Launch does not press anything.
+let menu: MenuState = titleOnLoad(params) ? openMenu('title') : CLOSED;
+const swallow = new Swallow();
+const menuView = createMenu(document.body, (e) => menuEvent(e));
+function menuEvent(e: MenuEvent): void {
+  const { state, action } = menuOn(menu, e);
+  menu = state;
+  if (action === 'standby') game.toStandby();
+  else if (action === 'ocean') game.toOcean();
+  else if (action === 'toggleSound') audio.toggleMute();
+  showMenu();
+}
+function showMenu(): void {
+  audio.setPaused(menu.kind === 'pause');
+  menuView.update(menu, audio.muted);
+}
+window.addEventListener('keydown', (e) => {
+  if (swallow.down(e.code)) {
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    return;
+  }
+  if (menu.kind === null) {
+    if (e.code !== 'Escape' || e.repeat) return;
+    e.stopImmediatePropagation();
+    swallow.add(e.code);
+    menuEvent({ type: 'pause' });
+    return;
+  }
+  e.preventDefault();
+  e.stopImmediatePropagation();
+  audio.gesture();
+  if (e.code === 'KeyM' && !e.repeat) {
+    audio.toggleMute();
+    showMenu();
+    return;
+  }
+  const event = menuEventFor(e.code);
+  // Held arrows step through the items; a held Enter or Esc acts once.
+  if (!event || (e.repeat && event.type !== 'up' && event.type !== 'down')) return;
+  menuEvent(event);
+  if (menu.kind === null) swallow.add(e.code);
+}, { capture: true });
+window.addEventListener('keyup', (e) => swallow.up(e.code), { capture: true });
+// Losing the window pauses play — except under the witness tooling or an explicit ?menu=, whose driven pages must
+// never stop on their own.
+const pauseOnBlur = !['script', 'at', 'start', 'hold', 'view', 'menu'].some((k) => params.has(k));
+window.addEventListener('blur', () => {
+  swallow.clear();
+  if (pauseOnBlur && menu.kind === null) menuEvent({ type: 'pause' });
+});
+showMenu();
 
 const combatView = createCombatView(world, game.state.combat, particles);
 scene.add(combatView.group);
@@ -148,6 +206,18 @@ function draw(alpha: number, frameSeconds: number): void {
   const panel = panelView(g, panelMemory, world.marineville.interior);
   const dock = dockView(g, panelMemory, world.marineville.interior);
   const target = craft.update(game.lastState.sub, g.sub, alpha, game.input, frameSeconds, g.launch.engines !== 'off', g.launch.clamps === 'locked');
+  // The orbit: keys while held, the drive-away return, nothing while a menu is up.
+  if (menu.kind !== null) {
+    orbit = orbitRelease(orbit);
+    drag = null;
+  } else {
+    const held = keyboard.held;
+    const swing = (held.has('KeyJ') ? 1 : 0) - (held.has('KeyL') ? 1 : 0);
+    const lift = (held.has('KeyI') ? 1 : 0) - (held.has('KeyK') ? 1 : 0);
+    if (swing !== 0 || lift !== 0) orbit = orbitBy(orbit, swing * KEY_RATE * frameSeconds, lift * KEY_RATE * frameSeconds);
+    const i = game.input;
+    orbit = orbitTick(orbit, frameSeconds, i.throttle !== 0 || i.yaw !== 0 || i.pitch !== 0);
+  }
   const penView = {
     cradle: game.lastState.launch.cradle + (g.launch.cradle - game.lastState.launch.cradle) * alpha,
     clamps: g.launch.clamps,
@@ -155,11 +225,11 @@ function draw(alpha: number, frameSeconds: number): void {
     guide: dock === null ? 'off' as const : dock.ready ? 'ready' as const : 'on' as const,
   };
   if (game.jumped) {
-    rig.snap(target, g.launch.clamps);
+    rig.snap(target, g.launch.clamps, orbitView(orbit));
     pen.snap(penView);
     game.jumped = false;
   } else {
-    rig.update(target, g.launch.clamps, frameSeconds);
+    rig.update(target, g.launch.clamps, frameSeconds, orbitView(orbit));
   }
   if (viewFrom) {
     camera.position.copy(viewFrom[0]);
@@ -179,8 +249,8 @@ function draw(alpha: number, frameSeconds: number): void {
 
   launchPanel.update(panel);
   dockGuide.update(dock);
-  legend = legendTick(legend, frameSeconds);
-  hud.showLegend(legend.shown);
+  legend = legendTick(legend, frameSeconds, { held: keyboard.held.size > 0, menu: menu.kind !== null });
+  hud.showLegend(legend.shown, g.launch.clamps === 'locked' ? 'docked' : 'driving');
 
   const s = g.sub;
   const home = world.marineville.tunnelMouth;
@@ -204,12 +274,53 @@ function draw(alpha: number, frameSeconds: number): void {
   aim.set(target.pos.x + nose.x * RETICLE_RANGE, target.pos.y + nose.y * RETICLE_RANGE, target.pos.z + nose.z * RETICLE_RANGE);
   camera.updateMatrixWorld();
   aim.project(camera);
-  hud.reticle.hidden = aim.z > 1;
+  // Orbited, the reticle would sit wherever the nose happens to point across the view: hidden until it returns.
+  hud.reticle.hidden = aim.z > 1 || orbit.weight > 0;
   hud.reticle.style.left = `${(aim.x * 0.5 + 0.5) * 100}%`;
   hud.reticle.style.top = `${(-aim.y * 0.5 + 0.5) * 100}%`;
 
   renderer.render(scene, camera);
 }
+
+// Orbit by mouse: only drags that start on the game view itself (the panel, the guide and the menu are not it).
+// Pointer capture keeps a drag that leaves the window ending cleanly; a click without movement does nothing.
+const canvas = renderer.domElement;
+const DRAG_START_PX = 4;
+let drag: { id: number; x: number; y: number; moved: boolean } | null = null;
+canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+canvas.addEventListener('pointerdown', (e) => {
+  if (menu.kind !== null || drag || (e.button !== 0 && e.button !== 2)) return;
+  e.preventDefault();
+  canvas.setPointerCapture(e.pointerId);
+  drag = { id: e.pointerId, x: e.clientX, y: e.clientY, moved: false };
+});
+canvas.addEventListener('pointermove', (e) => {
+  if (!drag || e.pointerId !== drag.id || menu.kind !== null) return;
+  const dx = e.clientX - drag.x;
+  const dy = e.clientY - drag.y;
+  if (!drag.moved && Math.hypot(dx, dy) < DRAG_START_PX) return;
+  drag.moved = true;
+  drag.x = e.clientX;
+  drag.y = e.clientY;
+  orbit = orbitDrag(orbit, dx, dy);
+});
+const endDrag = (e: PointerEvent) => {
+  if (!drag || e.pointerId !== drag.id) return;
+  drag = null;
+  orbit = orbitRelease(orbit);
+  if (canvas.hasPointerCapture(e.pointerId)) canvas.releasePointerCapture(e.pointerId);
+};
+canvas.addEventListener('pointerup', endDrag);
+canvas.addEventListener('pointercancel', endDrag);
+canvas.addEventListener('lostpointercapture', endDrag);
+canvas.addEventListener('dblclick', () => {
+  if (menu.kind === null) orbit = orbitRecenter(orbit);
+});
+canvas.addEventListener('wheel', (e) => {
+  if (menu.kind !== null) return;
+  e.preventDefault();
+  orbit = orbitZoom(orbit, e.deltaY * (e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? 400 : 1));
+}, { passive: false });
 
 installDebugHandle({
   mode: () => game.mode,
@@ -217,10 +328,7 @@ installDebugHandle({
   state: () => game.state.sub,
   combat: () => game.state.combat,
   launch: () => game.state.launch,
-  press: (control) => {
-    game.press(control);
-    legend = legendOn(legend, 'launch');
-  },
+  press: (control) => game.press(control),
   teleport: (pos, yaw) => {
     game.place({
       pos: { ...pos }, vel: { x: 0, y: 0, z: 0 }, yaw: yaw ?? game.state.sub.yaw, pitch: 0, medium: pos.y > 0 ? 'airborne' : 'submerged',
@@ -237,6 +345,11 @@ installDebugHandle({
     }
   },
   camera: () => ({ x: camera.position.x, y: camera.position.y, z: camera.position.z }),
+  menu: () => menu.kind,
+  closeMenu: () => {
+    menu = CLOSED;
+    showMenu();
+  },
 });
 
 window.addEventListener('resize', () => {
@@ -250,6 +363,11 @@ window.addEventListener('resize', () => {
 // draw, so a screenshot shows exactly the scripted moment; ?stats writes the renderer's counts into the page.
 const script = params.get('script');
 if (script) runScript(script, window.__stingray!);
+// ?menu=pause (witnessing): open the pause menu over the scripted moment.
+if (params.get('menu') === 'pause') {
+  menu = openMenu('pause');
+  showMenu();
+}
 const hold = params.has('hold');
 const stats = params.has('stats') ? document.body.appendChild(document.createElement('pre')) : null;
 // ?fps: the on-screen frame-rate readout (T8) for measuring a real window; off by default.
@@ -276,12 +394,13 @@ renderer.setAnimationLoop((now) => {
   const wallMs = now - last;
   // ?hold freezes the scripted moment whole: no sim steps and no effect, water or camera time either, so a
   // screenshot taken seconds later still shows a detonation's flash or a splash as the script left it.
-  const frame = hold ? 0 : THREE.MathUtils.clamp(wallMs / 1000, 0, 0.1);
+  // A menu stops the sim too (T9): the title keeps the water and light alive; the pause menu freezes the frame.
+  const time = frameTimes(wallMs / 1000, { hold, menu: menu.kind });
   last = now;
-  elapsed += frame;
-  const alpha = hold ? 1 : stepper.advance(frame);
+  elapsed += time.effects;
+  const alpha = hold ? 1 : stepper.advance(time.sim);
   if (stats || fps) renderer.info.reset();
-  draw(alpha, frame);
+  draw(alpha, time.effects);
   audio.frame(game.state);
   if (fps) fps.frame(wallMs, renderer.info.render.calls, renderer.info.render.triangles);
   if (stats) {

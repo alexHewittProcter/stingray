@@ -2,6 +2,8 @@
 // (phase 2, L6) the sea readouts that make no sense inside — the way home and the targets — give way to a one-line
 // status, and the launch panel (launch-panel.ts) sits bottom centre.
 
+import { type LegendSituation, legendKeysFor } from './legend';
+
 export interface HudReadout {
   depthMetres: number;
   speedKnots: number;
@@ -19,8 +21,8 @@ export interface HudReadout {
 
 export interface Hud {
   update(readout: HudReadout): void;
-  /** Show or fade the key legend (when: render/legend.ts). */
-  showLegend(shown: boolean): void;
+  /** Show or fade the key legend (when: render/legend.ts), the situation's keys first. */
+  showLegend(shown: boolean, situation: LegendSituation): void;
 }
 
 const STYLE = `
@@ -34,8 +36,9 @@ const STYLE = `
 .hud-label { opacity: .7; font-weight: 400; }
 .hud-big { font-size: 22px; }
 .hud-legend { left: 18px; top: 16px; font-weight: 400; font-size: 12px; line-height: 1.5; padding: 7px 12px 8px;
-  display: grid; grid-template-columns: auto auto; column-gap: 18px; transition: opacity .9s ease; }
-.hud-legend.faded { opacity: 0; }
+  display: grid; grid-template-columns: auto auto; column-gap: 18px; transition: opacity .6s ease; }
+.hud-legend.faded { opacity: 0; transition: opacity .3s ease; }
+.hud-legend .dim { opacity: .5; }
 .hud-legend b { color: #ffe066; display: inline-block; min-width: 3.9em; }
 .hud-legend .hud-label { grid-column: 1 / -1; margin-bottom: 1px; letter-spacing: .1em; }
 .hud-status { letter-spacing: .1em; }
@@ -86,17 +89,6 @@ export function createHud(parent: HTMLElement): Hud & { reticle: HTMLElement } {
       <div class="hud-home-row" data-k="home-row"><span class="hud-label">MARINEVILLE</span> <span data-k="home"></span></div>
     </div>
     <div class="hud-panel hud-legend" data-k="legend">
-      <span class="hud-label">CONTROLS</span>
-      <div><b>1 2 3 4</b> launch</div>
-      <div><b>Shift</b> boost</div>
-      <div><b>W / S</b> throttle</div>
-      <div><b>Space</b> fire</div>
-      <div><b>A / D</b> turn</div>
-      <div><b>R</b> to pen</div>
-      <div><b>↓ / E</b> climb</div>
-      <div><b>M</b> mute</div>
-      <div><b>↑ / Q</b> dive</div>
-      <div><b>H</b> this help</div>
     </div>`;
   parent.appendChild(root);
 
@@ -113,6 +105,7 @@ export function createHud(parent: HTMLElement): Hud & { reticle: HTMLElement } {
   const homeRow = el('home-row');
   const targets = el('targets');
   const legend = el('legend');
+  let legendFor: LegendSituation | null = null;
 
   return {
     reticle: el('reticle'),
@@ -128,8 +121,13 @@ export function createHud(parent: HTMLElement): Hud & { reticle: HTMLElement } {
         ? 'ALL TARGETS DESTROYED — RETURN TO MARINEVILLE'
         : `TARGETS ${r.targetsTotal - r.targetsLeft} / ${r.targetsTotal}`;
     },
-    showLegend(shown) {
+    showLegend(shown, situation) {
       legend.classList.toggle('faded', !shown);
+      if (situation !== legendFor) {
+        legendFor = situation;
+        legend.innerHTML = `<span class="hud-label">CONTROLS</span>${legendKeysFor(situation)
+          .map((r) => `<div${r.first ? '' : ' class="dim"'}><b>${r.key}</b> ${r.action}</div>`).join('')}`;
+      }
     },
   };
 }
