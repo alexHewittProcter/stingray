@@ -248,7 +248,7 @@ function homePrompt(g: GameState, m: PanelMemory, interior: Interior, next: Laun
     if (l.door >= 1) return 'Door open — drive in through the mouth';
     return null;
   }
-  if (inPen(g.sub.pos, interior)) return 'Bring her over the cradle — the docking guide shows the way';
+  if (inPen(g.sub.pos, interior)) return 'Settle over the cradle — guide on the right';
   if (l.doorDir === 1) return 'The ocean door is opening — drive on through';
   return 'Follow the tunnel to Pen 3';
 }

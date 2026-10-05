@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { createAudio } from './audio/audio';
 import { clampAdvance, installDebugHandle, runScript } from './debug';
+import { dockView } from './game/dock';
 import { Game, startState } from './game/game';
 import { initialMemory, panelView, remember } from './game/panel';
 import { pressFor } from './input/pilot';
@@ -10,6 +11,7 @@ import { addCaustics } from './render/caustics';
 import { createCameraRig } from './render/camera-rig';
 import { createCombatView } from './render/combat-view';
 import { createCraft } from './render/craft';
+import { createDockGuide } from './render/dock-guide';
 import { createHud } from './render/hud';
 import { createLandmarks } from './render/landmarks';
 import { createLaunchPanel } from './render/launch-panel';
@@ -82,6 +84,8 @@ const game = new Game(world, startState(world, params));
 // The launch panel (L6): its decisions are pure (game/panel.ts); its memory is presentation only.
 let panelMemory = initialMemory(game.state);
 const launchPanel = createLaunchPanel(document.body, (control) => game.press(control));
+// The docking guide (T6): on the way home, from the tunnel's last bend to the lock.
+const dockGuide = createDockGuide(document.body);
 
 const keyboard = listenKeyboard(window, (code) => {
   const control = pressFor(code);
@@ -125,11 +129,15 @@ const stepper = createStepper((dt) => game.step(keyboard.held, dt), FIXED_DT);
 let elapsed = 0;
 function draw(alpha: number, frameSeconds: number): void {
   const g = game.state;
+  panelMemory = remember(panelMemory, g);
+  const panel = panelView(g, panelMemory, world.marineville.interior);
+  const dock = dockView(g, panelMemory, world.marineville.interior);
   const target = craft.update(game.lastState.sub, g.sub, alpha, game.input, frameSeconds, g.launch.engines !== 'off');
   const penView = {
     cradle: game.lastState.launch.cradle + (g.launch.cradle - game.lastState.launch.cradle) * alpha,
     clamps: g.launch.clamps,
     craftYaw: target.yaw,
+    guide: dock === null ? 'off' as const : dock.ready ? 'ready' as const : 'on' as const,
   };
   if (game.jumped) {
     rig.snap(target, g.launch.clamps);
@@ -151,9 +159,8 @@ function draw(alpha: number, frameSeconds: number): void {
   motes.update(camera, elapsed);
   updateScenery(elapsed, camera, scene);
 
-  panelMemory = remember(panelMemory, g);
-  const panel = panelView(g, panelMemory, world.marineville.interior);
   launchPanel.update(panel);
+  dockGuide.update(dock);
 
   const s = g.sub;
   const home = world.marineville.tunnelMouth;

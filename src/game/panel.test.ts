@@ -364,7 +364,7 @@ describe('the panel on the return (L6)', () => {
       'The ocean door is opening — wait for it, then drive in',
       'Door open — drive in through the mouth',
       'Follow the tunnel to Pen 3',
-      'Bring her over the cradle — the docking guide shows the way',
+      'Settle over the cradle — guide on the right',
       'Press 3 — lock the clamps',
       'Press 2 — stop the engines',
       'Press 1 — raise the cradle',
