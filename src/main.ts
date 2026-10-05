@@ -1,7 +1,8 @@
 import * as THREE from 'three';
 import { createAudio } from './audio/audio';
 import { clampAdvance, installDebugHandle, runScript } from './debug';
-import { Game, launchStatus } from './game/game';
+import { Game, startState } from './game/game';
+import { initialMemory, panelView, remember } from './game/panel';
 import { pressFor } from './input/pilot';
 import { listenKeyboard } from './input/raw';
 import { createStepper } from './loop';
@@ -11,6 +12,7 @@ import { createCombatView } from './render/combat-view';
 import { createCraft } from './render/craft';
 import { createHud } from './render/hud';
 import { createLandmarks } from './render/landmarks';
+import { createLaunchPanel } from './render/launch-panel';
 import { createMarineville } from './render/marineville';
 import { createMotes } from './render/motes';
 import { createParticles } from './render/particles';
@@ -20,7 +22,6 @@ import { createSeabed } from './render/seabed';
 import { createTunnel } from './render/tunnel';
 import { updateScenery } from './render/sway';
 import { targetsLeft } from './sim/combat';
-import { oceanStart, standby } from './sim/launch';
 import { forwardOf, speedOf } from './sim/sub';
 import { FIXED_DT, createWorld } from './sim/world';
 
@@ -74,16 +75,26 @@ const viewFrom = viewNumbers?.length === 6 && viewNumbers.every(Number.isFinite)
 const hud = createHud(document.body);
 
 // One scene, one world, one GameState for the session (game.ts); the mode is derived from it and changes only
-// what is drawn. Until the pen and tunnel are drawn (phase 2, T5) the game starts at sea and R returns there;
-// ?start=pen opts in to starting docked in the (undrawn) pen, with R returning to standby.
-const startInPen = params.get('start') === 'pen' && !params.has('at');
-const game = startInPen ? new Game(world, standby(world), 'standby') : new Game(world, oceanStart(world), 'spawn');
+// what is drawn. L4: the game starts in standby in Pen 3; ?start=ocean (or ?at=…) starts at phase 1's spawn.
+// R returns to standby from anywhere, either way.
+const game = new Game(world, startState(world, params));
+
+// The launch panel (L6): its decisions are pure (game/panel.ts); its memory is presentation only.
+let panelMemory = initialMemory(game.state);
+const launchPanel = createLaunchPanel(document.body, (control) => game.press(control));
 
 const keyboard = listenKeyboard(window, (code) => {
   const control = pressFor(code);
   if (control) game.press(control);
 });
-window.addEventListener('keydown', () => hud.dismissLegend(), { once: true });
+// The legend fades once the player starts driving (the launch keys come first, and the panel shows those).
+const DRIVING_KEYS = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyQ', 'KeyE', 'ArrowUp', 'ArrowDown', 'Space']);
+const dismissOnDrive = (e: KeyboardEvent) => {
+  if (!DRIVING_KEYS.has(e.code)) return;
+  hud.dismissLegend();
+  window.removeEventListener('keydown', dismissOnDrive);
+};
+window.addEventListener('keydown', dismissOnDrive);
 
 // L7: sound hears every fixed step's pair and sets its continuous sounds once per drawn frame; M mutes.
 const audio = createAudio(window);
@@ -140,6 +151,10 @@ function draw(alpha: number, frameSeconds: number): void {
   motes.update(camera, elapsed);
   updateScenery(elapsed, camera, scene);
 
+  panelMemory = remember(panelMemory, g);
+  const panel = panelView(g, panelMemory, world.marineville.interior);
+  launchPanel.update(panel);
+
   const s = g.sub;
   const home = world.marineville.tunnelMouth;
   hud.update({
@@ -153,7 +168,8 @@ function draw(alpha: number, frameSeconds: number): void {
     targetsTotal: world.targets.length,
     // L3: the airborne marker is hidden while the clamps hold the sub.
     airborne: s.medium === 'airborne' && g.launch.clamps === 'released',
-    status: game.mode === 'launch' ? launchStatus(g) : null,
+    clamped: g.launch.clamps === 'locked',
+    status: panel.status,
   });
 
   // The reticle marks where the nose points, 150 m ahead.
