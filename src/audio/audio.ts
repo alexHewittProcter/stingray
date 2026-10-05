@@ -20,6 +20,12 @@ export interface Audio {
   /** Once per drawn frame. */
   frame(current: GameState): void;
   readonly muted: boolean;
+  /** Toggle the persisted mute, as M does (T9: the menu's Sound item). */
+  toggleMute(): void;
+  /** Start sound on a user gesture the window's own listeners did not hear (T9: menu keys are kept from the game). */
+  gesture(): void;
+  /** Silence everything while the pause menu is up (the context is suspended), and resume it after (T9). */
+  setPaused(paused: boolean): void;
 }
 
 interface Running {
@@ -35,6 +41,7 @@ export function createAudio(win: Window): Audio {
   let muted = readMuted(store);
   let on: Running | null = null;
   let failed = false;
+  let paused = false;
 
   const start = () => {
     if (on || failed) return;
@@ -45,7 +52,8 @@ export function createAudio(win: Window): Audio {
       const ctx = new Context();
       const mixer = createMixer(ctx, muted);
       on = { mixer, engine: createEngine(mixer), machinery: createMachinery(mixer), ambience: createAmbience(mixer), weapons: createWeapons(mixer) };
-      void ctx.resume().catch(() => undefined);
+      if (paused) void ctx.suspend().catch(() => undefined);
+      else void ctx.resume().catch(() => undefined);
     } catch {
       failed = true; // No sound on this browser; the game plays on silent.
     }
@@ -53,22 +61,23 @@ export function createAudio(win: Window): Audio {
 
   const gesture = () => {
     start();
-    if (on && on.mixer.ctx.state === 'suspended' && !win.document.hidden) void on.mixer.ctx.resume().catch(() => undefined);
+    if (on && on.mixer.ctx.state === 'suspended' && !win.document.hidden && !paused) void on.mixer.ctx.resume().catch(() => undefined);
+  };
+  const toggleMute = () => {
+    muted = !muted;
+    writeMuted(store, muted);
+    on?.mixer.setMuted(muted);
   };
   win.addEventListener('keydown', (e) => {
     gesture();
-    if (e.code === 'KeyM' && !e.repeat) {
-      muted = !muted;
-      writeMuted(store, muted);
-      on?.mixer.setMuted(muted);
-    }
+    if (e.code === 'KeyM' && !e.repeat) toggleMute();
   });
   win.addEventListener('pointerdown', gesture);
   // A hidden tab stops drawing; stop the sound with it rather than hold the last frame's hum.
   win.document.addEventListener('visibilitychange', () => {
     if (!on) return;
     if (win.document.hidden) void on.mixer.ctx.suspend().catch(() => undefined);
-    else void on.mixer.ctx.resume().catch(() => undefined);
+    else if (!paused) void on.mixer.ctx.resume().catch(() => undefined);
   });
 
   return {
@@ -88,6 +97,15 @@ export function createAudio(win: Window): Audio {
     },
     get muted() {
       return muted;
+    },
+    toggleMute,
+    gesture,
+    setPaused(p) {
+      if (p === paused) return;
+      paused = p;
+      if (!on) return;
+      if (paused) void on.mixer.ctx.suspend().catch(() => undefined);
+      else if (!win.document.hidden) void on.mixer.ctx.resume().catch(() => undefined);
     },
   };
 }
