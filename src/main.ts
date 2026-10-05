@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { createAudio } from './audio/audio';
 import { clampAdvance, installDebugHandle, runScript } from './debug';
+import { dockView } from './game/dock';
 import { Game, startState } from './game/game';
 import { initialMemory, panelView, remember } from './game/panel';
 import { pressFor } from './input/pilot';
@@ -10,7 +11,9 @@ import { addCaustics } from './render/caustics';
 import { createCameraRig } from './render/camera-rig';
 import { createCombatView } from './render/combat-view';
 import { createCraft } from './render/craft';
+import { createDockGuide } from './render/dock-guide';
 import { createHud } from './render/hud';
+import { oceanInView } from './render/indoors';
 import { createLandmarks } from './render/landmarks';
 import { createLaunchPanel } from './render/launch-panel';
 import { createMarineville } from './render/marineville';
@@ -46,7 +49,10 @@ const camera = new THREE.PerspectiveCamera(58, window.innerWidth / window.innerH
 const sea = createSea(world);
 scene.add(sea.group);
 
-scene.add(createSeabed(world), createLandmarks(world), createMarineville());
+// The ocean side: drawn only when it could be seen (T6) — from inside Marineville, only through a door that is not
+// shut (indoors.ts oceanInView). Behind the shut door it was hundreds of draw calls and most of the triangles.
+const oceanSide: THREE.Object3D[] = [createSeabed(world), createLandmarks(world), createMarineville()];
+scene.add(...oceanSide);
 
 const motes = createMotes();
 scene.add(motes.points);
@@ -82,6 +88,8 @@ const game = new Game(world, startState(world, params));
 // The launch panel (L6): its decisions are pure (game/panel.ts); its memory is presentation only.
 let panelMemory = initialMemory(game.state);
 const launchPanel = createLaunchPanel(document.body, (control) => game.press(control));
+// The docking guide (T6): on the way home, from the tunnel's last bend to the lock.
+const dockGuide = createDockGuide(document.body);
 
 const keyboard = listenKeyboard(window, (code) => {
   const control = pressFor(code);
@@ -102,6 +110,7 @@ game.onStep = (previous, current) => audio.step(previous, current);
 
 const combatView = createCombatView(world, game.state.combat, particles);
 scene.add(combatView.group);
+oceanSide.push(combatView.group);
 addCaustics(scene);
 
 const RETICLE_RANGE = 150; // metres ahead of the nose
@@ -125,11 +134,15 @@ const stepper = createStepper((dt) => game.step(keyboard.held, dt), FIXED_DT);
 let elapsed = 0;
 function draw(alpha: number, frameSeconds: number): void {
   const g = game.state;
+  panelMemory = remember(panelMemory, g);
+  const panel = panelView(g, panelMemory, world.marineville.interior);
+  const dock = dockView(g, panelMemory, world.marineville.interior);
   const target = craft.update(game.lastState.sub, g.sub, alpha, game.input, frameSeconds, g.launch.engines !== 'off');
   const penView = {
     cradle: game.lastState.launch.cradle + (g.launch.cradle - game.lastState.launch.cradle) * alpha,
     clamps: g.launch.clamps,
     craftYaw: target.yaw,
+    guide: dock === null ? 'off' as const : dock.ready ? 'ready' as const : 'on' as const,
   };
   if (game.jumped) {
     rig.snap(target, g.launch.clamps);
@@ -145,15 +158,16 @@ function draw(alpha: number, frameSeconds: number): void {
   pen.update(camera, penView, frameSeconds, elapsed);
   const door = game.lastState.launch.door + (g.launch.door - game.lastState.launch.door) * alpha;
   tunnel.update(camera, { door, doorMoving: g.launch.doorDir !== 0 }, elapsed);
+  const ocean = oceanInView(camera.position, door);
+  for (const o of oceanSide) o.visible = ocean;
   combatView.update(g.combat, frameSeconds);
   particles.update(frameSeconds);
   sea.update(camera, scene, elapsed);
   motes.update(camera, elapsed);
   updateScenery(elapsed, camera, scene);
 
-  panelMemory = remember(panelMemory, g);
-  const panel = panelView(g, panelMemory, world.marineville.interior);
   launchPanel.update(panel);
+  dockGuide.update(dock);
 
   const s = g.sub;
   const home = world.marineville.tunnelMouth;
@@ -228,6 +242,13 @@ if (stats) {
 
   Object.assign(stats.style, { position: 'fixed', left: '8px', bottom: '8px', margin: '0', color: '#fff', font: '11px monospace' });
 }
+
+// The game starts in the pen with the door shut, so the ocean side is not drawn until the door first opens: compile
+// its programs now, so that first opening does not stall on shader compiles.
+// (The fog must be set first: it is part of every program.)
+for (const o of oceanSide) o.visible = true;
+sea.update(camera, scene, elapsed);
+renderer.compile(scene, camera);
 
 let last = performance.now();
 renderer.setAnimationLoop((now) => {

@@ -30,6 +30,7 @@ const STYLE = `
 .lp-screw::after { content: ''; position: absolute; left: 15%; right: 15%; top: 45%; height: 10%; background: rgba(40,40,40,.55); transform: rotate(35deg); }
 .lp-grille { flex: none; align-self: center; width: 2.9em; height: 4.4em; }
 .lp-main { display: flex; flex-direction: column; gap: .45em; min-width: 14em; }
+.lp.lp-solo-msg .lp-main { min-width: 25em; }
 .lp-bank { justify-content: center; }
 .lp-plate { display: flex; align-items: center; justify-content: center; height: 1.75em; padding: 0 .7em;
   width: 0; min-width: 100%; box-sizing: border-box;
@@ -207,6 +208,8 @@ export function createLaunchPanel(parent: HTMLElement, onPress: (control: Launch
       }
 
       const text = view.refusal ? view.refusal.reason.toUpperCase() : (view.prompt ?? '');
+      // At sea the panel is one control wide: widen it while it carries a line, so the line is not cut short.
+      root.classList.toggle('lp-solo-msg', text !== '' && view.controls.length === 1);
       const message = `${view.refusal ? 'r' : 'p'}${text}`;
       if (message !== lastMsg) {
         lastMsg = message;

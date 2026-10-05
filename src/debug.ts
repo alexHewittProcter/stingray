@@ -73,12 +73,26 @@ export function onCentreline(metres: number, facing: 'in' | 'out'): { pos: Vec3;
 }
 
 /**
+ * A point on the pen's axis at the lowered cradle's height, `metres` south of the cradle position (toward the tunnel;
+ * negative: north of it), facing the cradle.
+ */
+export function nearCradle(metres: number): { pos: Vec3; yaw: number } {
+  const c = MARINEVILLE.interior.cradle;
+  // North is −z; yaw 0 faces north, π south.
+  return { pos: { x: c.pos.x, y: c.loweredY, z: c.pos.z + metres }, yaw: metres >= 0 ? 0 : Math.PI };
+}
+
+/**
  * Run a witnessing script once (the ?script= URL parameter): a comma list of words, run in order.
  *   - a control name (cradle, engines, clamps, door) presses it;
  *   - a number advances the sim that many seconds (clamped to SCRIPT_LIMITS; zero, negative or not a number: skipped);
  *   - out=M / in=M puts the released sub at rest on the tunnel's centreline M metres in from the mouth (negative:
  *     out at sea), facing out to sea or in toward the pen;
- *   - throttle=T holds the throttle at T (−1 … 1) until the script changes it.
+ *   - throttle=T, steer=Y, climb=P hold those axes at T / Y / P (−1 … 1; steer > 0 turns left, climb > 0 climbs)
+ *     until the script changes them;
+ *   - dock=M puts the released sub at rest on the pen's axis at the lowered cradle's height, M metres south of the
+ *     cradle (negative: north), facing it; dx= / dy= / dz= move it that many metres and turn= turns it (degrees,
+ *     left), each at rest (all within ±100).
  * "cradle,8.2,engines,2.1,clamps,1" lowers the cradle, starts the engines and releases the clamps;
  * "out=40,door,5" waits in the door chamber while the door opens. Unknown words are ignored. At most
  * SCRIPT_LIMITS.tokens words run, and at most SCRIPT_LIMITS.totalSeconds in all.
@@ -98,8 +112,20 @@ export function runScript(script: string, handle: DebugHandle): void {
       if (key === 'out' || key === 'in') {
         const at = onCentreline(Math.max(-1000, n), key);
         handle.teleport(at.pos, at.yaw);
-      } else if (key === 'throttle') {
-        handle.setInput({ throttle: Math.max(-1, Math.min(1, n)) });
+      } else if (key === 'throttle' || key === 'steer' || key === 'climb') {
+        const axis = key === 'throttle' ? 'throttle' : key === 'steer' ? 'yaw' : 'pitch';
+        handle.setInput({ [axis]: Math.max(-1, Math.min(1, n)) });
+      } else if (key === 'dock') {
+        const at = nearCradle(Math.max(-100, Math.min(100, n)));
+        handle.teleport(at.pos, at.yaw);
+      } else if (key === 'dx' || key === 'dy' || key === 'dz' || key === 'turn') {
+        const s = handle.state();
+        const d = Math.max(-100, Math.min(100, n));
+        const pos = { ...s.pos };
+        if (key === 'dx') pos.x += d;
+        if (key === 'dy') pos.y += d;
+        if (key === 'dz') pos.z += d;
+        handle.teleport(pos, key === 'turn' ? s.yaw + (d * Math.PI) / 180 : s.yaw);
       }
       continue;
     }

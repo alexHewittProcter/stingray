@@ -41,6 +41,8 @@ export interface PenView {
   clamps: LaunchState['clamps'];
   /** The drawn craft's heading. */
   craftYaw: number;
+  /** Dock guidance (T6): off, or on the way home near the cradle — 'ready' when a lock would be accepted. */
+  guide?: 'off' | 'on' | 'ready';
 }
 
 export interface Pen {
@@ -666,6 +668,7 @@ export function createPen(interior: Interior): Pen {
       ambient.intensity = AMBIENT * indoorAmount(camera.position);
       if (!indoors) return;
       cradle.update(view.cradle, view.clamps, view.craftYaw, dt);
+      cradle.guide(view.guide ?? 'off', time);
       spot.target.position.y = cradle.head.position.y;
       pool.time.value = time;
     },

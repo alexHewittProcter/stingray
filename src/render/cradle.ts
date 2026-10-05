@@ -32,7 +32,23 @@ export interface Cradle {
   update(cradle: number, clamps: LaunchState['clamps'], craftYaw: number, dtSeconds: number): void;
   /** Jump the arms and heading to their resting pose for the current state (start, R). */
   snap(cradle: number, clamps: LaunchState['clamps'], craftYaw: number): void;
+  /**
+   * Dock guidance in the pen (T6): the berth lights on the head, the floor's lead-in lights and the wall berth marks.
+   * 'off': dim; 'on' (coming home, near the cradle): amber, the floor lights running toward the berth; 'ready' (a
+   * lock would be accepted): steady green.
+   */
+  guide(state: DockLights, timeSeconds: number): void;
 }
+
+export type DockLights = 'off' | 'on' | 'ready';
+
+// Guide lamp colours (self-lit; kept near 1 so tone mapping leaves the hue saturated).
+const LAMP_OFF = new THREE.Color(0.12, 0.09, 0.06);
+const LAMP_AMBER = new THREE.Color(1.15, 0.42, 0.02);
+const LAMP_GREEN = new THREE.Color(0.08, 1.1, 0.16);
+/** The floor's lead-in lights run toward the berth in this many interleaved sets. */
+const CHASE_SETS = 4;
+const CHASE_RATE = 5; // steps per second
 
 function lambert(colour: number, name: string, extra: THREE.MeshLambertMaterialParameters = {}): THREE.MeshLambertMaterial {
   return makeInteriorMaterial(new THREE.MeshLambertMaterial({ color: colour, name, ...extra }));
@@ -57,9 +73,18 @@ export function createCradle(interior: Interior): Cradle {
   const dark = lambert(0x575d63, 'cradle-dark');
   const chrome = phong(0xd5d9dc, 'cradle-chrome', 90, { specular: 0xbbbbbb });
   const yellow = lambert(0xd8a722, 'cradle-yellow');
-  const red = lambert(0xb7321f, 'cradle-red');
   const striped = lambert(0xffffff, 'cradle-stripes', { map: stripeTexture(5) });
   const stripedSleeve = lambert(0xffffff, 'cradle-sleeve', { map: stripeTexture(3) });
+  // The guide lamps (T6): self-lit, their colour set by guide().
+  const lampMat = (name: string) => {
+    const m = new THREE.MeshBasicMaterial({ name });
+    m.color.copy(LAMP_OFF);
+    return m;
+  };
+  const armLamp = lampMat('cradle-arm-lamp');
+  const berthLamp = lampMat('cradle-berth-lamp');
+  const wallMark = lampMat('cradle-wall-mark');
+  const floorSets = Array.from({ length: CHASE_SETS }, (_, k) => lampMat(`cradle-lead-in-${k}`));
 
   // ---- The head: deck, saddles, machinery, the ram ----
   const head = new THREE.Group();
@@ -95,7 +120,12 @@ export function createCradle(interior: Interior): Cradle {
       parts.add(dark, rod({ x: sx * ARM.hingeX, y: ARM.hingeY, z: z - 0.7 }, { x: sx * ARM.hingeX, y: ARM.hingeY, z: z + 0.7 }, 0.28, 0.28, 8));
     }
   }
-  head.add(parts.build('cradle-head-body'));
+  // Berth lights: a lit strip along each edge of the deck and across each end — the berth's outline, seen from
+  // above and behind as the craft comes over it.
+  const berthParts = new Parts();
+  for (const sx of [-1, 1]) berthParts.add(berthLamp, box(0.22, 0.16, DECK.length - 1, { x: sx * (DECK.width / 2 + 0.38), y: DECK.top + 0.36, z: 0 }));
+  for (const sz of [-1, 1]) berthParts.add(berthLamp, box(DECK.width + 0.6, 0.16, 0.22, { x: 0, y: DECK.top + 0.36, z: sz * (DECK.length / 2 + 0.4) }));
+  head.add(parts.build('cradle-head-body'), berthParts.build('cradle-berth-lights'));
 
   // ---- The clamp arms: each on its own hinge, rising beside the hull and hooking over its flank ----
   // side +1 is starboard (+X): its hook reaches toward −X, over the hull. Each side is built, not mirrored.
@@ -107,7 +137,7 @@ export function createCradle(interior: Interior): Cradle {
     p.add(dark, bar({ x: inward * ARM.reach, y: ARM.rise + 0.35, z: 0 }, { x: inward * (ARM.reach + 0.25), y: ARM.rise - 0.35, z: 0 }, 0.5, 0.9));
     // A hydraulic strut along the arm's outer face, and a red lamp on the knuckle.
     p.add(chrome, rod({ x: side * 0.35, y: 0.3, z: 0 }, { x: side * 0.35, y: ARM.rise - 0.6, z: 0 }, 0.13, 0.13, 6));
-    p.add(red, box(0.25, 0.25, 0.25, { x: side * 0.1, y: ARM.rise + 0.25, z: 0 }));
+    p.add(armLamp, box(0.5, 0.42, 0.6, { x: side * 0.1, y: ARM.rise + 0.3, z: 0 }));
     return p.build('cradle-arm');
   };
   const arms: Array<{ pivot: THREE.Object3D; side: number }> = [];
@@ -145,6 +175,35 @@ export function createCradle(interior: Interior): Cradle {
   }
   pedestal.add(base.build('cradle-pedestal'));
 
+  // Lead-in lights on the pool floor: a line up the pen's axis from the tunnel's mouth to the pedestal, and a bar
+  // across the pen at the berth either side of the pedestal. Interleaved sets so they can run toward the berth.
+  const { min, max } = interior.pen;
+  const lead = Array.from({ length: CHASE_SETS }, () => new Parts());
+  const floorLamp = (x: number, z: number, w: number, d: number) => box(w, 0.2, d, { x, y: floorY + 0.12, z });
+  const axisStart = max.z - 3;
+  const axisEnd = c.pos.z + 9;
+  const axisCount = Math.floor((axisStart - axisEnd) / 3);
+  for (let i = 0; i <= axisCount; i++) {
+    const z = axisStart - (i * (axisStart - axisEnd)) / axisCount;
+    for (const sx of [-1, 1]) lead[i % CHASE_SETS]!.add(floorSets[i % CHASE_SETS]!, floorLamp(c.pos.x + sx * 2.2, z, 0.7, 1.4));
+  }
+  // The cross bar runs outward from the pedestal: its far ends light last, so it reads as arriving at the berth line.
+  const crossCount = 6;
+  for (let i = 0; i < crossCount; i++) {
+    const x = 7 + i * ((max.x - min.x) / 2 - 11) / (crossCount - 1);
+    for (const sx of [-1, 1]) lead[(axisCount + 1 + i) % CHASE_SETS]!.add(floorSets[(axisCount + 1 + i) % CHASE_SETS]!, floorLamp(c.pos.x + sx * x, c.pos.z, 1.4, 0.7));
+  }
+  for (const [k, p] of lead.entries()) pedestal.add(p.build(`cradle-lead-in-${k}`));
+  // Berth marks on the side walls: a lit cross at the berth's height and the cradle's station, for range and depth.
+  const marks = new Parts();
+  for (const sx of [-1, 1]) {
+    const x = sx > 0 ? max.x - 0.08 : min.x + 0.08;
+    marks.add(wallMark, box(0.12, 0.35, 12, { x, y: c.loweredY, z: c.pos.z }));
+    marks.add(wallMark, box(0.12, 9, 0.35, { x, y: c.loweredY, z: c.pos.z }));
+  }
+  pedestal.add(marks.build('cradle-berth-marks'));
+  let lights: DockLights | null = null;
+
   let openness = 0;
   let headYaw = c.yawOut;
 
@@ -168,6 +227,18 @@ export function createCradle(interior: Interior): Cradle {
         headYaw += THREE.MathUtils.clamp(target - headYaw, -step, step);
       }
       pose(cradle);
+    },
+    guide(state, time) {
+      if (state === 'on') {
+        // Amber, the lead-in running toward the berth: each set bright in turn.
+        const step = Math.floor(time * CHASE_RATE);
+        for (const [k, m] of floorSets.entries()) m.color.copy(LAMP_AMBER).multiplyScalar((step - k) % CHASE_SETS === 0 ? 1 : 0.28);
+      }
+      if (state === lights && state !== 'on') return;
+      lights = state;
+      const colour = state === 'ready' ? LAMP_GREEN : state === 'on' ? LAMP_AMBER : LAMP_OFF;
+      for (const m of [armLamp, berthLamp, wallMark]) m.color.copy(colour);
+      if (state !== 'on') for (const m of floorSets) m.color.copy(colour);
     },
     snap(cradle, clamps, craftYaw) {
       openness = clamps === 'released' ? 1 : 0;
