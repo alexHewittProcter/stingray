@@ -13,6 +13,7 @@ import { createCombatView } from './render/combat-view';
 import { createCraft } from './render/craft';
 import { createDockGuide } from './render/dock-guide';
 import { createHud } from './render/hud';
+import { oceanInView } from './render/indoors';
 import { createLandmarks } from './render/landmarks';
 import { createLaunchPanel } from './render/launch-panel';
 import { createMarineville } from './render/marineville';
@@ -48,7 +49,10 @@ const camera = new THREE.PerspectiveCamera(58, window.innerWidth / window.innerH
 const sea = createSea(world);
 scene.add(sea.group);
 
-scene.add(createSeabed(world), createLandmarks(world), createMarineville());
+// The ocean side: drawn only when it could be seen (T6) — from inside Marineville, only through a door that is not
+// shut (indoors.ts oceanInView). Behind the shut door it was hundreds of draw calls and most of the triangles.
+const oceanSide: THREE.Object3D[] = [createSeabed(world), createLandmarks(world), createMarineville()];
+scene.add(...oceanSide);
 
 const motes = createMotes();
 scene.add(motes.points);
@@ -106,6 +110,7 @@ game.onStep = (previous, current) => audio.step(previous, current);
 
 const combatView = createCombatView(world, game.state.combat, particles);
 scene.add(combatView.group);
+oceanSide.push(combatView.group);
 addCaustics(scene);
 
 const RETICLE_RANGE = 150; // metres ahead of the nose
@@ -153,6 +158,8 @@ function draw(alpha: number, frameSeconds: number): void {
   pen.update(camera, penView, frameSeconds, elapsed);
   const door = game.lastState.launch.door + (g.launch.door - game.lastState.launch.door) * alpha;
   tunnel.update(camera, { door, doorMoving: g.launch.doorDir !== 0 }, elapsed);
+  const ocean = oceanInView(camera.position, door);
+  for (const o of oceanSide) o.visible = ocean;
   combatView.update(g.combat, frameSeconds);
   particles.update(frameSeconds);
   sea.update(camera, scene, elapsed);
@@ -235,6 +242,13 @@ if (stats) {
 
   Object.assign(stats.style, { position: 'fixed', left: '8px', bottom: '8px', margin: '0', color: '#fff', font: '11px monospace' });
 }
+
+// The game starts in the pen with the door shut, so the ocean side is not drawn until the door first opens: compile
+// its programs now, so that first opening does not stall on shader compiles.
+// (The fog must be set first: it is part of every program.)
+for (const o of oceanSide) o.visible = true;
+sea.update(camera, scene, elapsed);
+renderer.compile(scene, camera);
 
 let last = performance.now();
 renderer.setAnimationLoop((now) => {
