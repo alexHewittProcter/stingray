@@ -21,7 +21,7 @@ export const MODE_HOLD = 2; // m
 /**
  * What the panel remembers between frames — presentation only, never sim state.
  * - `shown`: the presented mode, with L4's hold.
- * - `trip`: 'out' from standby until Stingray reaches the open sea, then 'home' until it is docked (raised) again.
+ * - `trip`: 'out' from standby until Stingray reaches the open sea (MODE_HOLD past the face), then 'home' until it is docked (raised) again.
  *   The machinery alone cannot tell "lowered, engines on, clamps locked" before release from the same state after
  *   a lock; the trip can, and it decides which control is the sensible next one.
  * - `launched`: a launch from the pen has reached the sea at least once this session (the prompts stop).
@@ -65,6 +65,11 @@ export interface PanelView {
   status: string | null;
   /** First-time guidance, until a launch has reached the sea once; null otherwise. */
   prompt: string | null;
+  /**
+   * T8: the panel draws compact (a low strip, no levers) once Stingray is off the cradle — driving in the pool, the
+   * tunnel, or with the door-only panel at sea — and full size while the clamps hold her.
+   */
+  compact: boolean;
 }
 
 const KEYS = { cradle: '1', engines: '2', clamps: '3', door: '4' } as const;
@@ -90,7 +95,9 @@ export function remember(m: PanelMemory, g: GameState): PanelMemory {
   let { trip, launched } = m;
   const l = g.launch;
   if (l.clamps === 'locked' && l.cradle === 0 && l.cradleDir === 0) trip = 'out';
-  else if (trip === 'out' && l.clamps === 'released' && z > COAST_Z) [trip, launched] = ['home', true];
+  // The trip turns for home where presentation turns to the sea (L4's hold), so the instant of crossing the face
+  // outbound does not flash the homeward words ("Follow the tunnel to Pen 3") in the doorway (T8).
+  else if (trip === 'out' && l.clamps === 'released' && z > COAST_Z + MODE_HOLD) [trip, launched] = ['home', true];
 
   return shown === m.shown && trip === m.trip && launched === m.launched ? m : { shown, trip, launched };
 }
@@ -114,7 +121,13 @@ export function panelView(g: GameState, m: PanelMemory, interior: Interior): Pan
     refusal: fresh && shownControls.includes(fresh.control) ? { control: fresh.control, reason: fresh.reason } : null,
     status: m.shown === 'launch' ? statusLine(g, m, interior) : null,
     prompt: promptLine(g, m, interior, next),
+    compact: panelCompact(g),
   };
+}
+
+/** Compact while the clamps are released (T8): the craft is the player's to drive and the panel steps aside. */
+export function panelCompact(g: GameState): boolean {
+  return g.launch.clamps === 'released';
 }
 
 function controlView(
