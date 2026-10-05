@@ -70,6 +70,11 @@ export class Game {
     this.set(standby(this.world, this.current.combat));
   }
 
+  /** T9's "Skip to open ocean": phase 1's spawn, released, engines on (as ?start=ocean), keeping combat's clock and targets. */
+  toOcean(): void {
+    this.set(oceanStart(this.world, this.current.combat));
+  }
+
   /** Put the sub somewhere discontinuously (L8's teleport): released, engines on, the door left as it is. */
   place(sub: SubState): void {
     this.set({ sub, combat: this.current.combat, launch: released(this.current.launch) });
