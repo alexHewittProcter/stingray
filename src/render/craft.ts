@@ -15,8 +15,12 @@ const STERN_OFFSET = 12; // m behind the hull's centre
 
 export interface Craft {
   readonly group: THREE.Group;
-  /** Pose the model between two sim states; returns what the chase camera should follow. The drive turns only while running. */
-  update(prev: SubState, next: SubState, alpha: number, input: SubInput, dtSeconds: number, running?: boolean): ChaseTarget;
+  /**
+   * Pose the model between two sim states; returns what the chase camera should follow. The drive turns only while
+   * running. `held`: the cradle's clamps hold her (T8) — crossing the surface on the cradle stirs the waterline gently
+   * instead of throwing a leap's splash.
+   */
+  update(prev: SubState, next: SubState, alpha: number, input: SubInput, dtSeconds: number, running?: boolean, held?: boolean): ChaseTarget;
 }
 
 const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
@@ -47,9 +51,26 @@ export function createCraft(particles: Particles): Craft {
     });
   }
 
+  /**
+   * The cradle carries the hull through the surface at a walking pace (T8): a slow, faint stir along the waterline
+   * from bow to stern and a few bubbles below it — nothing thrown into the air. Additive particles, so a dim colour
+   * reads as a faint sheen rather than white foam.
+   */
+  function waterlineStir(at: Vec3, yaw: number): void {
+    const fx = -Math.sin(yaw);
+    const fz = -Math.cos(yaw);
+    for (let k = -2; k <= 2; k++) {
+      const along = k * 5;
+      const x = at.x + fx * along;
+      const z = at.z + fz * along;
+      particles.emit({ x, y: 0.15, z, count: 6, speed: [0.4, 1.6], vy: 0.15, life: [1.4, 2.6], size: 0.9, color: 0x3c4c52, lift: -0.4 });
+      particles.emit({ x, y: -1.2, z, count: 8, speed: [0.2, 0.9], life: [1.2, 2.4], size: 0.7, color: 0x5a7884, lift: 1.6, underwater: true });
+    }
+  }
+
   return {
     group,
-    update(prev, next, alpha, input, dt, running = true) {
+    update(prev, next, alpha, input, dt, running = true, held = false) {
       pos.x = lerp(prev.pos.x, next.pos.x, alpha);
       pos.y = lerp(prev.pos.y, next.pos.y, alpha);
       pos.z = lerp(prev.pos.z, next.pos.z, alpha);
@@ -83,9 +104,10 @@ export function createCraft(particles: Particles): Craft {
         }
       }
 
-      // Spray when the hull breaks the surface, and again when it falls back in.
+      // Spray when the hull breaks the surface, and again when it falls back in — unless the cradle is carrying her.
       if (wasMedium !== null && wasMedium !== next.medium && (airborne || wasMedium === 'airborne')) {
-        splash(pos, speed);
+        if (held) waterlineStir(pos, yaw);
+        else splash(pos, speed);
       }
       wasMedium = next.medium;
 
