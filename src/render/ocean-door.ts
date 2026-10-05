@@ -56,9 +56,13 @@ function smooth(t: number): number {
   return u * u * (3 - 2 * u);
 }
 
-/** The ring in profile, (radius, z): from the back plate, out over the face, into the bore and back to the plate. */
-const RING_PROFILE: ReadonlyArray<readonly [number, number]> = [
-  [DOOR_RING_RADIUS, -DOOR_RING_DEPTH],
+/**
+ * The ring in profile, (radius, z), in two parts (T8). The seaward face — out over the face and into the mouth of
+ * the bore — is outdoor steel, lit by the sun. The bore through the cliff's slab, the back plate and the hidden
+ * outer wall are inside Marineville and lit by its lamps, so from the door chamber the bore reads with the tunnel
+ * rather than glowing sun-lit and caustic-rippled deep inside the rock.
+ */
+const RING_FACE_PROFILE: ReadonlyArray<readonly [number, number]> = [
   [DOOR_RING_RADIUS, 0.2],
   [16.6, 1.15],
   [16.0, RING_FRONT - 0.05],
@@ -66,8 +70,12 @@ const RING_PROFILE: ReadonlyArray<readonly [number, number]> = [
   [13.55, RING_FRONT - 0.15],
   [13.3, 0.9],
   [DOOR_BORE_RADIUS, 0.2],
+];
+const RING_BORE_PROFILE: ReadonlyArray<readonly [number, number]> = [
+  [DOOR_BORE_RADIUS, 0.2],
   [DOOR_BORE_RADIUS, -DOOR_RING_DEPTH],
   [DOOR_RING_RADIUS, -DOOR_RING_DEPTH],
+  [DOOR_RING_RADIUS, 0.2],
 ];
 
 /** Segments round the ring: its bore's chords stay outside DOOR_BORE_RADIUS · cos(π / n) > 13 m. */
@@ -322,10 +330,16 @@ export function createOceanDoor(mouth: { x: number; y: number; z: number }): Oce
   const steel = new THREE.MeshStandardMaterial({ color: STEEL, roughness: 0.45, metalness: 0.3, side: THREE.DoubleSide });
   const dark = new THREE.MeshStandardMaterial({ color: STEEL_DARK, roughness: 0.5, metalness: 0.5 });
 
-  const ring = new THREE.Mesh(lathe(RING_PROFILE, RING_SEGMENTS), steel);
+  // The bore through the slab is the interior's wall there, lit by Marineville's lamps; the face is the sun's.
+  const boreSteel = makeInteriorMaterial(
+    new THREE.MeshStandardMaterial({ color: 0x9ea4a8, roughness: 0.6, metalness: 0.3, side: THREE.DoubleSide, name: 'door-ring-bore' }),
+  );
+  const ring = new THREE.Mesh(lathe(RING_BORE_PROFILE, RING_SEGMENTS), boreSteel);
   ring.name = 'oceanDoor:ring';
   ring.userData.interiorShell = true; // its bore is the interior's wall through the cliff's slab
-  group.add(ring);
+  const ringFace = new THREE.Mesh(lathe(RING_FACE_PROFILE, RING_SEGMENTS), steel);
+  ringFace.name = 'oceanDoor:ring-face';
+  group.add(ring, ringFace);
   // A machined groove ring across the face, and the dark slot round the bore the leaves run in.
   const groove = new THREE.Mesh(new THREE.TorusGeometry(15.6, 0.12, 6, 96), dark);
   groove.position.z = RING_FRONT - 0.02;

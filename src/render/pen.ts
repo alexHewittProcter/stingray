@@ -525,6 +525,10 @@ const POOL_SHADER = {
         vec4 uv = vUv;
         uv.xy += w * 0.0007 * uv.w;
         vec3 reflected = texture2DProj(tDiffuse, uv).rgb;
+        // T8: lamp lenses and glows in the reflection came back as big foam-white ovals near the camera. Above a
+        // dim hall level the reflection rolls off hard, so lamps read as soft glints on still, dark water.
+        vec3 over = max(reflected - 0.3, 0.0);
+        reflected = min(reflected, vec3(0.3)) + 0.12 * (1.0 - exp(-over * 0.8));
         float cosi = abs(v.y);
         float fresnel = 0.3 + 0.7 * pow(1.0 - cosi, 4.0);
         colour = mix(uWater * 0.35, reflected * 0.9, fresnel);

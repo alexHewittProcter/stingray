@@ -12,10 +12,12 @@ import { createCameraRig } from './render/camera-rig';
 import { createCombatView } from './render/combat-view';
 import { createCraft } from './render/craft';
 import { createDockGuide } from './render/dock-guide';
+import { createFpsReadout } from './render/fps';
 import { createHud } from './render/hud';
 import { oceanInView } from './render/indoors';
 import { createLandmarks } from './render/landmarks';
 import { createLaunchPanel } from './render/launch-panel';
+import { initialLegend, legendOn, legendTick } from './render/legend';
 import { createMarineville } from './render/marineville';
 import { createMotes } from './render/motes';
 import { createParticles } from './render/particles';
@@ -85,9 +87,15 @@ const hud = createHud(document.body);
 // R returns to standby from anywhere, either way.
 const game = new Game(world, startState(world, params));
 
+// The key legend's timing (T8, render/legend.ts).
+let legend = initialLegend();
+
 // The launch panel (L6): its decisions are pure (game/panel.ts); its memory is presentation only.
 let panelMemory = initialMemory(game.state);
-const launchPanel = createLaunchPanel(document.body, (control) => game.press(control));
+const launchPanel = createLaunchPanel(document.body, (control) => {
+  game.press(control);
+  legend = legendOn(legend, 'launch');
+});
 // The docking guide (T6): on the way home, from the tunnel's last bend to the lock.
 const dockGuide = createDockGuide(document.body);
 
@@ -95,14 +103,16 @@ const keyboard = listenKeyboard(window, (code) => {
   const control = pressFor(code);
   if (control) game.press(control);
 });
-// The legend fades once the player starts driving (the launch keys come first, and the panel shows those).
+// The legend (T8, render/legend.ts): fades a few seconds after the first launch control, sooner once the player
+// drives; H brings it back.
 const DRIVING_KEYS = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyQ', 'KeyE', 'ArrowUp', 'ArrowDown', 'Space']);
-const dismissOnDrive = (e: KeyboardEvent) => {
-  if (!DRIVING_KEYS.has(e.code)) return;
-  hud.dismissLegend();
-  window.removeEventListener('keydown', dismissOnDrive);
-};
-window.addEventListener('keydown', dismissOnDrive);
+const LAUNCH_KEYS = new Set(['Digit1', 'Digit2', 'Digit3', 'Digit4']);
+window.addEventListener('keydown', (e) => {
+  if (e.repeat) return;
+  if (e.code === 'KeyH') legend = legendOn(legend, 'help');
+  else if (LAUNCH_KEYS.has(e.code)) legend = legendOn(legend, 'launch');
+  else if (DRIVING_KEYS.has(e.code)) legend = legendOn(legend, 'drive');
+});
 
 // L7: sound hears every fixed step's pair and sets its continuous sounds once per drawn frame; M mutes.
 const audio = createAudio(window);
@@ -137,7 +147,7 @@ function draw(alpha: number, frameSeconds: number): void {
   panelMemory = remember(panelMemory, g);
   const panel = panelView(g, panelMemory, world.marineville.interior);
   const dock = dockView(g, panelMemory, world.marineville.interior);
-  const target = craft.update(game.lastState.sub, g.sub, alpha, game.input, frameSeconds, g.launch.engines !== 'off');
+  const target = craft.update(game.lastState.sub, g.sub, alpha, game.input, frameSeconds, g.launch.engines !== 'off', g.launch.clamps === 'locked');
   const penView = {
     cradle: game.lastState.launch.cradle + (g.launch.cradle - game.lastState.launch.cradle) * alpha,
     clamps: g.launch.clamps,
@@ -160,7 +170,8 @@ function draw(alpha: number, frameSeconds: number): void {
   tunnel.update(camera, { door, doorMoving: g.launch.doorDir !== 0 }, elapsed);
   const ocean = oceanInView(camera.position, door);
   for (const o of oceanSide) o.visible = ocean;
-  combatView.update(g.combat, frameSeconds);
+  // Every detonation since the last frame, not only the last step's: a frame that runs two steps keeps both (T8).
+  combatView.update({ ...g.combat, detonations: game.takeDetonations() }, frameSeconds);
   particles.update(frameSeconds);
   sea.update(camera, scene, elapsed);
   motes.update(camera, elapsed);
@@ -168,6 +179,8 @@ function draw(alpha: number, frameSeconds: number): void {
 
   launchPanel.update(panel);
   dockGuide.update(dock);
+  legend = legendTick(legend, frameSeconds);
+  hud.showLegend(legend.shown);
 
   const s = g.sub;
   const home = world.marineville.tunnelMouth;
@@ -204,7 +217,10 @@ installDebugHandle({
   state: () => game.state.sub,
   combat: () => game.state.combat,
   launch: () => game.state.launch,
-  press: (control) => game.press(control),
+  press: (control) => {
+    game.press(control);
+    legend = legendOn(legend, 'launch');
+  },
   teleport: (pos, yaw) => {
     game.place({
       pos: { ...pos }, vel: { x: 0, y: 0, z: 0 }, yaw: yaw ?? game.state.sub.yaw, pitch: 0, medium: pos.y > 0 ? 'airborne' : 'submerged',
@@ -236,9 +252,12 @@ const script = params.get('script');
 if (script) runScript(script, window.__stingray!);
 const hold = params.has('hold');
 const stats = params.has('stats') ? document.body.appendChild(document.createElement('pre')) : null;
+// ?fps: the on-screen frame-rate readout (T8) for measuring a real window; off by default.
+const fps = params.has('fps') ? createFpsReadout(document.body) : null;
+// The pool's reflection is a nested render: count the whole frame.
+if (stats || fps) renderer.info.autoReset = false;
 if (stats) {
   stats.id = 'stats';
-  renderer.info.autoReset = false; // the pool's reflection is a nested render: count the whole frame
 
   Object.assign(stats.style, { position: 'fixed', left: '8px', bottom: '8px', margin: '0', color: '#fff', font: '11px monospace' });
 }
@@ -254,13 +273,17 @@ let last = performance.now();
 renderer.setAnimationLoop((now) => {
   // rAF's timestamp can precede `last` on the first frame (after a long scripted advance): never run time backwards,
   // which would fling the camera's springs.
-  const frame = THREE.MathUtils.clamp((now - last) / 1000, 0, 0.1);
+  const wallMs = now - last;
+  // ?hold freezes the scripted moment whole: no sim steps and no effect, water or camera time either, so a
+  // screenshot taken seconds later still shows a detonation's flash or a splash as the script left it.
+  const frame = hold ? 0 : THREE.MathUtils.clamp(wallMs / 1000, 0, 0.1);
   last = now;
   elapsed += frame;
   const alpha = hold ? 1 : stepper.advance(frame);
-  if (stats) renderer.info.reset();
+  if (stats || fps) renderer.info.reset();
   draw(alpha, frame);
   audio.frame(game.state);
+  if (fps) fps.frame(wallMs, renderer.info.render.calls, renderer.info.render.triangles);
   if (stats) {
     const { calls, triangles } = renderer.info.render;
     stats.textContent = `calls ${calls}  triangles ${triangles}  programs ${renderer.info.programs?.length ?? 0}  camera ${camera.position.toArray().map((n) => n.toFixed(1)).join(',')}  pen view ${rig.penWeight().toFixed(2)}`;

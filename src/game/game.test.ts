@@ -168,3 +168,21 @@ describe('the step listener (L7)', () => {
     expect(pairs[30]![0]).toBe(placed);
   });
 });
+
+describe('detonations between frames (T8)', () => {
+  it('keeps every step\'s detonations until a frame takes them, so a frame that ran two steps shows both', () => {
+    const game = new Game(W, oceanStart(W));
+    game.place(at({ x: 300, y: -30, z: -1040 }, 0)); // facing the cliff, 60 m off it
+    game.takeDetonations();
+    stepFor(game, 1 / 60, held('Space'));
+    let seen = 0;
+    for (let k = 0; k < 120; k++) {
+      game.step(NOTHING, DT);
+      game.step(NOTHING, DT); // two steps per drawn frame
+      seen += game.takeDetonations().length;
+    }
+    expect(seen).toBe(1);
+    expect(game.state.combat.detonations).toEqual([]);
+  });
+});
+

@@ -19,8 +19,8 @@ export interface HudReadout {
 
 export interface Hud {
   update(readout: HudReadout): void;
-  /** Fade the key legend once the player has pressed something. */
-  dismissLegend(): void;
+  /** Show or fade the key legend (when: render/legend.ts). */
+  showLegend(shown: boolean): void;
 }
 
 const STYLE = `
@@ -33,10 +33,11 @@ const STYLE = `
 .hud-top { left: 50%; top: 16px; transform: translateX(-50%); text-align: center; letter-spacing: .08em; }
 .hud-label { opacity: .7; font-weight: 400; }
 .hud-big { font-size: 22px; }
-.hud-legend { left: 18px; top: 16px; font-weight: 400; font-size: 12.5px; line-height: 1.55;
-  transition: opacity 1.2s ease; }
-.hud-legend b { color: #ffe066; display: inline-block; min-width: 4.3em; }
-.hud-legend .hud-label { display: block; margin-bottom: 2px; letter-spacing: .1em; }
+.hud-legend { left: 18px; top: 16px; font-weight: 400; font-size: 12px; line-height: 1.5; padding: 7px 12px 8px;
+  display: grid; grid-template-columns: auto auto; column-gap: 18px; transition: opacity .9s ease; }
+.hud-legend.faded { opacity: 0; }
+.hud-legend b { color: #ffe066; display: inline-block; min-width: 3.9em; }
+.hud-legend .hud-label { grid-column: 1 / -1; margin-bottom: 1px; letter-spacing: .1em; }
 .hud-status { letter-spacing: .1em; }
 .hud-home-row[hidden] { display: none; }
 .hud-reticle { position: absolute; left: 50%; top: 50%; width: 26px; height: 26px; margin: -13px 0 0 -13px;
@@ -86,15 +87,16 @@ export function createHud(parent: HTMLElement): Hud & { reticle: HTMLElement } {
     </div>
     <div class="hud-panel hud-legend" data-k="legend">
       <span class="hud-label">CONTROLS</span>
-      <div><b>1 2 3 4</b> launch panel</div>
-      <div><b>W / S</b> throttle</div>
-      <div><b>A / D</b> turn</div>
-      <div><b>↓ / E</b> climb</div>
-      <div><b>↑ / Q</b> dive</div>
+      <div><b>1 2 3 4</b> launch</div>
       <div><b>Shift</b> boost</div>
+      <div><b>W / S</b> throttle</div>
       <div><b>Space</b> fire</div>
-      <div><b>R</b> return to pen</div>
+      <div><b>A / D</b> turn</div>
+      <div><b>R</b> to pen</div>
+      <div><b>↓ / E</b> climb</div>
       <div><b>M</b> mute</div>
+      <div><b>↑ / Q</b> dive</div>
+      <div><b>H</b> this help</div>
     </div>`;
   parent.appendChild(root);
 
@@ -126,8 +128,8 @@ export function createHud(parent: HTMLElement): Hud & { reticle: HTMLElement } {
         ? 'ALL TARGETS DESTROYED — RETURN TO MARINEVILLE'
         : `TARGETS ${r.targetsTotal - r.targetsLeft} / ${r.targetsTotal}`;
     },
-    dismissLegend() {
-      legend.style.opacity = '0';
+    showLegend(shown) {
+      legend.classList.toggle('faded', !shown);
     },
   };
 }
