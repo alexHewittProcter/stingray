@@ -4,6 +4,7 @@ import type { LaunchState } from '../sim/launch';
 import type { Vec3 } from '../sim/vec3';
 import type { World } from '../sim/world';
 import { type ChaseTarget, createChaseCamera } from './chase-camera';
+import { tunnelTightness } from './indoors';
 
 // The camera (phase 2, L1 "the camera" and L6 "pen camera"): phase 1's chase camera, the pen camera, the blend
 // between them, and the walls.
@@ -16,6 +17,9 @@ import { type ChaseTarget, createChaseCamera } from './chase-camera';
 //   - Whenever the camera is north of the cliff face, the boom from the sub is shortened to the first wall it
 //     meets and the camera is held inside the interior volume less 1 m (confineCamera). South of the face, at sea,
 //     nothing here touches phase 1's chase camera.
+//   - T8: inside Marineville the chase boom is tighter and lower (indoors.ts tunnelTightness), so the view looks down
+//     the bore over the craft instead of from under the crown; it eases back to phase 1's within TIGHT_ZONE of the
+//     mouth out at sea, and beyond that it is phase 1's exactly.
 
 const BLEND_SECONDS = 1.2;
 /** The pen camera's place relative to the craft: out to starboard of the pen axis, a little forward and above. */
@@ -92,12 +96,12 @@ export function createCameraRig(camera: THREE.PerspectiveCamera, world: World): 
 
   return {
     snap(t, clamps) {
-      chase.snap(t);
+      chase.snap(t, tunnelTightness(t.pos, world.marineville.tunnelMouth));
       weight = clamps === 'locked' ? 1 : 0;
       compose(t);
     },
     update(t, clamps, dt) {
-      chase.update(t, dt);
+      chase.update(t, dt, tunnelTightness(t.pos, world.marineville.tunnelMouth));
       const want = clamps === 'locked' ? 1 : 0;
       const step = Math.max(dt, 0) / BLEND_SECONDS;
       weight = want > weight ? Math.min(weight + step, want) : Math.max(weight - step, want);

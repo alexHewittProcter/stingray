@@ -86,6 +86,17 @@ const STYLE = `
   font: 600 .7em/1.1 ui-monospace, Menlo, monospace; letter-spacing: .1em; box-shadow: inset 0 1px 2px #000, 0 1px 0 rgba(255,255,255,.4); }
 .lp-word.green { color: #6be37c; }
 .lp-word.dark { color: #a49c86; }
+/* T8: compact while driving (clamps released). The whole panel is sized in em, so easing the font size eases the
+   whole console down; the lever slots and the speaker grilles fold away, leaving keys, lamps, names, words and the
+   message line in a low strip at the bottom edge. */
+.lp { transition: font-size .45s ease, bottom .45s ease; }
+.lp-grille { transition: width .45s ease, opacity .3s ease, margin .45s ease; }
+.lp-slot { transition: height .45s ease, opacity .3s ease, margin .45s ease; }
+.lp.compact { font-size: clamp(10px, 1.32vh, 15px); bottom: 6px; }
+.lp.compact .lp-grille { width: 0; opacity: 0; margin: 0 -.275em; }
+.lp.compact .lp-slot { height: 0; opacity: 0; margin: -.3em 0 0; }
+.lp.compact .lp-ctl { padding: .35em .3em .35em; }
+.lp.compact.lp-solo-msg .lp-main { min-width: 33em; } /* the longest sea prompt, whole, at the compact size */
 @keyframes lp-pulse { 0%, 100% { filter: brightness(1.15); } 50% { filter: brightness(.55); } }
 @keyframes lp-blink { 0%, 100% { opacity: 1; } 50% { opacity: .55; } }
 @keyframes lp-flash { 0%, 100% { filter: brightness(1.2); } 50% { filter: brightness(.6); } }
@@ -178,6 +189,7 @@ export function createLaunchPanel(parent: HTMLElement, onPress: (control: Launch
     update(view) {
       root.hidden = view.controls.length === 0;
       if (root.hidden) return;
+      root.classList.toggle('compact', view.compact);
 
       // Rebuild the bank only when the set of controls on show changes.
       const key = view.controls.map((c) => c.control).join();

@@ -388,3 +388,47 @@ describe('the panel on the return (L6)', () => {
     expect(s.view.prompt).toBe('Door open — drive in through the mouth');
   });
 });
+
+describe('the panel steps aside while driving (T8)', () => {
+  it('is full size on the cradle and compact from release, through the tunnel and at sea, until locked again', () => {
+    const s = new Session(standby(W));
+    expect(s.view.compact).toBe(false);
+    s.press('cradle');
+    s.run(8.2);
+    expect(s.view.compact).toBe(false);
+    s.press('engines');
+    s.run(2.1);
+    expect(s.view.compact).toBe(false);
+    s.press('clamps');
+    expect(s.view.compact).toBe(true);
+    s.place({ x: 0, y: -40, z: COAST_Z - 40 });
+    expect(s.view.compact).toBe(true);
+    // At sea in door range: the door-only panel, compact.
+    s.place({ x: 0, y: -40, z: COAST_Z + 60 }, 0);
+    expect(s.view.controls.map((c) => c.control)).toEqual(['door']);
+    expect(s.view.compact).toBe(true);
+    // R: back on the cradle, full size.
+    s.game.restartNow();
+    s.run(DT);
+    expect(s.view.compact).toBe(false);
+  });
+
+  it('does not flash the homeward words in the doorway on the way out', () => {
+    const s = new Session(standby(W));
+    s.press('cradle'); s.run(8.2); s.press('engines'); s.run(2.1); s.press('clamps');
+    s.place({ x: 0, y: -40, z: COAST_Z - 30 });
+    s.press('door');
+    s.run(5.2);
+    s.game.override = { throttle: 0.4 };
+    const seen = new Set<string>();
+    for (let k = 0; k < 600 && s.game.state.sub.pos.z < COAST_Z + 10; k++) {
+      s.run(DT);
+      const v = s.view;
+      if (v.prompt) seen.add(v.prompt);
+      if (v.status) seen.add(v.status);
+    }
+    expect(s.game.state.sub.pos.z).toBeGreaterThan(COAST_Z + 10);
+    expect([...seen].filter((w) => /PEN 3|Pen 3/.test(w))).toEqual([]);
+  });
+});
+
