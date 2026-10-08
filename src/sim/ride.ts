@@ -45,6 +45,14 @@ export function rideProgressAt(seconds: number): number {
   return 1 - CRUISE * EASE_OUT * easedDistance((RIDE_SECONDS - t) / EASE_OUT);
 }
 
+/** The chair's speed `seconds` into the ride as a fraction of its cruising speed: 0 at rest … 1 (for sound). */
+export function rideSpeedAt(seconds: number): number {
+  const t = Math.min(Math.max(seconds, 0), RIDE_SECONDS);
+  if (t < EASE_IN) return smooth(t / EASE_IN);
+  if (t > RIDE_SECONDS - EASE_OUT) return smooth((RIDE_SECONDS - t) / EASE_OUT);
+  return 1;
+}
+
 /** The timetable's inverse: the seconds since setting off at which the chair is at `ride`. Bisection (it is monotonic). */
 export function rideTimeAt(ride: number): number {
   if (ride <= 0) return 0;

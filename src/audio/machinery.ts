@@ -12,6 +12,8 @@
 //     band-passed grind; all scaled by distance from the door. Starts with a clank, stops open with a thud, and
 //     shuts with the seal: a big 48 → 28 Hz boom, a low rumble burst, a long dark steel ring and a water-pressure hiss.
 //   Refusal: two quick 98 + 104 Hz square buzzes, low-passed — a dull "bzz-bzz", not a beep.
+//   Injector chair (phase 3): letting go — a latch clack at 420 Hz, a short 80 → 50 Hz drop and a pneumatic hiss;
+//     locking in — a heavy 60 → 32 Hz clunk, two struck-steel rings (230, 300 Hz) a beat apart and a short hiss.
 
 import type { Soundscape } from './cues';
 import { LEVELS as L } from './levels';
@@ -28,6 +30,8 @@ export interface Machinery {
   doorOpened(gain: number): void;
   doorSeal(gain: number): void;
   refusal(): void;
+  /** Phase 3 (M6): the chair setting off (lock false) or locking into the cabin (lock true). */
+  chair(lock: boolean): void;
 }
 
 export function createMachinery(m: Mixer): Machinery {
@@ -146,6 +150,20 @@ export function createMachinery(m: Mixer): Machinery {
       burst(m, fx, t, { peak: L.doorSeal * 0.6 * gain, type: 'lowpass', freq: 220, decay: 1.0, brown: true });
       metal(m, fx, t, L.doorSeal * 0.3 * gain, 95, 1.6);
       burst(m, fx, t + 0.05, { peak: L.doorSeal * 0.2 * gain, type: 'bandpass', freq: 1200, q: 1, attack: 0.02, decay: 0.5 });
+    },
+
+    chair(lock) {
+      const t = soon();
+      if (lock) {
+        thump(m, fx, t, L.chair, 60, 32, 0.6);
+        metal(m, fx, t, L.chair * 0.5, 230, 0.8);
+        metal(m, fx, t + 0.11, L.chair * 0.4, 300, 0.6);
+        burst(m, fx, t + 0.05, { peak: L.chair * 0.3, type: 'highpass', freq: 1800, attack: 0.01, decay: 0.35 });
+      } else {
+        metal(m, fx, t, L.chair * 0.35, 420, 0.25);
+        thump(m, fx, t + 0.04, L.chair * 0.5, 80, 50, 0.3);
+        burst(m, fx, t + 0.06, { peak: L.chair * 0.35, type: 'highpass', freq: 2200, attack: 0.02, decay: 0.5 });
+      }
     },
 
     refusal() {
