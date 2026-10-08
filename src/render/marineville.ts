@@ -1,7 +1,9 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
+import { ROOMS } from '../sim/rooms';
 import { CLIFF_TOP, COAST_Z } from '../sim/world';
 import { mulberry32 } from './random';
+import { ROOMS_EXTERIOR_NAME } from './rooms';
 
 // Marineville on the clifftop, so that surfacing has a view — after the series' establishing
 // shot: the control tower's orange and blue-grey harlequin drum on its flared support, three
@@ -180,7 +182,53 @@ function controlTower(white: THREE.Material, concrete: THREE.Material): THREE.Gr
   dish.position.set(-4, galleryY + galleryHeight + 2.6, 2);
   group.add(dish);
 
+  group.add(roomsExterior(white, concrete));
   group.position.z = TOWER.z;
+  return group;
+}
+
+/**
+ * Phase 3 (M1 art, T4 rough-in; T5 dresses): what the tower's shell needs for Troy's rooms beyond the gallery, as plain
+ * white volumes so the view from outside is right — the enclosed bridge the corridor runs in, out of the gallery's
+ * north side and west, the Standby Lounge's annexe north of the drum, and the column under it that leg 1 of the
+ * injector shaft runs down to the clifftop. Built in the tower's frame from sim/rooms.ts. render/rooms.ts hides it
+ * while the camera is in the rooms (its faces would otherwise stand in the doorways); from outside it is seen only
+ * round the back of the drum, inland of it.
+ */
+function roomsExterior(white: THREE.Material, concrete: THREE.Material): THREE.Group {
+  const group = new THREE.Group();
+  group.name = ROOMS_EXTERIOR_NAME; // render/rooms.ts finds it by this name
+  const oz = COAST_Z + TOWER.z; // world z of the tower's axis
+  const local = (x: number, y: number, z: number) => new THREE.Vector3(x, y - CLIFF_TOP, z - oz);
+  const skin = 0.45; // m outside the room boxes (their own walls are 0.2)
+  const shell = (min: THREE.Vector3, max: THREE.Vector3, material: THREE.Material) => {
+    const mesh = new THREE.Mesh(new THREE.BoxGeometry(max.x - min.x, max.y - min.y, max.z - min.z), material);
+    mesh.position.addVectors(min, max).multiplyScalar(0.5);
+    group.add(mesh);
+  };
+  const glazingNorth = -(TOWER.drumRadius - 2); // the bridge starts inside the gallery's glazing
+  const glass = lambert(0x9fc4dc, glazing(7, '#6f9cc0', null));
+  for (const room of ROOMS.rooms) {
+    if (room.id === 'controlRoom') continue;
+    const min = local(room.min.x - skin, room.min.y - skin, room.min.z - skin);
+    const max = local(room.max.x + skin, room.max.y + skin, room.max.z + skin);
+    if (room.id === 'corridor') max.z = Math.min(max.z, glazingNorth);
+    shell(min, max, white);
+    // A grey roof cap, as the gallery's.
+    shell(new THREE.Vector3(min.x - 0.2, max.y, min.z - 0.2), new THREE.Vector3(max.x + 0.2, max.y + 0.35, max.z + 0.2), concrete);
+    // The lounge's window band, as the gallery's glazing.
+    if (room.id === 'lounge') {
+      const y = room.min.y - CLIFF_TOP;
+      shell(new THREE.Vector3(min.x - 0.05, y + 1.1, min.z - 0.05), new THREE.Vector3(max.x + 0.05, y + 3.3, max.z + 0.05), glass);
+    }
+  }
+  // The column under the lounge's chair: from the clifftop to the annexe's floor, clear of the flare's rim.
+  const chair = ROOMS.chair.pos;
+  const foot = local(chair.x, CLIFF_TOP, chair.z);
+  const height = chair.y - 0.5 - CLIFF_TOP;
+  const column = new THREE.Mesh(new THREE.CylinderGeometry(2.4, 2.8, height, 24), white);
+  column.position.set(foot.x, height / 2, foot.z);
+  group.add(column);
   return group;
 }
 
