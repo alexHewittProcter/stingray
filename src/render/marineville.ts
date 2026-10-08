@@ -188,10 +188,12 @@ function controlTower(white: THREE.Material, concrete: THREE.Material): THREE.Gr
 }
 
 /**
- * Phase 3 (M1 art, T4 rough-in; T5 dresses): what the tower's shell needs for Troy's rooms beyond the gallery, as plain
- * white volumes so the view from outside is right — the enclosed bridge the corridor runs in, out of the gallery's
- * north side and west, the Standby Lounge's annexe north of the drum, and the column under it that leg 1 of the
- * injector shaft runs down to the clifftop. Built in the tower's frame from sim/rooms.ts. render/rooms.ts hides it
+ * Phase 3 (M1 art; T4's rough-in, dressed by T5): what the tower's shell needs for Troy's rooms beyond the gallery,
+ * dressed to match the tower — the enclosed bridge the corridor runs in, out of the gallery's north side and west,
+ * white with a window band and a grey roof; the Standby Lounge's annexe north of the drum, a small drum of its own in
+ * the tower's orange-and-blue-grey harlequin under a glazed band and a white roof (TV_marineville_exterior_01); and the
+ * concrete column under the lounge's chair that leg 1 of the injector shaft runs down to the clifftop, with a flared
+ * collar under the annexe echoing the tower's. Built in the tower's frame from sim/rooms.ts. render/rooms.ts hides it
  * while the camera is in the rooms (its faces would otherwise stand in the doorways); from outside it is seen only
  * round the back of the drum, inland of it.
  */
@@ -201,34 +203,74 @@ function roomsExterior(white: THREE.Material, concrete: THREE.Material): THREE.G
   const oz = COAST_Z + TOWER.z; // world z of the tower's axis
   const local = (x: number, y: number, z: number) => new THREE.Vector3(x, y - CLIFF_TOP, z - oz);
   const skin = 0.45; // m outside the room boxes (their own walls are 0.2)
-  const shell = (min: THREE.Vector3, max: THREE.Vector3, material: THREE.Material) => {
-    const mesh = new THREE.Mesh(new THREE.BoxGeometry(max.x - min.x, max.y - min.y, max.z - min.z), material);
-    mesh.position.addVectors(min, max).multiplyScalar(0.5);
+  const add = (geometry: THREE.BufferGeometry, material: THREE.Material, at: THREE.Vector3) => {
+    const mesh = new THREE.Mesh(geometry, material);
+    mesh.position.copy(at);
     group.add(mesh);
+    return mesh;
   };
+  const slab = (min: THREE.Vector3, max: THREE.Vector3, material: THREE.Material) =>
+    add(new THREE.BoxGeometry(max.x - min.x, max.y - min.y, max.z - min.z), material, min.clone().add(max).multiplyScalar(0.5));
   const glazingNorth = -(TOWER.drumRadius - 2); // the bridge starts inside the gallery's glazing
-  const glass = lambert(0x9fc4dc, glazing(7, '#6f9cc0', null));
+  const roofGrey = lambert(ROOF_GREY);
+  const glassBand = (bays: number) => lambert(0x9fc4dc, glazing(bays, '#6f9cc0', null));
+
+  // The bridge: one white volume per corridor leg, a window band along it and a grey roof cap over it.
+  const lounge = ROOMS.rooms.find((r) => r.id === 'lounge')!;
   for (const room of ROOMS.rooms) {
-    if (room.id === 'controlRoom') continue;
-    const min = local(room.min.x - skin, room.min.y - skin, room.min.z - skin);
+    if (room.id !== 'corridor') continue;
+    const min = local(room.min.x - skin, room.min.y - skin - 0.6, room.min.z - skin);
     const max = local(room.max.x + skin, room.max.y + skin, room.max.z + skin);
-    if (room.id === 'corridor') max.z = Math.min(max.z, glazingNorth);
-    shell(min, max, white);
-    // A grey roof cap, as the gallery's.
-    shell(new THREE.Vector3(min.x - 0.2, max.y, min.z - 0.2), new THREE.Vector3(max.x + 0.2, max.y + 0.35, max.z + 0.2), concrete);
-    // The lounge's window band, as the gallery's glazing.
-    if (room.id === 'lounge') {
-      const y = room.min.y - CLIFF_TOP;
-      shell(new THREE.Vector3(min.x - 0.05, y + 1.1, min.z - 0.05), new THREE.Vector3(max.x + 0.05, y + 3.3, max.z + 0.05), glass);
-    }
+    max.z = Math.min(max.z, glazingNorth);
+    min.x = Math.max(min.x, local(lounge.max.x, 0, 0).x); // the west leg ends at the annexe
+    slab(min, max, white);
+    const y = room.min.y - CLIFF_TOP;
+    const long = max.x - min.x > max.z - min.z ? 'x' : 'z';
+    const length = long === 'x' ? max.x - min.x : max.z - min.z;
+    const band = long === 'x'
+      ? new THREE.BoxGeometry(length, 1.3, max.z - min.z + 0.1)
+      : new THREE.BoxGeometry(max.x - min.x + 0.1, 1.3, length);
+    add(band, glassBand(Math.max(2, Math.round(length / 1.6))), new THREE.Vector3((min.x + max.x) / 2, y + 1.65, (min.z + max.z) / 2));
+    slab(new THREE.Vector3(min.x - 0.2, max.y, min.z - 0.2), new THREE.Vector3(max.x + 0.2, max.y + 0.3, max.z + 0.2), roofGrey);
+    // A blue-grey fascia under the floor line, as the drum's lower edge.
+    slab(new THREE.Vector3(min.x - 0.05, min.y, min.z - 0.05), new THREE.Vector3(max.x + 0.05, min.y + 0.35, max.z + 0.05), lambert(0xb9c9d6));
   }
-  // The column under the lounge's chair: from the clifftop to the annexe's floor, clear of the flare's rim.
+
+  // The annexe: a drum round the lounge's box, harlequin below, a glazed band (on its south-west half, where the
+  // lounge's windows are; white on the bay side), a white sill and cornice, a roof.
+  const cx = (lounge.min.x + lounge.max.x) / 2;
+  const cz = (lounge.min.z + lounge.max.z) / 2;
+  const centre = local(cx, lounge.min.y, cz); // y: the lounge's floor
+  const r = Math.hypot((lounge.max.x - lounge.min.x) / 2, (lounge.max.z - lounge.min.z) / 2) + skin;
+  const skirt = 3.2; // m of harlequin under the floor
+  const drumHeight = skirt + 1.3;
+  const drum = add(new THREE.CylinderGeometry(r, r, drumHeight, 40, 1, true), lambert(0xd88a5a, harlequin(12, 3)),
+    new THREE.Vector3(centre.x, centre.y - skirt + drumHeight / 2, centre.z));
+  drum.name = 'annexe-drum';
+  add(new THREE.CircleGeometry(r, 40).rotateX(Math.PI / 2), roofGrey, new THREE.Vector3(centre.x, centre.y - skirt, centre.z));
+  add(new THREE.CylinderGeometry(r + 0.4, r + 0.4, 0.6, 40), white, new THREE.Vector3(centre.x, centre.y - skirt, centre.z));
+  add(new THREE.CylinderGeometry(r + 0.3, r + 0.3, 0.5, 40), white, new THREE.Vector3(centre.x, centre.y + 1.2, centre.z));
+  // The band: glass facing south and west (θ = 0 is +z, south; −π/2 is −x, west), white panels the rest of the way.
+  const bandY = centre.y + 1.45;
+  const bandH = 2.3;
+  const glassFrom = -Math.PI / 2 - 0.5;
+  const glassLength = Math.PI / 2 + 1.1;
+  add(new THREE.CylinderGeometry(r + 0.1, r + 0.1, bandH, 40, 1, true, glassFrom, glassLength), glassBand(14), new THREE.Vector3(centre.x, bandY + bandH / 2, centre.z));
+  add(new THREE.CylinderGeometry(r + 0.1, r + 0.1, bandH, 40, 1, true, glassFrom + glassLength, Math.PI * 2 - glassLength), white, new THREE.Vector3(centre.x, bandY + bandH / 2, centre.z));
+  const cornice = bandY + bandH;
+  add(new THREE.CylinderGeometry(r + 0.5, r + 0.5, 0.9, 40), white, new THREE.Vector3(centre.x, cornice + 0.45, centre.z));
+  add(new THREE.CylinderGeometry(r - 1.5, r + 0.3, 1.0, 40), white, new THREE.Vector3(centre.x, cornice + 1.4, centre.z));
+
+  // The column under the chair (leg 1 of the shaft): concrete, from the clifftop to a flared collar under the annexe.
   const chair = ROOMS.chair.pos;
   const foot = local(chair.x, CLIFF_TOP, chair.z);
-  const height = chair.y - 0.5 - CLIFF_TOP;
-  const column = new THREE.Mesh(new THREE.CylinderGeometry(2.4, 2.8, height, 24), white);
-  column.position.set(foot.x, height / 2, foot.z);
-  group.add(column);
+  const underside = centre.y - skirt;
+  const height = underside - 3 - foot.y;
+  add(new THREE.CylinderGeometry(2.4, 2.9, height, 24), concrete, new THREE.Vector3(foot.x, foot.y + height / 2, foot.z));
+  const collar = new THREE.LatheGeometry([
+    new THREE.Vector2(2.4, 0), new THREE.Vector2(3.4, 1.8), new THREE.Vector2(5.2, 2.8), new THREE.Vector2(5.2, 3.0), new THREE.Vector2(2.4, 3.0),
+  ], 32);
+  add(collar, new THREE.MeshLambertMaterial({ color: 0x9aa2a8, side: THREE.DoubleSide }), new THREE.Vector3(foot.x, underside - 3, foot.z));
   return group;
 }
 
