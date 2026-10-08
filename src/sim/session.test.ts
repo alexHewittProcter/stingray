@@ -66,7 +66,7 @@ describe('the seam (M7)', () => {
     expect(g.combat.t).toBeCloseTo(start.combat.t + 10, 9);
   });
 
-  it("refuses 'leave' 'Dock first' unless aboard, docked and raised; accepts it then (the ride up is T9's)", () => {
+  it("refuses 'leave' 'Dock first' unless aboard, docked and raised; accepts it then (the ride up, M6b — ride.test.ts)", () => {
     const leave = (g: GameState) => step(g, NO_INPUT, 'leave').launch.refusal;
     expect(leave(oceanStart(W))).toEqual({ control: 'leave', reason: REFUSAL.notDocked, age: 0 });
     expect(leave(controlRoom(W, ROOMS))).toEqual({ control: 'leave', reason: REFUSAL.notDocked, age: 0 });
@@ -81,7 +81,8 @@ describe('the seam (M7)', () => {
     for (const g of [standby(W), controlRoom(W, ROOMS)]) {
       expect(step(g, NO_INPUT, 'use')).toEqual(step(g));
     }
-    expect(step(standby(W), NO_INPUT, 'leave')).toEqual(step(standby(W)));
+    // An accepted 'leave' changes Troy alone (M6b: he rides up; ride.test.ts) — stepGame never sees it.
+    expect({ ...step(standby(W), NO_INPUT, 'leave'), troy: null }).toEqual({ ...step(standby(W)), troy: null });
   });
 
   it('walks Troy on foot, and the sub and machinery do not notice', () => {
