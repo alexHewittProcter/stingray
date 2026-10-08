@@ -57,8 +57,10 @@ still so the screenshot shows exactly the scripted moment.
 - a number — advance the sim that many seconds;
 - `cradle`, `engines`, `clamps`, `door` — press that launch control;
 - `use` — queue `'use'` (`E` on foot: sit in the chair when at it);
-- `leave` — queue `'leave'` (the panel's fifth control; refused *Dock first* unless aboard a docked, raised sub —
-  phase 3 T9 makes it ride back up);
+- `leave` — queue `'leave'` (the panel's fifth control, `5`; refused *Dock first* unless aboard a docked, raised sub
+  — accepted, Troy rides back up the shaft and stands up in the lounge, M6b);
+- `face=DEG` — Troy, on foot, turned in place to that heading (degrees, the sim's yaw: 0 north, 180 south); the camera
+  snaps. He stands up facing away from his chair, so the loop's witness turns him back to it before `use`;
 - `walk=X:Z` — Troy on foot at the walkable point nearest world (X, Z); the camera snaps;
 - `out=M` / `in=M` — the released sub on the tunnel's centreline M m in from the mouth, facing out / in;
 - `dock=M` — the released sub on the pen's axis M m south of the cradle, facing it; `dx=` `dy=` `dz=` `turn=` nudge it;
@@ -71,6 +73,36 @@ Troy walked to his chair, sits, and rides; vary the last number (seconds into th
 ```
 ?start=control&menu=0&hold&script=walk=0:-1275.5,1,use,N
 ```
+
+### The way back up (T9, M6b)
+
+Aboard the standby sub (docked and raised), `leave` and the chair carries Troy back up the shaft over the same 10 s:
+the ride camera sets off on the pen camera, follows the chair up the shaft (from above it, looking back down at him
+rising), and arrives on the follow camera's pose in the lounge, Troy standing in front of his chair. Vary the last
+number for each shot (seconds into the ascent):
+
+```
+?start=pen&menu=0&hold&script=leave,N
+```
+
+| N | What it shows |
+|---|---|
+| — (`?start=pen&menu=0`) | the panel's fifth control `5 · LEAVE SEAT` lit amber, READY |
+| `0.5` | the chair rising out of the cabin through the open roof hatch (add `&view=hatch` for the housing's angle; `0.2` catches Troy in the hatch) |
+| `1.5` | in the tube above the pen hall, the chair coming up toward the camera |
+| `5` | the level run under the grounds, the chair facing up-shaft (south) |
+| `9.5` – `9.8` | arriving in the lounge: out of the bore onto the follow camera's pose |
+| `11` | standing in front of the chair, the follow camera, the on-foot legend |
+
+`?start=pen&menu=0&script=leave,12` runs it whole (Troy left standing in the lounge). The loop repeats — up, turn
+back to the chair, sit, and down again to lock in:
+
+```
+?start=pen&menu=0&hold&script=leave,12,face=0,use,12
+```
+
+At sea it is refused — the panel shows the fifth control red with *DOCK FIRST* for 3 s, as phase 2's refusals:
+`?start=ocean&menu=0&script=leave,1`.
 
 ### The full loop (T7) — control room to open water in one page
 
@@ -107,4 +139,5 @@ Phase 2's launch alone: `?script=cradle,8.2,engines,2.2,clamps,1` (starts in the
 | `rooms()` | the rooms' data (`src/sim/rooms.ts`) |
 | `walkTo(x, z)` | Troy on foot at the walkable point nearest (x, z); the camera snaps |
 | `use()` | queue `'use'` |
-| `leave()` | queue `'leave'` |
+| `leave()` | queue `'leave'` (M6b: aboard, docked and raised, ride back up) |
+| `face(degrees)` | Troy, on foot, turned in place to that heading |
