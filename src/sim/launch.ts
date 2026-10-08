@@ -7,7 +7,9 @@
 
 import { type CombatState, initialCombatState, stepCombat } from './combat';
 import { confine, northOfFace } from './interior';
+import { seatOf } from './rooms';
 import { type SubInput, type SubState, forwardOf, initialSubState, speedOf, stepSub } from './sub';
+import { type TroyState, aboard } from './troy';
 import { TUNING as T } from './tuning';
 import type { Vec3 } from './vec3';
 import { type Env, type Interior, MARINE_DOOR } from './world';
@@ -16,8 +18,12 @@ export type LaunchControl = 'cradle' | 'engines' | 'clamps' | 'door';
 
 export const LAUNCH_CONTROLS: readonly LaunchControl[] = Object.freeze(['cradle', 'engines', 'clamps', 'door']);
 
+/** Phase 3, M7: everything Game.press() can queue — the launch controls, Troy's use (E) and leaving the seat (5). */
+export type Press = LaunchControl | 'use' | 'leave';
+
 export interface Refusal {
-  control: LaunchControl;
+  /** Phase 3 widens this to the Press union (M6: 'leave' refused "Dock first"). */
+  control: Press;
   reason: string;
   /** Seconds since the press was refused. */
   age: number;
@@ -39,10 +45,19 @@ export interface LaunchState {
   engineStart: number;
 }
 
+/** Phase 3, M5: the HUD's flavour line; `until` is in combat.t seconds (the HUD compares, the sim does not time it). */
+export interface HudLines {
+  line: { text: string; until: number } | null;
+}
+
 export interface GameState {
   sub: SubState;
   combat: CombatState;
   launch: LaunchState;
+  /** Phase 3, M7: Troy — aboard in every phase-2 starting state; stepGame passes it through untouched. */
+  troy: TroyState;
+  /** Phase 3, M5/M7: passed through untouched by stepGame. */
+  hud: HudLines;
 }
 
 /** L3's refusal reasons, in the table's words. */
@@ -58,6 +73,9 @@ export const REFUSAL = Object.freeze({
   notLinedUp: 'Not lined up',
   onCradle: 'Still on the cradle',
   outOfRange: 'Out of door range',
+  // Phase 3 (M6): launch presses need a pilot; leaving the seat needs Stingray docked and raised.
+  notAboard: 'Not aboard',
+  notDocked: 'Dock first',
 });
 
 // Timed motions land on their end value when this close, so N steps of 1/60 s reach a whole-second travel
@@ -81,6 +99,8 @@ export function standby(env: Env, combat?: CombatState): GameState {
     launch: {
       cradle: 0, cradleDir: 0, engines: 'off', clamps: 'locked', door: 0, doorDir: 0, refusal: null, engineStart: 0,
     },
+    troy: aboard(seatOf(c)),
+    hud: { line: null },
   };
 }
 
@@ -90,6 +110,8 @@ export function oceanStart(env: Env, combat?: CombatState): GameState {
     sub: initialSubState(env),
     combat: freshCombat(env, combat),
     launch: released({ door: 0, doorDir: 0 }),
+    troy: aboard(seatOf(env.marineville.interior.cradle)),
+    hud: { line: null },
   };
 }
 
@@ -123,7 +145,7 @@ export function stepGame(g: GameState, input: SubInput, pressed: LaunchControl |
   // Weapons are safe inside Marineville; missiles always meet the full world, door included (L2).
   const fire = input.fire && !northOfFace(sub.pos);
   const combat = stepCombat(g.combat, sub, fire, dt, env);
-  return { sub, combat, launch };
+  return { sub, combat, launch, troy: g.troy, hud: g.hud };
 }
 
 // ---- The controls (L3's table) ----
