@@ -690,7 +690,7 @@ function loungeMaterials(mats: ControlMaterials) {
     quilt: tiled(quiltTexture(), 0xb3242a),
     hazard: tiled(hazardTexture(), 0xe9b52c),
     plinth: lambert(0x5d646b),
-    bore: lambert(0x8c959c, { emissive: 0x23282d }),
+    bore: lambert(0x5d666e, { emissive: 0x14171a }),
     boreDark: lambert(0x1c2024),
     boreLight: new THREE.MeshBasicMaterial({ color: 0xf6f0d8 }),
     lampRed: new THREE.MeshBasicMaterial({ color: 0xff4a36 }),
