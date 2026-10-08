@@ -127,3 +127,16 @@ describe('walk=x:z (phase 3, M10)', () => {
     expect(seconds).toEqual([2]);
   });
 });
+
+describe('use (phase 3, M10)', () => {
+  it("queues 'use' through the handle's use(), in order with the other words", () => {
+    const log: string[] = [];
+    const handle = {
+      use: () => log.push('use'),
+      walkTo: () => log.push('walk'),
+      advance: (s: number) => log.push(String(s)),
+    } as unknown as DebugHandle;
+    runScript('walk=1:2,use,1', handle);
+    expect(log).toEqual(['walk', 'use', '1']);
+  });
+});
