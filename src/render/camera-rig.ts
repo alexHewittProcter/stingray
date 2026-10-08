@@ -3,6 +3,7 @@ import { confineCamera, northOfFace } from '../sim/interior';
 import type { LaunchState } from '../sim/launch';
 import type { Vec3 } from '../sim/vec3';
 import type { World } from '../sim/world';
+import { walkBoom } from './boom';
 import { type ChaseTarget, createChaseCamera } from './chase-camera';
 import { tunnelTightness } from './indoors';
 import { type OrbitView, orbitPosition } from './orbit';
@@ -111,19 +112,9 @@ export function createCameraRig(camera: THREE.PerspectiveCamera, world: World): 
     const p = camera.position;
     if (!northOfFace(p)) return;
     const interior = world.marineville.interior;
-    const from = new THREE.Vector3(sub.x, sub.y, sub.z);
-    if (confineCamera(from, interior).normal === null) {
-      const span = p.distanceTo(from);
-      const steps = Math.ceil(span / BOOM_STEP);
-      const probe = new THREE.Vector3();
-      for (let i = 1; i <= steps; i++) {
-        probe.lerpVectors(from, p, i / steps);
-        if (confineCamera(probe, interior).normal !== null) {
-          p.lerpVectors(from, p, (i - 1) / steps);
-          break;
-        }
-      }
-    }
+    // M4: the boom walk is boom.ts's, shared with the follow camera; here its confine is phase 2's Interior.
+    const walked = walkBoom(sub, p, (q) => confineCamera(q, interior).normal === null, BOOM_STEP);
+    p.set(walked.x, walked.y, walked.z);
     const held = confineCamera(p, interior).pos;
     p.set(held.x, held.y, held.z);
   }

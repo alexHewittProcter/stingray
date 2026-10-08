@@ -82,6 +82,17 @@ export const TUNING = {
   walkTurnRate: 540 * DEG, // rad/s — he turns to face his movement
   walkTurnSlow: 0.5, // fraction of the target speed while the wanted facing is more than 90° away
   walkStride: 1.4, // m per full gait cycle (two footfalls)
+
+  // The on-foot follow camera (phase 3, M4) — presentation numbers, kept here with the rest (render/follow-camera.ts)
+  followBoom: 3.6, // m from the pivot to the camera, before the orbit's zoom and the walls
+  followPivotRise: 1.5, // m above Troy's feet: what the camera swings about and looks at
+  followPitch: 18 * DEG, // the boom's angle above the horizontal behind him (the view looks 18° down)
+  followFov: 60, // degrees
+  followYawLag: 0.6, // s — the boom's heading follows Troy's facing with this lag, only while he walks
+  followPivotRate: 10, // 1/s — the pivot's spring toward Troy (≈ 0.3 m behind at a walk)
+  followBoomOutRate: 4, // m/s — a boom the walls shortened lengthens again no faster than this (shortening is instant)
+  followWallInset: 0.35, // m the camera is held inside the room's box and clear of props (M4: ≥ 0.3)
+  followNear: 0.2, // m — the near plane on foot, so its corners stay inside followWallInset of a wall
 } as const;
 
 export type Tuning = typeof TUNING;
