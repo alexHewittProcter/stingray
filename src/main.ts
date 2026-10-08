@@ -3,9 +3,11 @@ import { createAudio } from './audio/audio';
 import { clampAdvance, installDebugHandle, runScript, viewParam } from './debug';
 import { dockView } from './game/dock';
 import { Game, startState } from './game/game';
+import { mappingOf } from './game/mode';
 import { CLOSED, type MenuEvent, type MenuState, Swallow, menuEventFor, menuOn, openMenu, titleOnLoad } from './game/menu';
 import { initialMemory, panelView, remember } from './game/panel';
 import { pressFor } from './input/pilot';
+import { troyPressFor, yawOfView } from './input/troy';
 import { listenKeyboard } from './input/raw';
 import { createStepper, frameTimes } from './loop';
 import { addCaustics } from './render/caustics';
@@ -13,15 +15,18 @@ import { createCameraRig } from './render/camera-rig';
 import { createCombatView } from './render/combat-view';
 import { createCraft } from './render/craft';
 import { createDockGuide } from './render/dock-guide';
+import { createFollowCamera, troyAt } from './render/follow-camera';
 import { createFpsReadout } from './render/fps';
 import { createHud } from './render/hud';
 import { oceanInView } from './render/indoors';
 import { createLandmarks } from './render/landmarks';
 import { createLaunchPanel } from './render/launch-panel';
-import { initialLegend, legendOn, legendTick } from './render/legend';
+import { initialLegend, legendOn, legendSituation, legendTick } from './render/legend';
 import { createMarineville } from './render/marineville';
 import { createMenu } from './render/menu';
-import { initialOrbit, orbitBy, orbitDrag, orbitFromParam, orbitRecenter, orbitRelease, orbitTick, orbitView, orbitZoom, KEY_RATE } from './render/orbit';
+import {
+  initialOrbit, orbitBy, orbitDrag, orbitFromParam, orbitRecenter, orbitRelease, orbitTakeYaw, orbitTick, orbitView, orbitZoom, KEY_RATE,
+} from './render/orbit';
 import { createMotes } from './render/motes';
 import { createParticles } from './render/particles';
 import { createPen } from './render/pen';
@@ -81,6 +86,10 @@ pen.reflect(craft.group);
 const tunnel = createTunnel(world.marineville.interior);
 scene.add(tunnel.root);
 const rig = createCameraRig(camera, world);
+// Phase 3 (M4): Troy's follow camera has the view whenever the session mode is 'onFoot'; the rig keeps updating in
+// every mode (its springs stay warm) and has the view otherwise — riding too, until T7's ride camera.
+const follow = createFollowCamera(camera, ROOMS);
+const RIG_NEAR = camera.near;
 // Troy's rooms and Troy (phase 3, T1 greybox): the rooms are outside the ocean side and drawn only while the camera is
 // in them (render/rooms.ts); their lamp stays in the scene and dims. Troy is drawn while he is on foot.
 const rooms = createRooms(ROOMS);
@@ -96,8 +105,8 @@ const viewFrom = viewNumbers
 const hud = createHud(document.body);
 
 // One scene, one world, one GameState for the session (game.ts); the mode is derived from it and changes only
-// what is drawn. L4: the game starts in standby in Pen 3; ?start=ocean (or ?at=…) starts at phase 1's spawn.
-// R returns to standby from anywhere, either way.
+// what is drawn. L4: the game starts in standby in Pen 3 (the control room from T8); ?start=control and ?start=ocean
+// (or ?at=…) start there instead. Phase 3 (M3, M9): R returns to the control room from anywhere.
 const game = new Game(world, startState(world, params));
 
 // The key legend's timing (T8, render/legend.ts).
@@ -113,11 +122,17 @@ const dockGuide = createDockGuide(document.body);
 // a double-click re-centres. ?orbit=yawDeg,pitchDeg[,zoom] (witnessing) starts orbited.
 let orbit = orbitFromParam(params.get('orbit')) ?? initialOrbit();
 
+// M3: which keys press what is the session mode's when the key goes down — aboard 1–4 are the launch controls; on
+// foot E is 'use' (aboard it stays climb, read by toSubInput); riding nothing presses.
 const keyboard = listenKeyboard(window, (code) => {
-  const control = pressFor(code);
-  if (control) game.press(control);
+  const mapping = mappingOf(game.mode);
+  const press = mapping === 'aboard' ? pressFor(code) : mapping === 'onFoot' ? troyPressFor(code) : null;
+  if (press) game.press(press);
   if (code === 'KeyC') orbit = orbitRecenter(orbit);
 });
+// M4: the orbit is reset to centre whenever play goes onto or off foot, so no on-foot offset carries over to the
+// sub's views or back.
+let wasOnFoot = game.mode === 'onFoot';
 // The legend (T9, render/legend.ts): back whenever no key has been touched for a moment, gone on the next press;
 // H pins it. Keys only — the mouse does not count. (Menu keys never get here: the menu's listener keeps them.)
 window.addEventListener('keydown', (e) => {
@@ -147,7 +162,8 @@ function menuEvent(e: MenuEvent): void {
 }
 function showMenu(): void {
   audio.setPaused(menu.kind === 'pause');
-  menuView.update(menu, audio.muted);
+  // M9: the Controls page shows the current mode's card.
+  menuView.update(menu, audio.muted, legendSituation(game.mode, game.state.launch.clamps));
 }
 window.addEventListener('keydown', (e) => {
   if (swallow.down(e.code)) {
@@ -192,6 +208,7 @@ oceanSide.push(combatView.group);
 addCaustics(scene);
 
 const RETICLE_RANGE = 150; // metres ahead of the nose
+const lookDir = new THREE.Vector3();
 const aim = new THREE.Vector3();
 
 // ?at=x,y,z&yaw=degrees&pitch=degrees starts the sub there (at rest) — for inspecting a view or taking a screenshot.
@@ -216,17 +233,33 @@ function draw(alpha: number, frameSeconds: number): void {
   const panel = panelView(g, panelMemory, world.marineville.interior);
   const dock = dockView(g, panelMemory, world.marineville.interior);
   const target = craft.update(game.lastState.sub, g.sub, alpha, game.input, frameSeconds, g.launch.engines !== 'off', g.launch.clamps === 'locked');
-  // The orbit: keys while held, the drive-away return, nothing while a menu is up.
+  const mode = game.mode;
+  const onFoot = mode === 'onFoot';
+  const enteredFoot = onFoot && !wasOnFoot;
+  if (onFoot !== wasOnFoot) orbit = initialOrbit();
+  wasOnFoot = onFoot;
+  // The orbit: keys while held, the drive-away (on foot, walk-away) return, nothing while a menu is up.
   if (menu.kind !== null) {
     orbit = orbitRelease(orbit);
     drag = null;
   } else {
     const held = keyboard.held;
-    const swing = (held.has('KeyJ') ? 1 : 0) - (held.has('KeyL') ? 1 : 0);
-    const lift = (held.has('KeyI') ? 1 : 0) - (held.has('KeyK') ? 1 : 0);
+    // M3: on foot the arrows orbit too (aboard ↑ ↓ are dive / climb and ← → nothing).
+    const arrows = onFoot ? { left: held.has('ArrowLeft'), right: held.has('ArrowRight'), up: held.has('ArrowUp'), down: held.has('ArrowDown') } : null;
+    const swing = (held.has('KeyJ') || arrows?.left ? 1 : 0) - (held.has('KeyL') || arrows?.right ? 1 : 0);
+    const lift = (held.has('KeyI') || arrows?.up ? 1 : 0) - (held.has('KeyK') || arrows?.down ? 1 : 0);
     if (swing !== 0 || lift !== 0) orbit = orbitBy(orbit, swing * KEY_RATE * frameSeconds, lift * KEY_RATE * frameSeconds);
     const i = game.input;
-    orbit = orbitTick(orbit, frameSeconds, i.throttle !== 0 || i.yaw !== 0 || i.pitch !== 0);
+    // M4: on foot the ease-back is fed "Troy is moving", where aboard it is the sub's driving input.
+    const moving = onFoot ? g.troy.speed > 0 : i.throttle !== 0 || i.yaw !== 0 || i.pitch !== 0;
+    orbit = orbitTick(orbit, frameSeconds, moving);
+    // M4: walking, he goes the way the camera looks — so the orbit's yaw becomes the follow camera's heading (the pose
+    // does not move) rather than an offset its heading would chase him round with (orbit.ts orbitTakeYaw).
+    if (onFoot && g.troy.speed > 0) {
+      const taken = orbitTakeYaw(orbit);
+      orbit = taken.orbit;
+      follow.turn(taken.yaw);
+    }
   }
   const penView = {
     cradle: game.lastState.launch.cradle + (g.launch.cradle - game.lastState.launch.cradle) * alpha,
@@ -234,17 +267,30 @@ function draw(alpha: number, frameSeconds: number): void {
     craftYaw: target.yaw,
     guide: dock === null ? 'off' as const : dock.ready ? 'ready' as const : 'on' as const,
   };
-  if (game.jumped) {
-    rig.snap(target, g.launch.clamps, orbitView(orbit));
+  // The rig runs in every mode (M4: its springs stay warm); on foot the orbit is Troy's, not the sub's.
+  const view = orbitView(orbit);
+  camera.near = RIG_NEAR;
+  const jumped = game.jumped;
+  if (jumped) {
+    rig.snap(target, g.launch.clamps, onFoot ? undefined : view);
     pen.snap(penView);
     game.jumped = false;
   } else {
-    rig.update(target, g.launch.clamps, frameSeconds, orbitView(orbit));
+    rig.update(target, g.launch.clamps, frameSeconds, onFoot ? undefined : view);
+  }
+  if (onFoot) {
+    // M4: the follow camera, written after the rig. It snaps on jumps (R, the menu, ?start=, walkTo) and on coming onto
+    // foot (standing up — T7/T9 may blend that).
+    const troyNow = troyAt(game.lastState.troy, g.troy, alpha);
+    if (jumped || enteredFoot) follow.snap(troyNow, view);
+    else follow.update(troyNow, frameSeconds, view);
   }
   if (viewFrom) {
     camera.position.copy(viewFrom[0]);
     camera.lookAt(viewFrom[1]);
   }
+  // M3: the drawn camera's yaw, for the next steps' on-foot mapping (W = away from the camera).
+  game.cameraYaw = yawOfView(camera.getWorldDirection(lookDir), game.cameraYaw);
   rooms.update(camera);
   troy.pose(g.troy, alpha, game.lastState.troy);
   pen.update(camera, penView, frameSeconds, elapsed);
@@ -262,7 +308,9 @@ function draw(alpha: number, frameSeconds: number): void {
   launchPanel.update(panel);
   dockGuide.update(dock);
   legend = legendTick(legend, frameSeconds, { held: keyboard.held.size > 0, menu: menu.kind !== null });
-  hud.showLegend(legend.shown, g.launch.clamps === 'locked' ? 'docked' : 'driving');
+  // M9: the card is the mode's; the sub's readouts (and the reticle) show only aboard.
+  hud.showLegend(legend.shown, legendSituation(mode, g.launch.clamps));
+  hud.showReadouts(mode === 'piloting' || mode === 'launch');
 
   const s = g.sub;
   const home = world.marineville.tunnelMouth;
@@ -364,6 +412,7 @@ installDebugHandle({
   },
   troy: () => game.state.troy,
   rooms: () => ROOMS,
+  walkTo: (x, z) => game.walkTo(x, z),
 });
 
 window.addEventListener('resize', () => {

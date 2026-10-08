@@ -2,6 +2,9 @@ import { describe, expect, it } from 'vitest';
 import { type GameState, REFUSAL, oceanStart, standby } from '../sim/launch';
 import type { Vec3 } from '../sim/vec3';
 import { COAST_Z, FIXED_DT as DT, createWorld } from '../sim/world';
+import { ROOMS } from '../sim/rooms';
+import { controlRoom } from '../sim/session';
+import { onFoot } from '../sim/troy';
 import { Game } from './game';
 import { type Lamp, MODE_HOLD, type PanelMemory, type PanelView, initialMemory, panelView, remember } from './panel';
 
@@ -135,9 +138,10 @@ describe('the launch panel through a full launch (L6)', () => {
     expect(v.controls.map((c) => c.control)).toEqual(['door']);
     expect(v.controls[0]!.lamp).toBe('green');
 
-    // R: back to standby — docked, and the prompts stay gone for the session.
+    // Return to Pen 3 (phase 3: no longer R, which goes to the control room — M9): back to standby — docked, and
+    // the prompts stay gone for the session.
     s.game.override = {};
-    s.game.restartNow();
+    s.game.toStandby();
     s.run(DT);
     v = s.view;
     expect(s.memory).toEqual({ shown: 'launch', trip: 'out', launched: true });
@@ -255,13 +259,53 @@ describe('the panel at sea (L6)', () => {
     expect(m.shown).toBe('launch');
   });
 
-  it('?start=ocean begins on the way home with no prompts; prompts begin after R until a launch reaches the sea', () => {
+  // Phase 3 (M7's amendment list, M9): R now goes to the control room, where no panel shows; Return to Pen 3
+  // (toStandby) is the way to standby, and the prompts begin there.
+  it('?start=ocean begins on the way home with no prompts; after R no panel; prompts begin in standby until a launch reaches the sea', () => {
     const s = new Session(oceanStart(W));
     expect(s.memory).toEqual({ shown: 'piloting', trip: 'home', launched: false });
     s.game.restartNow();
     s.run(DT);
+    expect(s.view).toMatchObject({ controls: [], prompt: null, status: null, refusal: null });
+    s.game.toStandby();
+    s.run(DT);
     expect(s.view.prompt).toBe('Press 1 — lower the cradle');
     expect(s.view.status).toBe('STINGRAY ON STANDBY — PEN 3');
+  });
+});
+
+describe('the panel by session mode (phase 3, M9)', () => {
+  it('is hidden while Troy is on foot — no controls, status or prompt — and phase 2\'s once he is aboard', () => {
+    const s = new Session(controlRoom(W, ROOMS));
+    expect(s.memory.shown).toBe('offBoard');
+    s.run(1);
+    expect(s.view).toMatchObject({ controls: [], prompt: null, status: null, refusal: null });
+    // Aboard in the pen (as lock-in will leave him, T7): the standby panel, z-based as phase 2's.
+    s.game.toStandby();
+    s.run(DT);
+    expect(s.memory.shown).toBe('launch');
+    expect(s.view.controls.map((c) => c.key)).toEqual(['1', '2', '3', '4']);
+    expect(s.view.prompt).toBe('Press 1 — lower the cradle');
+    // And off again on R.
+    s.game.restartNow();
+    s.run(DT);
+    expect(s.memory.shown).toBe('offBoard');
+    expect(s.view.controls).toEqual([]);
+  });
+
+  it('is hidden while he rides the chair', () => {
+    const riding = { ...standby(W), troy: { ...onFoot(ROOMS.start), where: 'riding' as const } };
+    expect(initialMemory(riding).shown).toBe('offBoard');
+    expect(panelView(riding, initialMemory(riding), I).controls).toEqual([]);
+  });
+
+  it('a press refused "Not aboard" (a debug press on foot) shows its control and reason briefly, as phase 2\'s refusals do', () => {
+    const s = new Session(controlRoom(W, ROOMS));
+    s.press('cradle');
+    expect(s.view.controls.map((c) => c.control)).toEqual(['cradle']);
+    expect(s.view.refusal).toEqual({ control: 'cradle', reason: REFUSAL.notAboard });
+    s.run(3.1);
+    expect(s.view.controls).toEqual([]);
   });
 });
 
