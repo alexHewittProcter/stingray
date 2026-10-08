@@ -1,9 +1,9 @@
 import * as THREE from 'three';
 import { describe, expect, it } from 'vitest';
-import { CONTROL_ROOM_PROPS, CORRIDOR_PROPS, LOUNGE_PROPS, ROOMS, SHAFT_OPEN_TOP, type Box } from '../sim/rooms';
+import { CONTROL_ROOM_PROPS, CORRIDOR_PROPS, LOUNGE_PROPS, ROOMS, SHAFT_OPEN_TOP, SHAFT_RADIUS, type Box } from '../sim/rooms';
 import { CHAIR_FOOTPLATE_Y, CHAIR_SEAT, createInjectorChair } from './injector-chair';
 import { createMarineville } from './marineville';
-import { BORE_CAP_NAME, BORE_RADIUS, INJECTOR_CHAIR_NAME, ROOMS_EXTERIOR_NAME, createRooms } from './rooms';
+import { BORE_RADIUS, INJECTOR_CHAIR_NAME, ROOMS_EXTERIOR_NAME, createRooms } from './rooms';
 import { TROY_SEAT } from './troy';
 
 // What you see is what you hit, in the control room (M1 art, Global constraints "art respects colliders"): the drawn
@@ -174,15 +174,15 @@ describe('the corridor and the lounge (M1 art)', () => {
     }
   });
 
-  it("leaves the bore open: no floor drawn across it, and its throat runs SHAFT_OPEN_TOP down to the tube's cap", () => {
+  it("leaves the bore open: no floor drawn across it, and its throat runs SHAFT_OPEN_TOP down into the tube — no cap (T7)", () => {
     const c = ROOMS.chair.pos;
     const across = shell.filter((p) => Math.hypot(p.x - c.x, p.z - c.z) < BORE_RADIUS - 0.1 && p.y > c.y - SHAFT_OPEN_TOP && p.y < c.y + 0.5);
     expect(across.slice(0, 3)).toEqual([]);
     const throat = shell.filter((p) => on(Math.hypot(p.x - c.x, p.z - c.z), BORE_RADIUS) && p.y < c.y - 0.5);
     expect(Math.min(...throat.map((p) => p.y))).toBeCloseTo(c.y - SHAFT_OPEN_TOP, 3);
-    const cap = view.group.getObjectByName(BORE_CAP_NAME)!;
-    expect(cap).toBeDefined();
-    expect(new THREE.Box3().setFromObject(cap).max.y).toBeLessThan(c.y - SHAFT_OPEN_TOP);
+    // T7 drew the rest of the shaft (render/shaft.ts) and removed the stub's dark cap: nothing closes the tube.
+    const closing = shell.filter((p) => Math.hypot(p.x - c.x, p.z - c.z) < SHAFT_RADIUS - 0.1 && p.y < c.y - SHAFT_OPEN_TOP - 1.3); // below the flare
+    expect(closing.slice(0, 3)).toEqual([]);
   });
 
   it('keeps each to a modest number of draw calls', () => {
