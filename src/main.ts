@@ -42,7 +42,7 @@ import { createTunnel } from './render/tunnel';
 import { updateScenery } from './render/sway';
 import { targetsLeft } from './sim/combat';
 import { INTERACTABLES } from './sim/interactables';
-import { legsOf, rideTimeAt } from './sim/ride';
+import { legsOf, rideTimeAt, standPoint } from './sim/ride';
 import { ROOMS, SEAT_RISE, SHAFT_RUN_Y, shaftLength } from './sim/rooms';
 import { TUNING } from './sim/tuning';
 import { forwardOf, speedOf } from './sim/sub';
@@ -123,7 +123,30 @@ let hatch = 0;
 /** The camera as last drawn, for the ride's hold (M4: "the camera stays in the lounge for the chair's first 1.5 s"). */
 const drawnPose: CameraPose = { pos: new THREE.Vector3(), quat: new THREE.Quaternion(), fov: camera.fov };
 let wasRiding = false;
+/** M6b: the ride just ended was the way back up — Troy stands up in front of the chair. */
+let wasRidingUp = false;
 let drawnOnce = false;
+/**
+ * M6b, M4 "Going up reverses it": the follow camera's pose as Troy stands up — at the stand point, its heading the
+ * chair's (so it looks at him standing in front of the chair, as it looked at him walking up to sit). The ascent's
+ * ride camera ends on it (its reversed hold) and the follow camera takes over from it: no cut.
+ */
+const STAND_UP = { pos: standPoint(ROOMS), yaw: ROOMS.chair.yaw, speed: 0 };
+const standUpPose: CameraPose = { pos: new THREE.Vector3(), quat: new THREE.Quaternion(), fov: camera.fov };
+/** Set the follow camera standing Troy up and read its pose, leaving the drawn camera (the rig's output) as it was. */
+function standUpView(): CameraPose {
+  const keep = { pos: camera.position.clone(), quat: camera.quaternion.clone(), fov: camera.fov, near: camera.near };
+  follow.snap(STAND_UP);
+  standUpPose.pos.copy(camera.position);
+  standUpPose.quat.copy(camera.quaternion);
+  standUpPose.fov = camera.fov;
+  camera.position.copy(keep.pos);
+  camera.quaternion.copy(keep.quat);
+  camera.fov = keep.fov;
+  camera.near = keep.near;
+  camera.updateProjectionMatrix();
+  return standUpPose;
+}
 // Witnessing (debug): ?view=x,y,z,lookX,lookY,lookZ fixes the camera there, ignoring the rig; ?view=control,
 // corridor, lounge, shaft or hatch are the presets (debug.ts VIEW_PRESETS, M10; docs/witnessing.md).
 const viewNumbers = viewParam(params.get('view'));
@@ -313,18 +336,25 @@ function draw(alpha: number, frameSeconds: number): void {
   const troyNow = troyAt(game.lastState.troy, g.troy, alpha);
   if (onFoot) {
     // M4: the follow camera, written after the rig. It snaps on jumps (R, the menu, ?start=, walkTo) and on coming onto
-    // foot (standing up — T9 may blend that).
-    if (jumped || enteredFoot) follow.snap(troyNow, view);
+    // foot. Standing up at the end of the ascent (M6b) the ride camera has already arrived on this very pose (its
+    // reversed hold, standUpView), so the hand-over is not a cut.
+    if (enteredFoot && wasRidingUp && !jumped) follow.snap({ ...troyNow, yaw: STAND_UP.yaw }, view);
+    else if (jumped || enteredFoot) follow.snap(troyNow, view);
     else follow.update(troyNow, frameSeconds, view);
   }
   // M4 "Transitions": riding, the ride camera has the view — written after the rig, whose output it blends into on
-  // arrival. It holds from the pose last drawn (a jump straight into a ride holds from above the bore).
+  // arrival. It holds from the pose last drawn (a jump straight into a ride holds from above the bore). M6b, "Going up
+  // reverses it": the ascent is the same camera run on the descent's clock backwards — it sets off from the rig's
+  // output (the pen camera), follows the chair up the shaft, and ends on the follow camera's stand-up pose.
+  // rideTime is always the descent's clock (rideTimeAt of where the chair is), whichever way it is going.
   const rideTime = riding ? rideTimeNow(alpha) : 0;
+  const ridingUp = riding && g.troy.rideDir === 'up';
   if (riding) {
-    if (!wasRiding) rideCamera.begin(jumped || !drawnOnce ? null : drawnPose);
+    if (!wasRiding) rideCamera.begin(ridingUp ? standUpView() : jumped || !drawnOnce ? null : drawnPose);
     camera.near = TUNING.followNear;
     rideCamera.update(rideTime);
   }
+  wasRidingUp = ridingUp; // read above, on the frame he comes onto foot
   wasRiding = riding;
   if (viewFrom) {
     camera.position.copy(viewFrom[0]);
@@ -342,7 +372,8 @@ function draw(alpha: number, frameSeconds: number): void {
   // breath) and, on foot, fades when the camera is on top of him.
   seatChairAndTroy(g.troy.where, troyNow);
   troy.pose(g.troy, alpha, game.lastState.troy, { dt: frameSeconds, camera, snap: jumped, place: g.troy.where === 'onFoot' });
-  // M1: the roof hatch, open while the chair is on the last leg.
+  // M1: the roof hatch, open while the chair is on the last leg — on the way down its last stretch, on the way up (M6b)
+  // its first (rideTime is the descent's clock either way).
   const hatchWant = riding && rideTime >= LAST_LEG_TIME ? 1 : 0;
   hatch = jumped ? hatchWant : hatch + Math.sign(hatchWant - hatch) * Math.min(Math.abs(hatchWant - hatch), frameSeconds / HATCH_SECONDS);
   craft.setHatch(hatch * hatch * (3 - 2 * hatch));
@@ -514,6 +545,10 @@ installDebugHandle({
   walkTo: (x, z) => game.walkTo(x, z),
   use: () => game.press('use'),
   leave: () => game.press('leave'),
+  face: (degrees) => {
+    const t = game.state.troy;
+    if (t.where === 'onFoot') game.walkTo(t.pos.x, t.pos.z, (degrees * Math.PI) / 180);
+  },
 });
 
 window.addEventListener('resize', () => {

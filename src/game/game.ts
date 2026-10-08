@@ -134,12 +134,13 @@ export class Game {
 
   /**
    * Debug (M10's walkTo, ?script= walk=x:z): Troy on foot at the walkable point nearest (x, z), keeping his facing if
-   * he was on foot (else the start's); the sub, the machinery and combat left as they are. A jump for the camera
+   * he was on foot (else the start's) unless `facing` is given (the ?script= word face=, M6b's witness turning him back to
+   * the chair after he stands up); the sub, the machinery and combat left as they are. A jump for the camera
    * (it snaps), but no latch — as place(), the witness scripts hold keys across it.
    */
-  walkTo(x: number, z: number): void {
+  walkTo(x: number, z: number, facing?: number): void {
     const t = this.current.troy;
-    const yaw = t.where === 'onFoot' ? t.yaw : ROOMS.start.yaw;
+    const yaw = facing ?? (t.where === 'onFoot' ? t.yaw : ROOMS.start.yaw);
     this.set({ ...this.current, troy: onFoot({ pos: nearestWalkable(x, z, ROOMS), yaw }) });
   }
 
