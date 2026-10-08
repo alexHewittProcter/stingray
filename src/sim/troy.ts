@@ -45,6 +45,7 @@ export function aboard(seat: Vec3): TroyState {
 }
 
 const TWO_PI = 2 * Math.PI;
+const ARRIVE = 1e-9;
 // A stick this small is no stick.
 const DEAD = 1e-6;
 
@@ -63,7 +64,9 @@ export function stepTroy(t: TroyState, input: TroyInput, dt: number, rooms: Room
     yaw = turnToward(yaw, want, T.walkTurnRate * dt);
     target = T.walkSpeed * stick * (Math.abs(wrapAngle(want - yaw)) > Math.PI / 2 ? T.walkTurnSlow : 1);
   }
-  const speed = target > t.speed ? Math.min(t.speed + T.walkAccel * dt, target) : Math.max(t.speed - T.walkDecel * dt, target);
+  let speed = target > t.speed ? Math.min(t.speed + T.walkAccel * dt, target) : Math.max(t.speed - T.walkDecel * dt, target);
+  // Land on the target when this close, so float error never leaves him creeping at 1e-16 m/s.
+  if (Math.abs(speed - target) < ARRIVE) speed = target;
 
   const floor = t.pos.y;
   const moved: Vec3 = { x: t.pos.x - Math.sin(yaw) * speed * dt, y: floor, z: t.pos.z - Math.cos(yaw) * speed * dt };
@@ -122,13 +125,24 @@ function clampIntoRooms(p: Vec3, rooms: Rooms): Vec3 {
   return best;
 }
 
-/** Push the foot circle out of each prop it overlaps, along the shortest axis by exactly the overlap. */
+/**
+ * Push the foot circle out of each prop it overlaps by exactly the overlap: away from the prop's nearest point when the
+ * centre is outside its footprint (along a face's axis, or out from a corner), out through the nearest face when inside.
+ */
 function pushOutOfProps(p: Vec3, props: readonly Box[]): Vec3 {
+  const r = T.troyRadius;
   let q = p;
   for (const b of props) {
     if (!circleInBox(q, b)) continue;
-    const r = T.troyRadius;
-    // The prop grown by the radius (square corners): out along whichever face is nearest.
+    const cx = clamp(q.x, b.min.x, b.max.x);
+    const cz = clamp(q.z, b.min.z, b.max.z);
+    const d = Math.hypot(q.x - cx, q.z - cz);
+    if (d > 0) {
+      const k = r / d;
+      q = { x: cx + (q.x - cx) * k, y: q.y, z: cz + (q.z - cz) * k };
+      continue;
+    }
+    // The centre inside the footprint: out along the shortest axis.
     const exits: Array<[number, number]> = [
       [b.min.x - r - q.x, 0],
       [b.max.x + r - q.x, 0],

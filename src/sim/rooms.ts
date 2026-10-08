@@ -85,7 +85,7 @@ const CONTROL_ROOM: Room = { id: 'controlRoom', min: v(-9, FLOOR_Y, -1259), max:
 // The corridor: north out of the control room's north-east corner, then west — 20.8 m along its centreline.
 const CORRIDOR_NORTH: Room = { id: 'corridor', min: v(4, FLOOR_Y, -1268.4), max: v(6.4, FLOOR_Y + 3, -1258) };
 const CORRIDOR_WEST: Room = { id: 'corridor', min: v(-4, FLOOR_Y, -1268.4), max: v(6.4, FLOOR_Y + 3, -1266) };
-const LOUNGE: Room = { id: 'lounge', min: v(-7, FLOOR_Y, -1281), max: v(3.5, FLOOR_Y + 4, -1267) };
+const LOUNGE: Room = { id: 'lounge', min: v(-8.5, FLOOR_Y, -1281), max: v(2, FLOOR_Y + 4, -1267) };
 
 const CHAIR = { pos: v(0, FLOOR_Y, -1277), yaw: 0 };
 
