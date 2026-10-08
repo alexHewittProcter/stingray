@@ -1,7 +1,9 @@
 import type { GameMode } from './game/mode';
 import type { CombatState } from './sim/combat';
-import type { LaunchControl, LaunchState } from './sim/launch';
+import type { LaunchControl, LaunchState, Press } from './sim/launch';
+import type { Rooms } from './sim/rooms';
 import type { SubInput, SubState } from './sim/sub';
+import type { TroyState } from './sim/troy';
 import type { Vec3 } from './sim/vec3';
 import { MARINEVILLE } from './sim/world';
 
@@ -14,8 +16,8 @@ export interface DebugHandle {
   combat(): CombatState;
   /** L8: the launch machinery's state. */
   launch(): LaunchState;
-  /** L8: queue a press, as the 1–4 keys do; consumed on a later step, one per step. */
-  press(control: LaunchControl): void;
+  /** L8: queue a press, as the 1–4 keys do; consumed on a later step, one per step. Phase 3: any Press (M7). */
+  press(control: Press): void;
   /** Put the sub at rest at a position (optionally with a heading); released, engines on, the door left as it is. */
   teleport(pos: Vec3, yaw?: number): void;
   /** Hold these axes regardless of the keyboard; pass {} to release. */
@@ -27,6 +29,10 @@ export interface DebugHandle {
   menu(): 'title' | 'pause' | null;
   /** T9: close whichever menu is up, as if Launch / Resume had been chosen. */
   closeMenu(): void;
+  /** Phase 3 (M10): Troy's state. */
+  troy(): TroyState;
+  /** Phase 3 (M10): the rooms' data (sim/rooms.ts). */
+  rooms(): Rooms;
 }
 
 declare global {
@@ -40,6 +46,28 @@ export function installDebugHandle(handle: DebugHandle): void {
 }
 
 const CONTROLS: readonly string[] = ['cradle', 'engines', 'clamps', 'door'];
+
+/**
+ * Phase 3 (M10): named ?view= presets, one per room, so each can be screenshotted headless (with ?start=control for
+ * Troy in shot): x, y, z, lookX, lookY, lookZ, as the six-number form.
+ */
+export const VIEW_PRESETS: Readonly<Record<string, readonly [number, number, number, number, number, number]>> = Object.freeze({
+  // The control room from its south-east corner, over Troy at the start toward the console bank and the corridor door.
+  control: [7.6, 95.4, -1242.2, -1, 93.4, -1252],
+  // Down the corridor's first leg from the control room's doorway, toward the turn.
+  corridor: [5.2, 94.4, -1258.6, 4.4, 93.8, -1268],
+  // The Standby Lounge from its doorway, toward Troy's chair and the bore beside it.
+  lounge: [-6.8, 95.3, -1268.2, 0, 93, -1277],
+});
+
+/** The ?view= parameter as six numbers — a preset name or x,y,z,lookX,lookY,lookZ — or null. */
+export function viewParam(value: string | null): readonly number[] | null {
+  if (value === null) return null;
+  const preset = VIEW_PRESETS[value];
+  if (preset) return preset;
+  const numbers = value.split(',').map(Number);
+  return numbers.length === 6 && numbers.every(Number.isFinite) ? numbers : null;
+}
 
 /** Bounds on witnessing scripts and the handle's advance, so a typo'd or hostile URL cannot freeze the tab. */
 export const SCRIPT_LIMITS = Object.freeze({ secondsPerAdvance: 120, totalSeconds: 600, tokens: 64 });

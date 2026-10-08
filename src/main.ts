@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { createAudio } from './audio/audio';
-import { clampAdvance, installDebugHandle, runScript } from './debug';
+import { clampAdvance, installDebugHandle, runScript, viewParam } from './debug';
 import { dockView } from './game/dock';
 import { Game, startState } from './game/game';
 import { CLOSED, type MenuEvent, type MenuState, Swallow, menuEventFor, menuOn, openMenu, titleOnLoad } from './game/menu';
@@ -25,11 +25,14 @@ import { initialOrbit, orbitBy, orbitDrag, orbitFromParam, orbitRecenter, orbitR
 import { createMotes } from './render/motes';
 import { createParticles } from './render/particles';
 import { createPen } from './render/pen';
+import { createRooms } from './render/rooms';
 import { createSea } from './render/sea';
 import { createSeabed } from './render/seabed';
+import { createTroy } from './render/troy';
 import { createTunnel } from './render/tunnel';
 import { updateScenery } from './render/sway';
 import { targetsLeft } from './sim/combat';
+import { ROOMS } from './sim/rooms';
 import { forwardOf, speedOf } from './sim/sub';
 import { FIXED_DT, createWorld } from './sim/world';
 
@@ -78,10 +81,17 @@ pen.reflect(craft.group);
 const tunnel = createTunnel(world.marineville.interior);
 scene.add(tunnel.root);
 const rig = createCameraRig(camera, world);
-// Witnessing (debug): ?view=x,y,z,lookX,lookY,lookZ fixes the camera there, ignoring the rig.
-const viewNumbers = params.get('view')?.split(',').map(Number);
-const viewFrom = viewNumbers?.length === 6 && viewNumbers.every(Number.isFinite)
-  ? [new THREE.Vector3(...viewNumbers.slice(0, 3)), new THREE.Vector3(...viewNumbers.slice(3))] as const
+// Troy's rooms and Troy (phase 3, T1 greybox): the rooms are outside the ocean side and drawn only while the camera is
+// in them (render/rooms.ts); their lamp stays in the scene and dims. Troy is drawn while he is on foot.
+const rooms = createRooms(ROOMS);
+scene.add(rooms.group, rooms.lamp);
+const troy = createTroy();
+scene.add(troy.group);
+// Witnessing (debug): ?view=x,y,z,lookX,lookY,lookZ fixes the camera there, ignoring the rig; ?view=control,
+// corridor or lounge are the rooms' presets (debug.ts VIEW_PRESETS).
+const viewNumbers = viewParam(params.get('view'));
+const viewFrom = viewNumbers
+  ? [new THREE.Vector3(viewNumbers[0], viewNumbers[1], viewNumbers[2]), new THREE.Vector3(viewNumbers[3], viewNumbers[4], viewNumbers[5])] as const
   : null;
 const hud = createHud(document.body);
 
@@ -235,6 +245,8 @@ function draw(alpha: number, frameSeconds: number): void {
     camera.position.copy(viewFrom[0]);
     camera.lookAt(viewFrom[1]);
   }
+  rooms.update(camera);
+  troy.pose(g.troy, alpha, game.lastState.troy);
   pen.update(camera, penView, frameSeconds, elapsed);
   const door = game.lastState.launch.door + (g.launch.door - game.lastState.launch.door) * alpha;
   tunnel.update(camera, { door, doorMoving: g.launch.doorDir !== 0 }, elapsed);
@@ -350,6 +362,8 @@ installDebugHandle({
     menu = CLOSED;
     showMenu();
   },
+  troy: () => game.state.troy,
+  rooms: () => ROOMS,
 });
 
 window.addEventListener('resize', () => {
