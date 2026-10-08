@@ -1,4 +1,4 @@
-import type { LaunchControl } from '../sim/launch';
+import type { Press } from '../sim/launch';
 import type { SubInput } from '../sim/sub';
 import type { RawInput } from './raw';
 
@@ -16,11 +16,12 @@ export function toSubInput(held: RawInput): SubInput {
   };
 }
 
-// L5: 1–4 press the launch controls. Presses are edge-triggered — the keyboard reports a key once per press.
-const PRESS_KEYS: ReadonlyMap<string, LaunchControl> = new Map([
-  ['Digit1', 'cradle'], ['Digit2', 'engines'], ['Digit3', 'clamps'], ['Digit4', 'door'],
+// L5: 1–4 press the launch controls; phase 3 (M3, M6b): 5 leaves the seat. Presses are edge-triggered — the keyboard
+// reports a key once per press. This is the aboard mapping (main.ts reads it only when the session mode is aboard).
+const PRESS_KEYS: ReadonlyMap<string, Press> = new Map([
+  ['Digit1', 'cradle'], ['Digit2', 'engines'], ['Digit3', 'clamps'], ['Digit4', 'door'], ['Digit5', 'leave'],
 ]);
 
-export function pressFor(code: string): LaunchControl | null {
+export function pressFor(code: string): Press | null {
   return PRESS_KEYS.get(code) ?? null;
 }

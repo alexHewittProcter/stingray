@@ -1,5 +1,6 @@
 // The launch panel (phase 2, L6): a strip of Stingray's cockpit console along the bottom of the screen — grey
-// enamel, chrome trim, oval speaker grilles, and four lever-and-lamp controls (cradle, engines, clamps, ocean door)
+// enamel, chrome trim, oval speaker grilles, and four lever-and-lamp controls (cradle, engines, clamps, ocean door) —
+// phase 3 (M9, M6b) adds a fifth, LEAVE SEAT, as one more row of the same data —
 // with ball-topped levers, round lamps and cream keycaps. DOM and CSS only; every decision comes from the pure
 // view-model in game/panel.ts. Clicks press a control without taking keyboard focus from the game.
 
@@ -80,6 +81,7 @@ const STYLE = `
 .lp-ctl[data-c="engines"] .lp-knob { --ball: #f3ead0; --ball-dark: #988c69; }
 .lp-ctl[data-c="clamps"]  .lp-knob { --ball: #f0c53a; --ball-dark: #8a6a0c; }
 .lp-ctl[data-c="door"]    .lp-knob { --ball: #5f95d6; --ball-dark: #1d3e66; }
+.lp-ctl[data-c="leave"]   .lp-knob { --ball: #e9eef0; --ball-dark: #6c7a80; } /* phase 3 (M9): 5 · LEAVE SEAT */
 .lp-ctl.snap .lp-knob { transition: transform .28s cubic-bezier(.3,1.5,.5,1); }
 .lp-name { font-weight: 700; font-size: .78em; letter-spacing: .12em; color: #22272a; text-shadow: 0 1px 0 rgba(255,255,255,.45); white-space: nowrap; }
 .lp-word { min-width: 6.2em; text-align: center; padding: .18em .3em; border-radius: .2em; background: #141716; color: #e2b44a;

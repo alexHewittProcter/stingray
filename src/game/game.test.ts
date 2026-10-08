@@ -254,9 +254,12 @@ describe('the session owner (phase 3, M3, M7)', () => {
     game.step(NOTHING, DT);
     expect(game.state.launch.refusal).toBeNull();
     game.step(NOTHING, DT);
-    expect(game.state.launch.refusal).toBeNull(); // docked and raised: leave is accepted (T9 rides it)
+    expect(game.state.launch.refusal).toBeNull(); // docked and raised: leave is accepted (M6b: he rides up)
+    expect(game.state.troy).toMatchObject({ where: 'riding', rideDir: 'up' });
     game.step(NOTHING, DT);
-    expect(game.state.launch.cradleDir).toBe(1);
+    // He has left the seat: the cradle press finds nobody aboard (M6).
+    expect(game.state.launch.refusal).toMatchObject({ control: 'cradle', reason: REFUSAL.notAboard });
+    expect(game.state.launch.cradleDir).toBe(0);
     expect(game.queued).toEqual([]);
   });
 

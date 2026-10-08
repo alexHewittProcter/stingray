@@ -38,6 +38,7 @@ describe('toSubInput', () => {
 
   it('maps 1–4 to the launch controls (L5), and nothing else to a press', () => {
     expect(['Digit1', 'Digit2', 'Digit3', 'Digit4'].map(pressFor)).toEqual(['cradle', 'engines', 'clamps', 'door']);
+    expect(pressFor('Digit5')).toBe('leave'); // phase 3 (M3, M6b): leave the seat
     expect(pressFor('KeyW')).toBeNull();
     expect(pressFor('Numpad1')).toBeNull();
     expect(pressFor('constructor')).toBeNull();
