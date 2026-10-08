@@ -138,17 +138,24 @@ export const LOUNGE_PROPS = Object.freeze({
    * M5's 2.2 m reach) and a foot circle at the chair's pos — standing up out of it, M6b — is pushed out to the front.
    */
   injectorBay: box(v(-7, F, CHAIR.pos.z - 1.3), v(2, F + 2.1, BAY_FRONT_Z)),
+  /** The INJECTOR BAY wall's fittings on the north wall: the gold rail, the sign and its three lamps, the speaker. */
+  bayWall: box(v(-8.5, F, -1281), v(2, F + 4, -1280.75)),
   /** The plant in its tub in the south-west corner, and two quilted loungers along the south wall, facing north. */
   plant: box(v(-8.5, F, -1268.4), v(-7.6, F + 2.2, -1267)),
   loungerWest: box(v(-7.6, F, -1268.2), v(-5.6, F + 1.1, -1267)),
   loungerEast: box(v(-4.6, F, -1268.2), v(-2.6, F + 1.1, -1267)),
-  /** The round red table in front of them. */
-  table: box(v(-5.6, F, -1271.4), v(-4.2, F + 0.62, -1270)),
+  /** The round red table in front of them, a siphon and a bottle on it. */
+  table: box(v(-5.6, F, -1271.4), v(-4.2, F + 0.95, -1270)),
   /** The side console on the west wall: the lounge's intercom and the standby board, waist high. */
   sideConsole: box(v(-8.5, F, -1274.6), v(-7.8, F + 1.15, -1271.6)),
 });
 
-const PROPS: Box[] = [...Object.values(CONTROL_ROOM_PROPS), ...Object.values(LOUNGE_PROPS)];
+// The corridor's fittings (T5): a run of conduits along the bridge's east wall above the windows, on risers.
+export const CORRIDOR_PROPS = Object.freeze({
+  conduits: box(v(6.26, F, -1268.2), v(6.4, F + 3, -1259.3)),
+});
+
+const PROPS: Box[] = [...Object.values(CONTROL_ROOM_PROPS), ...Object.values(LOUNGE_PROPS), ...Object.values(CORRIDOR_PROPS)];
 
 export const ROOMS: Rooms = deepFreeze({
   rooms: [CONTROL_ROOM, CORRIDOR_NORTH, CORRIDOR_WEST, LOUNGE],
