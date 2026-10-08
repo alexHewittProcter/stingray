@@ -101,7 +101,12 @@ export function createCameraRig(camera: THREE.PerspectiveCamera, world: World): 
     camera.updateProjectionMatrix();
   }
 
-  /** L1: north of the face, shorten the boom to the first wall and hold the camera 1 m inside the drawn walls. */
+  /**
+   * L1: north of the face, shorten the boom to the first wall and hold the camera 1 m inside the drawn walls. Phase 3:
+   * this stays keyed to northOfFace, not to the narrowed cameraIndoors — the rig's camera follows the sub, an orbit can
+   * swing it up past the clifftop or into the rock, and this is what pulls it back into the bore or the pen. It never
+   * runs on Troy's cameras (T2's follow camera and T7's ride camera have their own walls).
+   */
   function keepInside(sub: Vec3): void {
     const p = camera.position;
     if (!northOfFace(p)) return;

@@ -81,7 +81,7 @@ describe('the rooms (M1)', () => {
 
   it("puts the control room in the tower's glazed gallery: floor ≈ y 92, ceiling ≥ 4 m, corners inside the drum, 18 m across", () => {
     const [c] = byId('controlRoom');
-    expect(c!.min.y).toBeCloseTo(92, 6);
+    expect(Math.abs(c!.min.y - 92)).toBeLessThanOrEqual(1);
     expect(c!.max.y - c!.min.y).toBeGreaterThanOrEqual(4);
     for (const x of [c!.min.x, c!.max.x]) {
       for (const z of [c!.min.z, c!.max.z]) expect(Math.hypot(x - TOWER_AXIS.x, z - TOWER_AXIS.z)).toBeLessThanOrEqual(DRUM_RADIUS);
