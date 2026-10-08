@@ -133,7 +133,14 @@ export function nearCradle(metres: number): { pos: Vec3; yaw: number } {
  *     world (X, Z), as __stingray.walkTo does; the camera snaps;
  *   - phase 3 (M10): use queues 'use' (M5), as __stingray.use does — E on foot.
  * "cradle,8.2,engines,2.1,clamps,1" lowers the cradle, starts the engines and releases the clamps;
- * "out=40,door,5" waits in the door chamber while the door opens. Unknown words are ignored. At most
+ * "out=40,door,5" waits in the door chamber while the door opens. Phase 3 (T7), the full loop from the lounge to open
+ * water in one page (Troy at his chair, sits, rides down 10 s and locks in, then phase 2's launch, steered out through
+ * the tunnel — the held axes merge, main.ts setInput — ending ≈ 190 m out at sea):
+ *   ?start=control&menu=0&script=walk=0:-1275.5,1,use,12,cradle,8.2,engines,2.2,clamps,1,throttle=1,1.5,1.5,1.5,
+ *   steer=-0.5,climb=-0.25,1.5,steer=0.5,climb=0,1.5,climb=-0.25,1.5,steer=-0.25,1.5,steer=0.25,climb=0.25,1.5,
+ *   steer=-0.5,1.5,steer=0.25,1.5,door,steer=-1,climb=-0.5,1.5,steer=1,1.5,steer=-0.75,climb=0.5,1.5,steer=1,1.5,
+ *   steer=-1,climb=0,1.5,steer=1,climb=-0.5,1.5,steer=-1,climb=0.25,1.5,steer=1,climb=0.5,1.5,steer=-1,1.5,
+ *   steer=0,climb=0,6   (one line in the URL). Unknown words are ignored. At most
  * SCRIPT_LIMITS.tokens words run, and at most SCRIPT_LIMITS.totalSeconds in all.
  */
 export function runScript(script: string, handle: DebugHandle): void {
