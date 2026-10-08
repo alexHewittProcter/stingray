@@ -4,7 +4,7 @@
 // view-model in game/panel.ts. Clicks press a control without taking keyboard focus from the game.
 
 import type { ControlView, PanelView } from '../game/panel';
-import type { LaunchControl } from '../sim/launch';
+import type { Press } from '../sim/launch';
 
 export interface LaunchPanel {
   update(view: PanelView): void;
@@ -126,7 +126,7 @@ interface ControlEls {
   last: string;
 }
 
-export function createLaunchPanel(parent: HTMLElement, onPress: (control: LaunchControl) => void): LaunchPanel {
+export function createLaunchPanel(parent: HTMLElement, onPress: (control: Press) => void): LaunchPanel {
   const style = document.createElement('style');
   style.textContent = STYLE;
   document.head.appendChild(style);
@@ -150,14 +150,14 @@ export function createLaunchPanel(parent: HTMLElement, onPress: (control: Launch
   const bank = root.querySelector<HTMLElement>('[data-k="bank"]')!;
   const msg = root.querySelector<HTMLElement>('[data-k="msg"]')!;
   const title = root.querySelector<HTMLElement>('.lp-title')!;
-  const controls = new Map<LaunchControl, ControlEls>();
+  const controls = new Map<Press, ControlEls>();
 
   // A press on the panel must not take focus or start a text selection: the game's keys stay live after a click.
   root.addEventListener('pointerdown', (e) => {
     e.preventDefault();
     if (e.button !== 0) return;
     const ctl = (e.target as HTMLElement).closest<HTMLElement>('.lp-ctl');
-    const control = ctl?.dataset.c as LaunchControl | undefined;
+    const control = ctl?.dataset.c as Press | undefined;
     if (control) onPress(control);
   });
 

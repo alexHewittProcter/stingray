@@ -1,13 +1,18 @@
 import * as THREE from 'three';
 import { northOfFace } from '../sim/interior';
-import { COAST_Z } from '../sim/world';
+import { ROOMS, inRoomBox } from '../sim/rooms';
+import { CLIFF_TOP, COAST_Z, MARINEVILLE } from '../sim/world';
 import type { Vec3 } from '../sim/vec3';
 
 // Indoors (phase 2, L6 "interior light"): the one switch every render module reads to know whether the camera is
 // inside Marineville, and the material patch that keeps interior meshes out of the sun.
 //
-//   - cameraIndoors(p): true while the camera is north of the cliff face. Pen, tunnel, sea, shafts and the camera
-//     rig all key off this one test, so they switch together.
+//   - cameraIndoors(p): true while the camera is inside the pen hall or the bore — north of the cliff face, below the
+//     clifftop and inside (or within a hair of) phase 2's Interior (phase 3 narrowed it from "north of the face", Global
+//     constraints, so the control tower's rooms are not "indoors"). Pen, tunnel, sea, shafts and lamps key off this
+//     one test, so they switch together.
+//   - inRooms(p): phase 3's separate switch — the camera is in Troy's rooms at the top of the control tower. The rooms
+//     are drawn only then, and the pen hall and the tunnel are hidden then (main.ts).
 //   - indoorAmount(p): 0 at the face, rising to 1 a short way in — what the scene's sun and sky lights fade by,
 //     so the craft and anything else not built as interior is lit by Marineville's own lamps once inside.
 //   - oceanInView(p, door): whether the ocean side (seabed, landmarks, Marineville's buildings, targets) could be
@@ -48,15 +53,49 @@ export function tunnelTightness(p: Vec3 | THREE.Vector3, mouth: Vec3): number {
 
 /** How far north of the face the sun and sky have fully faded (m). */
 const FADE_DEPTH = 30;
+/**
+ * How far outside the drawn walls (bore and pen) a point still counts as indoors (m): the camera rig holds its camera
+ * 1 m inside them, so this only matters for a fixed ?view= or a camera passing through the bore's wall in one frame.
+ */
+const INDOORS_SLACK = 2;
 
-/** The inside-Marineville switch: the camera (or any point) is north of the cliff face. */
+/** The inside-Marineville switch: the camera (or any point) is in the pen hall or the bore (phase 3 narrowing). */
 export function cameraIndoors(p: Vec3 | THREE.Vector3): boolean {
-  return northOfFace(p);
+  return northOfFace(p) && p.y < CLIFF_TOP && nearInterior(p);
 }
 
-/** 0 south of the face, 1 once FADE_DEPTH inside: how much the outdoor lights are dimmed. */
+/** How far outside a room's box (into its walls) a point still counts as in the rooms (m). */
+const ROOMS_SLACK = 0.5;
+
+/** Phase 3: the camera (or any point) is inside one of Troy's rooms (sim/rooms.ts), with a little slack for the walls. */
+export function inRooms(p: Vec3 | THREE.Vector3): boolean {
+  return inRoomBox(p, ROOMS, ROOMS_SLACK);
+}
+
+/** 0 south of the face (or anywhere not indoors), 1 once FADE_DEPTH inside: how much the outdoor lights are dimmed. */
 export function indoorAmount(p: Vec3 | THREE.Vector3): number {
+  if (!cameraIndoors(p)) return 0;
   return THREE.MathUtils.clamp((COAST_Z - p.z) / FADE_DEPTH, 0, 1);
+}
+
+/** Within INDOORS_SLACK of phase 2's drawn interior: the pen box, or the bore about the tunnel's centreline. */
+function nearInterior(p: Vec3 | THREE.Vector3): boolean {
+  const { pen, tunnel } = MARINEVILLE.interior;
+  const s = INDOORS_SLACK;
+  if (p.x >= pen.min.x - s && p.x <= pen.max.x + s && p.y >= pen.min.y - s && p.y <= pen.max.y + s
+    && p.z >= pen.min.z - s && p.z <= pen.max.z + s) return true;
+  const line = tunnel.centreline;
+  const reach = tunnel.radius + s;
+  for (let k = 1; k < line.length; k++) {
+    const a = line[k - 1]!;
+    const b = line[k]!;
+    const abx = b.x - a.x;
+    const aby = b.y - a.y;
+    const abz = b.z - a.z;
+    const t = THREE.MathUtils.clamp(((p.x - a.x) * abx + (p.y - a.y) * aby + (p.z - a.z) * abz) / (abx * abx + aby * aby + abz * abz), 0, 1);
+    if (Math.hypot(p.x - a.x - abx * t, p.y - a.y - aby * t, p.z - a.z - abz * t) <= reach) return true;
+  }
+  return false;
 }
 
 /** userData flag read by caustics.ts: a material carrying it is never given caustics. */

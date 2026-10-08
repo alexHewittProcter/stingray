@@ -4,7 +4,7 @@
 // render/launch-panel.ts draws it; nothing here writes sim state.
 
 import { COAST_Z } from '../sim/world';
-import { type GameState, type LaunchControl, LAUNCH_CONTROLS, REFUSAL, cradleHeight, refusalFor } from '../sim/launch';
+import { type GameState, type LaunchControl, LAUNCH_CONTROLS, type Press, REFUSAL, cradleHeight, refusalFor } from '../sim/launch';
 import { TUNING as T } from '../sim/tuning';
 import type { Vec3 } from '../sim/vec3';
 import type { Interior } from '../sim/world';
@@ -34,9 +34,12 @@ export interface PanelMemory {
 
 export type Lamp = 'dark' | 'amber' | 'green' | 'red';
 
+/** Phase 3 (M6b, M9): the panel's controls — phase 2's four and the fifth, 'leave' (shown from T9). */
+export type PanelControl = LaunchControl | 'leave';
+
 export interface ControlView {
-  control: LaunchControl;
-  key: '1' | '2' | '3' | '4';
+  control: PanelControl;
+  key: '1' | '2' | '3' | '4' | '5';
   label: string;
   /**
    * dark = a press would be refused; amber = accepted, or moving; green = in its launch position — or, on the way
@@ -60,7 +63,7 @@ export interface PanelView {
   /** The controls on show, in key order; empty when the panel is hidden. */
   controls: ControlView[];
   /** The last refused press, for refusalShow seconds. */
-  refusal: { control: LaunchControl; reason: string } | null;
+  refusal: { control: Press; reason: string } | null;
   /** The HUD's one-line status in 'launch' presentation; null at sea (the sea readouts show instead). */
   status: string | null;
   /** First-time guidance, until a launch has reached the sea once; null otherwise. */
@@ -72,8 +75,8 @@ export interface PanelView {
   compact: boolean;
 }
 
-const KEYS = { cradle: '1', engines: '2', clamps: '3', door: '4' } as const;
-const LABELS = { cradle: 'CRADLE', engines: 'ENGINES', clamps: 'CLAMPS', door: 'OCEAN DOOR' } as const;
+const KEYS = { cradle: '1', engines: '2', clamps: '3', door: '4', leave: '5' } as const satisfies Record<PanelControl, ControlView['key']>;
+const LABELS = { cradle: 'CRADLE', engines: 'ENGINES', clamps: 'CLAMPS', door: 'OCEAN DOOR', leave: 'LEAVE SEAT' } as const satisfies Record<PanelControl, string>;
 
 // ---- Memory ----
 
@@ -118,7 +121,7 @@ export function panelView(g: GameState, m: PanelMemory, interior: Interior): Pan
 
   return {
     controls: shownControls.map((c) => controlView(c, g, interior, next, fresh?.control === c, home)),
-    refusal: fresh && shownControls.includes(fresh.control) ? { control: fresh.control, reason: fresh.reason } : null,
+    refusal: fresh && (shownControls as readonly Press[]).includes(fresh.control) ? { control: fresh.control, reason: fresh.reason } : null,
     status: m.shown === 'launch' ? statusLine(g, m, interior) : null,
     prompt: promptLine(g, m, interior, next),
     compact: panelCompact(g),
