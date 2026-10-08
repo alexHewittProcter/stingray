@@ -1,13 +1,16 @@
 // The game menu (phase 2, T9) — pure, no DOM; render/menu.ts draws it and main.ts carries out its actions.
 //
-//   - The title menu is up on load, over the live Pen 3 standby view; the pause menu opens on Esc during play.
+//   - The title menu is up on load, over the live start — phase 3 (M9): Troy standing in the control room; the pause
+//     menu opens on Esc during play, on foot as aboard.
 //   - While either is up the sim does not step (main.ts); game keys only move through the menu.
 //   - One continuous world: closing a menu never reloads or cuts — it only changes what the game does next.
 
 export type MenuKind = 'title' | 'pause';
 export type MenuPage = 'main' | 'controls';
 
-export type MenuItem = 'launch' | 'resume' | 'pen' | 'ocean' | 'controls' | 'sound' | 'back';
+// M9: 'controlRoom' is the title's "Start in the control room" and the pause menu's "Return to the control room";
+// 'pen' is "Skip to Pen 3" / "Return to Pen 3" — one item each, labelled by the menu's kind (itemLabel).
+export type MenuItem = 'controlRoom' | 'resume' | 'pen' | 'ocean' | 'controls' | 'sound' | 'back';
 
 export interface MenuState {
   /** Which menu is up; null in play. */
@@ -28,10 +31,11 @@ export type MenuEvent =
   | { type: 'select'; index: number };
 
 /**
- * What the game must do after an event: nothing; close the menu and play on as things stand; close it and go to
- * standby in Pen 3 (R) or to the open ocean (?start=ocean); or toggle the persisted mute (M).
+ * What the game must do after an event: nothing; close the menu and play on as things stand; close it and go to the
+ * control room (M9: R, the game's start — toControlRoom), to standby in Pen 3 (toStandby) or to the open ocean
+ * (?start=ocean); or toggle the persisted mute (M).
  */
-export type MenuAction = 'none' | 'close' | 'standby' | 'ocean' | 'toggleSound';
+export type MenuAction = 'none' | 'close' | 'controlRoom' | 'standby' | 'ocean' | 'toggleSound';
 
 export const CLOSED: MenuState = Object.freeze({ kind: null, page: 'main', index: 0 });
 
@@ -39,14 +43,19 @@ export const openMenu = (kind: MenuKind): MenuState => ({ kind, page: 'main', in
 
 export function menuItems(kind: MenuKind, page: MenuPage): readonly MenuItem[] {
   if (page === 'controls') return ['back'];
-  return kind === 'title' ? ['launch', 'ocean', 'controls', 'sound'] : ['resume', 'pen', 'ocean', 'controls', 'sound'];
+  // M9: title — Start in the control room · Skip to Pen 3 · Skip to open ocean · Controls · Sound;
+  // pause — Resume · Return to the control room · Return to Pen 3 · Skip to open ocean · Controls · Sound.
+  return kind === 'title'
+    ? ['controlRoom', 'pen', 'ocean', 'controls', 'sound']
+    : ['resume', 'controlRoom', 'pen', 'ocean', 'controls', 'sound'];
 }
 
-export function itemLabel(item: MenuItem, muted: boolean): string {
+/** An item's words on the menu `kind` it is on (M9: the title starts or skips; the pause menu returns). */
+export function itemLabel(item: MenuItem, muted: boolean, kind: MenuKind): string {
   switch (item) {
-    case 'launch': return 'Launch from Pen 3';
+    case 'controlRoom': return kind === 'title' ? 'Start in the control room' : 'Return to the control room';
     case 'resume': return 'Resume';
-    case 'pen': return 'Return to Pen 3';
+    case 'pen': return kind === 'title' ? 'Skip to Pen 3' : 'Return to Pen 3';
     case 'ocean': return 'Skip to open ocean';
     case 'controls': return 'Controls';
     case 'sound': return muted ? 'Sound: Off' : 'Sound: On';
@@ -74,8 +83,9 @@ export function menuOn(s: MenuState, e: MenuEvent): { state: MenuState; action: 
       return s.kind === 'pause' ? { state: CLOSED, action: 'close' } : stay;
     case 'choose':
       switch (items[s.index]) {
-        case 'launch':
         case 'resume': return { state: CLOSED, action: 'close' };
+        // M9: an explicit jump, not 'close' — the title may sit over any start (?menu=1&start=ocean).
+        case 'controlRoom': return { state: CLOSED, action: 'controlRoom' };
         case 'pen': return { state: CLOSED, action: 'standby' };
         case 'ocean': return { state: CLOSED, action: 'ocean' };
         case 'controls': return { state: { kind: s.kind, page: 'controls', index: 0 }, action: 'none' };
