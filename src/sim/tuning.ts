@@ -93,6 +93,21 @@ export const TUNING = {
   followBoomOutRate: 4, // m/s — a boom the walls shortened lengthens again no faster than this (shortening is instant)
   followWallInset: 0.35, // m the camera is held inside the room's box and clear of props (M4: ≥ 0.3)
   followNear: 0.2, // m — the near plane on foot, so its corners stay inside followWallInset of a wall
+
+  // The ride down the injector shaft (phase 3, M6) — sim/ride.ts
+  rideSeconds: 10, // s — RIDE_SECONDS: the chair covers the whole shaft in this
+  rideEaseIn: 1.5, // s — the first time slice, smoothstep up to the cruising speed
+  rideEaseOut: 1, // s — the last, smoothstep down to rest at the seat
+
+  // The ride camera (phase 3, M4 "Transitions") — presentation numbers (render/ride-camera.ts)
+  rideHold: 1.5, // s — the camera stays in the lounge this long after Troy sits
+  rideCatchUp: 1.5, // s — then eases from above the bore onto the chair's boom
+  rideBoom: 3, // m behind the chair along the shaft, before the tube's wall shortens it
+  rideRise: 1.1, // m off the shaft's axis, behind-and-above the chair (held inside the tube's wall)
+  rideLookAhead: 6, // m ahead of the chair along the shaft: where the camera looks
+  rideBlend: 1.5, // s — the final slice over which the camera blends into the rig's (pen camera's) pose
+  rideFov: 60, // degrees
+  rideWallInset: 0.3, // m the camera is held inside the tube's wall
 } as const;
 
 export type Tuning = typeof TUNING;
