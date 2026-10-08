@@ -2,10 +2,10 @@
 // the control room that answer with a line of flavour. Plain data, never callbacks: the sim holds no function, and
 // session.ts applies a Use when the 'use' press is consumed. Pure like the rest of src/sim.
 //
-// Positions: the say props stand at the faces of T1's placeholder props (sim/rooms.ts PROPS) — T4 dresses the control
-// room and may move those props; each pos here follows its prop (a one-line change at merge if one moves).
+// Positions: each say prop's pos is on the usable face of its dressed collider (sim/rooms.ts CONTROL_ROOM_PROPS, T4),
+// where Troy stands in front of it.
 
-import { FLOOR_Y, ROOMS } from './rooms';
+import { CONTROL_ROOM_PROPS, FLOOR_Y, ROOMS } from './rooms';
 import type { HudLines } from './launch';
 import { type TroyState, wrapAngle } from './troy';
 import type { Vec3 } from './vec3';
@@ -44,33 +44,33 @@ export const INTERACTABLES: readonly Interactable[] = deepFreeze<Interactable[]>
     use: { kind: 'ride' },
   },
   {
-    // The wall map's console along the control room's west wall (its face at x −8.4).
+    // The wall map on the control room's north wall (CONTROL_ROOM_PROPS.map, its face at z −1258.2), at its middle.
     id: 'wallMap',
-    pos: at(-8.4, -1250),
+    pos: at(-3, CONTROL_ROOM_PROPS.map.max.z),
     radius: USE_RADIUS,
     prompt: 'Look — the wall map',
     use: { kind: 'say', line: 'The whole Pacific on one wall — and somewhere out there, Titan is watching it too.' },
   },
   {
-    // The World Videophone on the main console bank, facing the room (its south face at z −1250.8).
+    // The World Videophone on the west wall (CONTROL_ROOM_PROPS.videophone, its face at x −8.3), at its panel.
     id: 'videophone',
-    pos: at(0, -1250.8),
+    pos: at(CONTROL_ROOM_PROPS.videophone.max.x, -1251.8),
     radius: USE_RADIUS,
     prompt: 'Call — World Videophone',
     use: { kind: 'say', line: 'Marineville Control to WASP Headquarters: Stingray in Pen 3, standing by.' },
   },
   {
-    // The locator along the east wall (its face at x 7.4).
+    // The locator compass on the east wall and its lamp unit (CONTROL_ROOM_PROPS.locator, its face at x 7.3).
     id: 'locator',
-    pos: at(7.4, -1249),
+    pos: at(CONTROL_ROOM_PROPS.locator.min.x, -1255.9),
     radius: USE_RADIUS,
     prompt: 'Check — the locator',
     use: { kind: 'say', line: 'Hydrophones are quiet — nothing on the locator but the ocean, and the ocean never stays quiet for long.' },
   },
   {
-    // Commander Shore's desk by the windows (its centre).
+    // Commander Shore's desk by the windows (CONTROL_ROOM_PROPS.shoreDesk), its north face, toward the room.
     id: 'shoresDesk',
-    pos: at(0, -1245),
+    pos: at(0, CONTROL_ROOM_PROPS.shoreDesk.min.z),
     radius: USE_RADIUS,
     prompt: "Read — Commander Shore's orders",
     use: { kind: 'say', line: 'Orders from Commander Shore: Stingray stands by in Pen 3 — and anything can happen in the next half hour.' },
