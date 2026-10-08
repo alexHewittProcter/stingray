@@ -70,7 +70,7 @@ export function stepTroy(t: TroyState, input: TroyInput, dt: number, rooms: Room
 
   const floor = t.pos.y;
   const moved: Vec3 = { x: t.pos.x - Math.sin(yaw) * speed * dt, y: floor, z: t.pos.z - Math.cos(yaw) * speed * dt };
-  const pos = resolve(moved, rooms) ?? { ...t.pos };
+  const pos = resolve(moved, rooms, t.pos) ?? { ...t.pos };
 
   return { ...t, pos, yaw: wrapAngle(yaw), speed, gait: wrapGait(t.gait + (speed * dt * TWO_PI) / T.walkStride) };
 }
@@ -88,6 +88,11 @@ export function inShrunkRoom(p: Vec3, rooms: Rooms): boolean {
   return rooms.rooms.some((b) =>
     onFloor(p, b) && p.x >= b.min.x + r - ON_EDGE && p.x <= b.max.x - r + ON_EDGE && p.z >= b.min.z + r - ON_EDGE && p.z <= b.max.z - r + ON_EDGE);
 }
+
+const inShrunk = (p: Vec3, b: Box) => {
+  const r = T.troyRadius;
+  return p.x >= b.min.x + r - ON_EDGE && p.x <= b.max.x - r + ON_EDGE && p.z >= b.min.z + r - ON_EDGE && p.z <= b.max.z - r + ON_EDGE;
+};
 
 // On the edge counts as inside, with a hair of slack so a clamped point is left alone on the next step.
 const ON_EDGE = 1e-9;
@@ -115,25 +120,35 @@ export function nearestWalkable(x: number, z: number, rooms: Rooms): Vec3 {
 
 const PASSES = 3;
 
-/** The resolved foot centre, or null when no walkable point was found near p (the caller keeps the last one). */
-function resolve(p: Vec3, rooms: Rooms): Vec3 | null {
-  let q = clampIntoRooms(p, rooms);
+/**
+ * The resolved foot centre, or null when no walkable point was found near p (the caller keeps the last one). `from`,
+ * when given, is where he stood before the move (walkable).
+ */
+function resolve(p: Vec3, rooms: Rooms, from?: Vec3): Vec3 | null {
+  let q = clampIntoRooms(p, rooms, from);
   for (let k = 0; k < PASSES; k++) {
     q = pushOutOfProps(pushOutOfProps(q, rooms.props), rooms.props);
     if (walkable(q, rooms)) return q;
-    q = clampIntoRooms(q, rooms);
+    q = clampIntoRooms(q, rooms, from);
     if (walkable(q, rooms)) return q;
   }
   return null;
 }
 
-/** If p left the union of shrunk rooms, the nearest point of the nearest shrunk room on p's floor. */
-function clampIntoRooms(p: Vec3, rooms: Rooms): Vec3 {
+/**
+ * If p left the union of shrunk rooms, the nearest point of the nearest shrunk room on p's floor — among the rooms he
+ * stood in before the move (`from`), when given. T5: clamping into a box that holds his last position is a projection
+ * onto a convex set holding it, so the clamp never carries him further than the move did (M2: "a push never moves him
+ * more than the overlap"); clamping into whichever box is nearest jumped him round a doorway's jamb corner by up to
+ * ~1.3× a step's travel (troy.test.ts's seeded walks, at the T5 lounge doorway and T4's control-room doorway).
+ */
+function clampIntoRooms(p: Vec3, rooms: Rooms, from?: Vec3): Vec3 {
   if (inShrunkRoom(p, rooms)) return p;
   const r = T.troyRadius;
+  const held = from ? rooms.rooms.filter((b) => onFloor(from, b) && inShrunk(from, b)) : [];
   let best: Vec3 = p;
   let bestD = Infinity;
-  for (const b of rooms.rooms) {
+  for (const b of held.length > 0 ? held : rooms.rooms) {
     if (!onFloor(p, b)) continue;
     const q = { x: clamp(p.x, b.min.x + r, b.max.x - r), y: b.min.y, z: clamp(p.z, b.min.z + r, b.max.z - r) };
     const d = Math.hypot(q.x - p.x, q.z - p.z);

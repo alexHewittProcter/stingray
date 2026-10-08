@@ -86,9 +86,11 @@ export const SHAFT_OPEN_TOP = 10;
 
 // 4.2 m high: its ceiling (y 96.9) is just under the gallery's roof (y 97.0–98.6).
 const CONTROL_ROOM: Room = { id: 'controlRoom', min: v(-9, FLOOR_Y, -1259), max: v(9, FLOOR_Y + 4.2, -1241) };
-// The corridor: north out of the control room's north-east corner, then west — 20.8 m along its centreline.
-const CORRIDOR_NORTH: Room = { id: 'corridor', min: v(4, FLOOR_Y, -1268.4), max: v(6.4, FLOOR_Y + 3, -1258) };
-const CORRIDOR_WEST: Room = { id: 'corridor', min: v(-4, FLOOR_Y, -1268.4), max: v(6.4, FLOOR_Y + 3, -1266) };
+// The corridor: north out of the control room's north-east corner, then west — ≈ 15 m along its centreline. T5 (M1 art):
+// its west leg runs into the lounge's east wall — a single 2.4 m doorway, framed in red as the control room's is — and
+// no longer along the lounge's south side (T1's greybox had a 6 m L-shaped slot there that no doorway could frame).
+const CORRIDOR_NORTH: Room = { id: 'corridor', min: v(4, FLOOR_Y, -1270.6), max: v(6.4, FLOOR_Y + 3, -1258) };
+const CORRIDOR_WEST: Room = { id: 'corridor', min: v(0, FLOOR_Y, -1270.6), max: v(6.4, FLOOR_Y + 3, -1268.2) };
 const LOUNGE: Room = { id: 'lounge', min: v(-8.5, FLOOR_Y, -1281), max: v(2, FLOOR_Y + 4, -1267) };
 
 const CHAIR = { pos: v(0, FLOOR_Y, -1277), yaw: 0 };
@@ -119,10 +121,41 @@ export const CONTROL_ROOM_PROPS = Object.freeze({
   bankEast: box(v(8.2, F, -1250.2), v(9, F + 0.95, -1241.8)),
 });
 
-const PROPS: Box[] = [
-  ...Object.values(CONTROL_ROOM_PROPS),
-  box(v(-5.5, FLOOR_Y, -1273), v(-3.5, FLOOR_Y + 0.5, -1271)), // a low table in the lounge (greybox; T5 dresses it)
-];
+// The Standby Lounge's furniture (T5 — M1 art, after 03_STANDBY_INJECTOR/). The lounge is x −8.5…2, z −1281…−1267; the
+// corridor comes in through the east wall at z −1270.6…−1268.2. The north part is the injector bay: a low plinth from
+// the east wall to x −7, with three chairs in a row on it facing south (toward the lounge and the door) — Troy's
+// (ROOMS.chair) over the open bore, Phones's and Marina's west of it over closed hatches — and a walkway behind them
+// under the INJECTOR BAY panel, reached round the plinth's west end. The plinth is one solid box: Troy cannot walk
+// into the bore, and no gap narrower than he is opens between props or between a prop and a wall (sim/troy.ts's
+// push-out jitters in those). The south half is the lounge proper: red quilted loungers along the south wall, a low
+// red table, a plant, a side console on the west wall.
+/** The injector bay plinth's front edge: 1.1 m in front of the chair's pos (+z, the side Troy walks up from). */
+export const BAY_FRONT_Z = CHAIR.pos.z + 1.1;
+export const LOUNGE_PROPS = Object.freeze({
+  /**
+   * M8: the injector bay plinth — the bore in it under Troy's chair, and the three chairs on it. Its front (+z) edge is
+   * the nearest to the chair's pos (1.1 m; back 1.3 m, east 2 m), so Troy stands 1.5 m from the chair to sit (inside
+   * M5's 2.2 m reach) and a foot circle at the chair's pos — standing up out of it, M6b — is pushed out to the front.
+   */
+  injectorBay: box(v(-7, F, CHAIR.pos.z - 1.3), v(2, F + 2.1, BAY_FRONT_Z)),
+  /** The INJECTOR BAY wall's fittings on the north wall: the gold rail, the sign and its three lamps, the speaker. */
+  bayWall: box(v(-8.5, F, -1281), v(2, F + 4, -1280.75)),
+  /** The plant in its tub in the south-west corner, and two quilted loungers along the south wall, facing north. */
+  plant: box(v(-8.5, F, -1268.4), v(-7.6, F + 2.2, -1267)),
+  loungerWest: box(v(-7.6, F, -1268.2), v(-5.6, F + 1.1, -1267)),
+  loungerEast: box(v(-4.6, F, -1268.2), v(-2.6, F + 1.1, -1267)),
+  /** The round red table in front of them, a siphon and a bottle on it. */
+  table: box(v(-5.6, F, -1271.4), v(-4.2, F + 0.95, -1270)),
+  /** The side console on the west wall: the lounge's intercom and the standby board, waist high. */
+  sideConsole: box(v(-8.5, F, -1274.6), v(-7.8, F + 1.15, -1271.6)),
+});
+
+// The corridor's fittings (T5): a run of conduits along the bridge's east wall above the windows, on risers.
+export const CORRIDOR_PROPS = Object.freeze({
+  conduits: box(v(6.26, F, -1268.2), v(6.4, F + 3, -1259.3)),
+});
+
+const PROPS: Box[] = [...Object.values(CONTROL_ROOM_PROPS), ...Object.values(LOUNGE_PROPS), ...Object.values(CORRIDOR_PROPS)];
 
 export const ROOMS: Rooms = deepFreeze({
   rooms: [CONTROL_ROOM, CORRIDOR_NORTH, CORRIDOR_WEST, LOUNGE],
