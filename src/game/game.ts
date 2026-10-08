@@ -174,8 +174,8 @@ export class Game {
 }
 
 /**
- * L4's start: standby in Pen 3, unless the URL asks for the sea — ?start=ocean, or ?at=… (which implies it) —
- * in which case phase 1's spawn, released, engines on.
+ * Whether the URL asks for the sea — ?start=ocean, or ?at=… (which implies it) — in which case phase 1's spawn,
+ * released, engines on (L4, kept by M7).
  */
 export function startsAtSea(params: URLSearchParams): boolean {
   return params.get('start') === 'ocean' || params.has('at');
@@ -183,18 +183,20 @@ export function startsAtSea(params: URLSearchParams): boolean {
 
 /**
  * Where the URL starts the game (M7): ?start=pen|control|ocean; ?at= implies ocean; ?script= without ?start implies
- * pen, so every phase-2 witnessing URL runs unchanged. The default is the pen until T8 makes it the control room.
+ * pen, so every phase-2 witnessing URL runs unchanged. With none of them, the control room (M9).
  */
 export function startPlace(params: URLSearchParams): StartPlace {
   if (startsAtSea(params)) return 'ocean';
-  const start = params.get('start') ?? (params.has('script') ? 'pen' : DEFAULT_START);
-  return start === 'control' ? 'control' : 'pen';
+  const start = params.get('start');
+  if (start === 'pen' || start === 'control') return start;
+  // An unknown ?start= value is ignored, as if absent.
+  return params.has('script') ? 'pen' : DEFAULT_START;
 }
 
 export type StartPlace = 'pen' | 'control' | 'ocean';
 
-/** Where a URL with no ?start begins: the pen until T8 (main stays playable at every merge), then the control room. */
-export const DEFAULT_START: StartPlace = 'pen';
+/** M9: where a URL with no ?start (and no ?script= or ?at=) begins — Troy standing in the control room. */
+export const DEFAULT_START: StartPlace = 'control';
 
 export function startState(world: World, params: URLSearchParams): GameState {
   const place = startPlace(params);

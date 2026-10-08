@@ -126,6 +126,7 @@ export function createMenu(parent: HTMLElement, onEvent: (e: MenuEvent) => void)
       root.classList.toggle('open', state.kind !== null);
       // Closing: leave the last page in place while it fades.
       if (state.kind === null) return;
+      const kind = state.kind;
       root.classList.toggle('pause', state.kind === 'pause');
 
       const key = `${state.kind}|${state.page}|${muted}|${situation}`;
@@ -135,7 +136,7 @@ export function createMenu(parent: HTMLElement, onEvent: (e: MenuEvent) => void)
         const title = state.kind === 'title'
           ? `<h1 class="mn-title">Stingray</h1><div class="mn-strap">Stand by for action</div>`
           : `<h1 class="mn-title">Paused</h1>`;
-        const head = state.page === 'controls' ? 'CONTROLS' : state.kind === 'title' ? 'MARINEVILLE · PEN 3' : 'STINGRAY · STANDING BY';
+        const head = state.page === 'controls' ? 'CONTROLS' : state.kind === 'title' ? 'MARINEVILLE · W.A.S.P.' : 'STINGRAY · STANDING BY';
         const screen = state.page === 'controls' ? `<div class="mn-screen">${legendRowsHtml(situation)}</div>` : '';
         const back = state.kind === 'pause' && state.page === 'main' ? 'resume' : 'back';
         root.innerHTML = `
@@ -146,7 +147,7 @@ export function createMenu(parent: HTMLElement, onEvent: (e: MenuEvent) => void)
               ${screen}
               <div class="mn-list">${list.map((item, i) => `
                 <div class="mn-item" data-i="${i}" data-item="${item}"><span class="mn-lamp"></span>
-                  <span class="mn-label">${itemLabel(item, muted)}</span><span class="mn-key">Enter</span></div>`).join('')}
+                  <span class="mn-label">${itemLabel(item, muted, kind)}</span><span class="mn-key">Enter</span></div>`).join('')}
               </div>
               <div class="mn-hints"><span><kbd>↑</kbd><kbd>↓</kbd> select</span><span><kbd>Enter</kbd> choose</span>${
                 state.kind === 'title' && state.page === 'main' ? '' : `<span><kbd>Esc</kbd> ${back}</span>`}</div>
