@@ -8,9 +8,13 @@ import { type GameState, type LaunchControl, LAUNCH_CONTROLS, type Press, REFUSA
 import { TUNING as T } from '../sim/tuning';
 import type { Vec3 } from '../sim/vec3';
 import type { Interior } from '../sim/world';
+import { sessionMode } from './mode';
 
-/** What presentation shows: the pen-and-tunnel panel and status ('launch') or the sea HUD ('piloting'). */
-export type Shown = 'launch' | 'piloting';
+/**
+ * What presentation shows: the pen-and-tunnel panel and status ('launch') or the sea HUD ('piloting'); phase 3 (M9):
+ * 'offBoard' — no panel at all — while Troy is not aboard (the session mode is 'onFoot' or 'transport').
+ */
+export type Shown = 'launch' | 'piloting' | 'offBoard';
 
 /**
  * L4 lets presentation hold its mode until the hull centre is this far past the cliff face, so hovering in an open
@@ -20,7 +24,8 @@ export const MODE_HOLD = 2; // m
 
 /**
  * What the panel remembers between frames — presentation only, never sim state.
- * - `shown`: the presented mode, with L4's hold.
+ * - `shown`: the presented mode — phase 3 (M9): the session mode's, 'offBoard' unless Troy is aboard; aboard,
+ *   phase 2's, from the hull's z with L4's hold.
  * - `trip`: 'out' from standby until Stingray reaches the open sea (MODE_HOLD past the face), then 'home' until it is docked (raised) again.
  *   The machinery alone cannot tell "lowered, engines on, clamps locked" before release from the same state after
  *   a lock; the trip can, and it decides which control is the sensible next one.
@@ -80,9 +85,19 @@ const LABELS = { cradle: 'CRADLE', engines: 'ENGINES', clamps: 'CLAMPS', door: '
 
 // ---- Memory ----
 
+/** Off board (M9) unless Troy is aboard; aboard, which side of the face the hull centre is. */
+function shownAt(g: GameState): Shown {
+  return offBoard(g) ? 'offBoard' : g.sub.pos.z < COAST_Z ? 'launch' : 'piloting';
+}
+
+function offBoard(g: GameState): boolean {
+  const mode = sessionMode(g);
+  return mode === 'onFoot' || mode === 'transport';
+}
+
 export function initialMemory(g: GameState): PanelMemory {
   return {
-    shown: g.sub.pos.z < COAST_Z ? 'launch' : 'piloting',
+    shown: shownAt(g),
     trip: g.launch.clamps === 'locked' ? 'out' : 'home',
     launched: false,
   };
@@ -92,7 +107,10 @@ export function initialMemory(g: GameState): PanelMemory {
 export function remember(m: PanelMemory, g: GameState): PanelMemory {
   const z = g.sub.pos.z;
   let shown = m.shown;
-  if (shown === 'piloting' && z < COAST_Z - MODE_HOLD) shown = 'launch';
+  // M9: the session mode decides first — no panel off board; coming aboard, it starts from where the hull is.
+  if (offBoard(g)) shown = 'offBoard';
+  else if (shown === 'offBoard') shown = shownAt(g);
+  else if (shown === 'piloting' && z < COAST_Z - MODE_HOLD) shown = 'launch';
   else if (shown === 'launch' && z > COAST_Z + MODE_HOLD) shown = 'piloting';
 
   let { trip, launched } = m;
@@ -115,7 +133,10 @@ export function panelView(g: GameState, m: PanelMemory, interior: Interior): Pan
 
   const shownControls = LAUNCH_CONTROLS.filter((c) => {
     if (m.shown === 'launch') return true;
-    if (fresh?.control === c) return true; // a refused press at sea shows its control for the reason's 3 s
+    // A refused press at sea — or off board (M9: "Not aboard", as phase 2's refusals display) — shows its control for
+    // the reason's 3 s.
+    if (fresh?.control === c) return true;
+    if (m.shown === 'offBoard') return false;
     return c === 'door' && l.clamps === 'released' && refusalFor('door', l, g.sub, interior) !== REFUSAL.outOfRange;
   });
 
@@ -123,7 +144,7 @@ export function panelView(g: GameState, m: PanelMemory, interior: Interior): Pan
     controls: shownControls.map((c) => controlView(c, g, interior, next, fresh?.control === c, home)),
     refusal: fresh && (shownControls as readonly Press[]).includes(fresh.control) ? { control: fresh.control, reason: fresh.reason } : null,
     status: m.shown === 'launch' ? statusLine(g, m, interior) : null,
-    prompt: promptLine(g, m, interior, next),
+    prompt: m.shown === 'offBoard' ? null : promptLine(g, m, interior, next),
     compact: panelCompact(g),
   };
 }

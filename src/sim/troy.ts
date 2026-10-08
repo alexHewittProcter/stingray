@@ -94,6 +94,23 @@ const ON_EDGE = 1e-9;
 const FLOOR_MATCH = 1e-6;
 const onFloor = (p: Vec3, b: Box) => Math.abs(p.y - b.min.y) <= FLOOR_MATCH;
 
+/**
+ * The walkable point nearest (x, z), on whichever room's floor that is (M10's walkTo, the ?script= word walk=x:z): the
+ * point clamped into each shrunk room box and resolved out of the props, the closest of those that is walkable.
+ */
+export function nearestWalkable(x: number, z: number, rooms: Rooms): Vec3 {
+  const r = T.troyRadius;
+  let best: Vec3 | null = null;
+  let bestD = Infinity;
+  for (const b of rooms.rooms) {
+    const q = resolve({ x: clamp(x, b.min.x + r, b.max.x - r), y: b.min.y, z: clamp(z, b.min.z + r, b.max.z - r) }, rooms);
+    if (q === null) continue;
+    const d = Math.hypot(q.x - x, q.z - z);
+    if (d < bestD) [best, bestD] = [q, d];
+  }
+  return best ?? { ...rooms.start.pos };
+}
+
 // ---- Collision (M2) ----
 
 const PASSES = 3;

@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { LEGEND_IDLE, LEGEND_KEYS, type LegendState, initialLegend, legendKeysFor, legendOn, legendTick } from './legend';
+import {
+  LEGEND_IDLE, LEGEND_KEYS, type LegendState, ON_FOOT_KEYS, RIDING_KEYS, initialLegend, legendKeysFor, legendOn, legendRowsHtml,
+  legendSituation, legendTick,
+} from './legend';
 
 const PLAY = { held: false, menu: false };
 const HELD = { held: true, menu: false };
@@ -70,5 +73,39 @@ describe('the keys that matter first', () => {
     expect(rows.slice(0, 4).map((r) => r.key)).toEqual(['W / S', 'A / D', '↓ / E', '↑ / Q']);
     expect(rows.find((r) => r.key === '1 2 3 4')!.first).toBe(false);
     expect(rows.length).toBe(LEGEND_KEYS.length);
+  });
+});
+
+describe('the card per mode (phase 3, M9)', () => {
+  it('on foot: Troy\'s keys — W A S D, E, the orbit keys (arrows, J L I K, C), R to the control room, Esc — and none of the sub\'s', () => {
+    const rows = legendKeysFor('onFoot');
+    const keys = rows.map((r) => r.key);
+    for (const k of ['W A S D', 'E', '← → ↑ ↓', 'J L I K', 'C', 'R', 'Esc']) expect(keys).toContain(k);
+    expect(rows.find((r) => r.key === 'R')!.action).toBe('to control room');
+    expect(rows.find((r) => r.key === 'E')!.action).toBe('use');
+    for (const k of ['1 2 3 4', 'Shift', 'Space', 'W / S', '↓ / E']) expect(keys).not.toContain(k);
+    expect(rows.every((r) => r.first)).toBe(true);
+    expect(rows.length).toBe(ON_FOOT_KEYS.length);
+  });
+
+  it('riding: one line', () => {
+    expect(legendKeysFor('riding').length).toBe(1);
+    expect(RIDING_KEYS.length).toBe(1);
+  });
+
+  it('aboard: R now says "to control room" too; the menu page draws the current mode\'s list', () => {
+    expect(LEGEND_KEYS.find(([k]) => k === 'R')![1]).toBe('to control room');
+    expect(legendRowsHtml('onFoot')).toContain('<b>W A S D</b> walk');
+    expect(legendRowsHtml('onFoot')).not.toContain('1 2 3 4');
+    expect(legendRowsHtml('docked')).toContain('<b>1 2 3 4</b> launch');
+    expect(legendRowsHtml()).toBe(legendRowsHtml('driving'));
+  });
+
+  it('the situation follows the session mode, and aboard the clamps', () => {
+    expect(legendSituation('onFoot', 'locked')).toBe('onFoot');
+    expect(legendSituation('transport', 'locked')).toBe('riding');
+    expect(legendSituation('launch', 'locked')).toBe('docked');
+    expect(legendSituation('launch', 'released')).toBe('driving');
+    expect(legendSituation('piloting', 'released')).toBe('driving');
   });
 });

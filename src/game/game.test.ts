@@ -34,9 +34,9 @@ function sortie(): Game {
   return game;
 }
 
-function expectStandby(game: Game, before: GameState): void {
+function expectStandby(game: Game, before: GameState, want: GameState = standby(W, before.combat)): void {
   const g = game.state;
-  expect(g).toEqual(standby(W, before.combat));
+  expect(g).toEqual(want);
   expect(g.launch).toMatchObject({ door: 0, doorDir: 0, clamps: 'locked', engines: 'off', cradle: 0 });
   expect(g.combat.missiles).toEqual([]);
   expect(g.combat.t).toBe(before.combat.t);
@@ -46,11 +46,13 @@ function expectStandby(game: Game, before: GameState): void {
 }
 
 describe('the game owner (L3, L4)', () => {
+  // Phase 3 (M3, M9, M7's amendment list): R goes to the game's start — Troy in the control room, the sub in standby —
+  // where L4's went to standby in the pen. Everything else the R tests asked of L4 holds of the sub's half.
   it.each<[string, Vec3, number]>([
     ['the open sea', { x: 200, y: -40, z: -800 }, 0],
     ['the tunnel', { x: 0, y: -40, z: COAST_Z - 50 }, 0],
     ['the pen', { x: 10, y: -14, z: -1400 }, 1],
-  ])('11. R from %s gives standby: door shut, no missiles in flight, combat clock kept, destroyed targets stay destroyed', (_, pos, yaw) => {
+  ])('11. R from %s gives the control room, the sub in standby: door shut, no missiles in flight, combat clock kept, destroyed targets stay destroyed', (_, pos, yaw) => {
     const game = sortie();
     // Put the sub there without touching the door or the missile, then R.
     game.place(at(pos, yaw));
@@ -58,25 +60,31 @@ describe('the game owner (L3, L4)', () => {
     expect(before.combat.missiles.length).toBe(1);
     expect(before.launch.doorDir).toBe(1);
     game.restartNow();
-    expectStandby(game, before);
+    expectStandby(game, before, controlRoom(W, ROOMS, before.combat));
+    expect(game.mode).toBe('onFoot');
   });
 
   it('11. the R key calls it once per press, before the step it was held for', () => {
     const game = sortie();
     const before = game.state;
     game.step(held('KeyR'), DT);
-    // R, then one step from standby (nothing moves while docked; the clock runs).
-    const docked = standby(W, before.combat);
-    expect(game.state.sub).toEqual(docked.sub);
-    expect(game.state.launch).toEqual(docked.launch);
+    // R, then one step from the control room (nothing moves while docked; Troy stands still; the clock runs).
+    const start = controlRoom(W, ROOMS, before.combat);
+    expect(game.state.sub).toEqual(start.sub);
+    expect(game.state.launch).toEqual(start.launch);
+    expect(game.state.troy).toEqual(start.troy);
     expect(game.state.combat.t).toBeCloseTo(before.combat.t + DT, 12);
-    // Held: no repeat.
-    game.press('cradle');
+    // Held: no repeat — the pen (the menu's Return to Pen 3) stays the pen while R is still down.
+    game.toStandby();
     game.step(held('KeyR'), DT);
-    expect(game.state.launch.cradleDir).toBe(1);
+    expect(game.state.troy.where).toBe('aboard');
+    // Released and pressed again: back to the control room.
+    game.step(NOTHING, DT);
+    game.step(held('KeyR'), DT);
+    expect(game.state.troy.where).toBe('onFoot');
   });
 
-  it('11. a game started at sea (?start=ocean) also returns to standby on R, keeping the targets and shutting the door', () => {
+  it('11. a game started at sea (?start=ocean) also returns to the start on R, keeping the targets and shutting the door', () => {
     const game = new Game(W, oceanStart(W));
     game.place(at({ x: 0, y: -40, z: COAST_Z + 80 }, 0));
     game.press('door');
@@ -84,8 +92,16 @@ describe('the game owner (L3, L4)', () => {
     expect(game.state.launch.doorDir).toBe(1);
     const before = game.state;
     game.restartNow();
-    expect(game.state).toEqual(standby(W, before.combat));
+    expect(game.state).toEqual(controlRoom(W, ROOMS, before.combat));
     expect(game.state.launch).toMatchObject({ door: 0, doorDir: 0, clamps: 'locked', cradle: 0 });
+  });
+
+  it("L4. the menu's Return to Pen 3 (toStandby) still gives standby in the pen", () => {
+    const game = sortie();
+    game.place(at({ x: 200, y: -40, z: -800 }, 0));
+    const before = game.state;
+    game.toStandby();
+    expectStandby(game, before);
   });
 
   it("11. ?start=ocean's state is released, engines on, cradle lowered, door shut, at phase 1's spawn", () => {

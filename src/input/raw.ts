@@ -10,7 +10,7 @@ const GAME_KEYS = new Set([
   'KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyQ', 'KeyE', 'KeyR',
   'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight',
   'ShiftLeft', 'ShiftRight', 'Space',
-  'Digit1', 'Digit2', 'Digit3', 'Digit4',
+  'Digit1', 'Digit2', 'Digit3', 'Digit4', 'Digit5', // 5: leave the seat (phase 3, M3; T9 wires it)
 ]);
 
 /** onPress hears each key once per press (auto-repeat ignored), for edge-triggered controls. */
