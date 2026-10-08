@@ -98,6 +98,9 @@ describe('the card per mode (phase 3, M9)', () => {
     expect(legendRowsHtml('onFoot')).toContain('<b>W A S D</b> walk');
     expect(legendRowsHtml('onFoot')).not.toContain('1 2 3 4');
     expect(legendRowsHtml('docked')).toContain('<b>1 2 3 4</b> launch');
+    // Phase 3 (M3, M6b): docked, 5 leaves the seat — second only to the launch keys.
+    expect(legendKeysFor('docked')[1]).toEqual({ key: '5', action: 'leave seat', first: true });
+    expect(legendKeysFor('driving').find((r) => r.key === '5')!.first).toBe(false);
     expect(legendRowsHtml()).toBe(legendRowsHtml('driving'));
   });
 

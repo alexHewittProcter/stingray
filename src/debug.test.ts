@@ -153,3 +153,17 @@ describe('leave (phase 3, M10)', () => {
     expect(log).toEqual(['leave', '12', 'use', 'leave']);
   });
 });
+
+describe('face=DEG (phase 3, T9 — the way-up loop witness)', () => {
+  it("turns Troy through the handle's face(), in order; a malformed heading is skipped", () => {
+    const log: string[] = [];
+    const handle = {
+      use: () => log.push('use'),
+      leave: () => log.push('leave'),
+      face: (d: number) => log.push(`face ${d}`),
+      advance: (s: number) => log.push(String(s)),
+    } as unknown as DebugHandle;
+    runScript('leave,12,face=0,face=x,use,12', handle);
+    expect(log).toEqual(['leave', '12', 'face 0', 'use', '12']);
+  });
+});

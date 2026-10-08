@@ -3,13 +3,13 @@
 // standby, oceanStart, released and modeOf(pos) keep their signatures, and this wraps them.
 //
 // Each step, in order: stepTroy (a no-op unless Troy is on foot) → stepRide (M6, ride.ts: a no-op unless he is riding;
-// it ends the descent aboard, the lock-in) → stepGame for the sub, the machinery and combat. While Troy is not aboard the sub's
+// it ends the descent aboard, the lock-in, and the ascent on foot) → stepGame for the sub, the machinery and combat. While Troy is not aboard the sub's
 // input is NO_INPUT and a launch press is refused 'Not aboard', so a clamped standby sub with nobody in it stays exactly
 // as it was. 'use' and 'leave' are handled here and never reach stepGame. Combat's clock and the targets run throughout.
 
 import { INTERACTABLES, LINE_SECONDS, nearestUsable } from './interactables';
 import { type GameState, type LaunchControl, type LaunchState, type Press, REFUSAL, standby, stepGame } from './launch';
-import { sit, stepRide } from './ride';
+import { leaveSeat, sit, stepRide } from './ride';
 import type { Rooms } from './rooms';
 import { NO_INPUT, type SubInput } from './sub';
 import { type TroyInput, onFoot, stepTroy } from './troy';
@@ -24,15 +24,21 @@ const isLaunchControl = (p: Press): p is LaunchControl => LAUNCH_PRESSES.include
 export function stepSession(
   g: GameState, input: SubInput, troyInput: TroyInput, pressed: Press | null, dt: number, env: World, rooms: Rooms,
 ): GameState {
-  // M6: the ride — the descent and the lock-in (the way up, M6b, is T9's). The sub is never touched by it.
-  const troy = stepRide(stepTroy(g.troy, troyInput, dt, rooms), dt, rooms, env.marineville.interior.cradle.yawOut);
+  // M6, M6b: the ride — the descent and the lock-in, the ascent and the standing up. The sub is never touched by it.
+  const seatYaw = env.marineville.interior.cradle.yawOut;
+  const troy = stepRide(stepTroy(g.troy, troyInput, dt, rooms), dt, rooms, seatYaw);
 
   const piloted = g.troy.where === 'aboard';
   const launchPress = pressed !== null && isLaunchControl(pressed) && piloted ? pressed : null;
   const next = stepGame({ ...g, troy }, piloted ? input : NO_INPUT, launchPress, dt, env);
 
   const reason = pressed === null || launchPress !== null ? null : refusalOf(pressed, g);
-  if (reason === null) return pressed === 'use' ? applyUse(g, next, rooms) : next;
+  if (reason === null) {
+    if (pressed === 'use') return applyUse(g, next, rooms);
+    // M6b: an accepted 'leave' — Troy rides back up; the sub stays in standby. The ascent starts on the next step.
+    if (pressed === 'leave') return { ...next, troy: leaveSeat(next.troy, rooms, seatYaw) };
+    return next;
+  }
   return { ...next, launch: { ...next.launch, refusal: { control: pressed!, reason, age: 0 } } };
 }
 
@@ -57,7 +63,7 @@ function applyUse(g: GameState, next: GameState, rooms: Rooms): GameState {
 
 /**
  * Why a press stepSession handles itself is refused, or null if it is accepted. An accepted 'use' is applied by
- * applyUse (M5); an accepted 'leave' does nothing yet (T9's, the way back up).
+ * applyUse (M5); an accepted 'leave' starts the ride back up (M6b, ride.ts leaveSeat).
  */
 function refusalOf(p: Press, g: GameState): string | null {
   if (isLaunchControl(p)) return REFUSAL.notAboard; // M6: launch controls need a pilot

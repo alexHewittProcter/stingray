@@ -37,7 +37,9 @@ export type SoundEvent =
   | { kind: 'detonation'; distance: number; gain: number; muffle: number }
   | { kind: 'refusal' }
   | { kind: 'chairStart' } // phase 3 (M6): Troy sits and the injector chair's carriage lets go
-  | { kind: 'lockIn' }; // and it locks into Stingray's cabin as the pilot's seat
+  | { kind: 'lockIn' } // and it locks into Stingray's cabin as the pilot's seat
+  | { kind: 'chairUnlock' } // M6b: the way back up — the seat unlocks from the cabin with the lock-in's clunk
+  | { kind: 'chairHome' }; // and it latches home in the lounge, where Troy stands up
 
 export interface Soundscape {
   /** 0 off … 1 running (follows the 2 s start); speed and boost in 0…1. */
@@ -51,7 +53,11 @@ export interface Soundscape {
    * control tower's console hum (on foot).
    */
   ambience: { seaUnder: number; seaAbove: number; tunnel: number; hall: number; rooms: number; depth: number };
-  /** Phase 3 (M6): the injector shaft's rush while riding — level 0/1, speed 0…1 of the chair's cruise. */
+  /**
+   * Phase 3 (M6): the injector shaft's rush while riding — level 0/1, speed 0…1 of the chair's cruise. The ascent (M6b)
+   * runs the descent's timetable backwards, so the speed at a point is the same both ways: rising from the seat,
+   * falling to rest at the top.
+   */
   shaft: { level: number; speed: number };
   /** The listener is under water: muffle effects and the engine. */
   underwater: boolean;
@@ -80,9 +86,12 @@ export function stepEvents(prev: GameState, cur: GameState, jumped = false): Sou
   const out: SoundEvent[] = [];
   const ear = listenerOf(cur);
 
-  // The injector chair (phase 3, M6): the sit, and the lock-in at the foot of the shaft.
+  // The injector chair (phase 3, M6): the sit, and the lock-in at the foot of the shaft; M6b "the same reversed up": the
+  // unlock from the cabin, and the chair home in the lounge as Troy stands up.
   if (prev.troy.where === 'onFoot' && cur.troy.where === 'riding') out.push({ kind: 'chairStart' });
   if (prev.troy.where === 'riding' && cur.troy.where === 'aboard') out.push({ kind: 'lockIn' });
+  if (prev.troy.where === 'aboard' && cur.troy.where === 'riding') out.push({ kind: 'chairUnlock' });
+  if (prev.troy.where === 'riding' && cur.troy.where === 'onFoot') out.push({ kind: 'chairHome' });
 
   // Cradle
   if (a.cradleDir === 0 && b.cradleDir !== 0) {

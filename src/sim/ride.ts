@@ -1,5 +1,5 @@
-// The ride down the injector shaft (phase 3, M6 — down; the way back up, M6b, is T9's). Pure and deterministic like
-// the rest of src/sim: the chair is a point moving along ROOMS.shaft by arc length, on a fixed timetable.
+// The injector chair's ride (phase 3, M6 — down; M6b — back up). Pure and deterministic like the rest of src/sim: the
+// chair is a point moving along ROOMS.shaft by arc length, on a fixed timetable.
 //
 //   - Sit (M6): on 'use' of the chair while on foot (session.ts applyUse) Troy becomes where 'riding', rideDir 'down',
 //     ride 0, pos = shaft[0], facing the way the chair faces (chair.yaw + π). The sub is not touched.
@@ -14,9 +14,15 @@
 //   - Lock-in (M6): the step on which the timetable reaches RIDE_SECONDS ends with ride at 1 and, in the same step,
 //     where 'aboard' — Troy's aboard state exactly as phase 2's standby has it (seat, the sub's yaw, ride 0) — and
 //     nothing else changes: sub, launch and combat are stepGame's alone.
+//   - The way back up (M6b): an accepted 'leave' (session.ts) sets where 'riding', rideDir 'up', ride 1 at the seat, and
+//     the ride runs back to 0 over the same RIDE_SECONDS — the descent's timetable run backwards in time ("Going up
+//     reverses it", M4), so the ascent eases in from the seat over the descent's last slice (1 s) and eases out at
+//     the top over its first (1.5 s), and the chair passes each point at the same speed both ways. M6b: "on the way up
+//     it faces up" — the facing rule run over the reversed polyline (chairYawUp). At 0 Troy stands up: on foot, facing
+//     chair.yaw + π, still — at standPoint, the walkable point in front of the chair (see there).
 
 import type { Rooms } from './rooms';
-import { type TroyState, aboard } from './troy';
+import { type TroyState, aboard, nearestWalkable, onFoot, walkable } from './troy';
 import { TUNING as T } from './tuning';
 import type { Vec3 } from './vec3';
 
@@ -137,17 +143,48 @@ export function chairYaw(shaft: readonly Vec3[], ride: number, startYaw: number,
   return wrapAngle(before + wrapAngle(after - before) * f);
 }
 
+/**
+ * M6b: the chair's facing on the way up at progress `ride` (running 1 → 0): M6's rule over the polyline reversed — a
+ * level leg's own heading the way the chair now travels; over a vertical leg a turn from the heading it came in with
+ * (`bottomYaw`, the sub's, at the seat) to the next leg's, or to `topYaw` (the way Troy faces standing up) on the bore.
+ */
+export function chairYawUp(shaft: readonly Vec3[], ride: number, topYaw: number, bottomYaw: number): number {
+  return chairYaw([...shaft].reverse(), 1 - clamp01(ride), bottomYaw, topYaw);
+}
+
+/**
+ * M6b: where Troy stands up. The contract says shaft[0] (the chair's own point), but that is on the injector bay's
+ * plinth — a prop Troy may never stand in (M2) — so he stands at the faithful nearest thing: the first walkable point
+ * straight out in front of the chair along the way its seat faces (chair.yaw + π), ≈ 1.5 m out (the plinth's front edge
+ * is 1.1 m from the chair, plus his radius), where he stood to sit. Falls back on the nearest walkable point.
+ */
+export function standPoint(rooms: Rooms): Vec3 {
+  const c = rooms.chair;
+  const yaw = c.yaw + Math.PI;
+  for (let d = 0; d <= 4; d += 0.01) {
+    const p = { x: c.pos.x - Math.sin(yaw) * d, y: c.pos.y, z: c.pos.z - Math.cos(yaw) * d };
+    if (walkable(p, rooms)) return p;
+  }
+  return nearestWalkable(c.pos.x, c.pos.z, rooms);
+}
+
+/** M6b: an accepted 'leave' — Troy riding up from the pilot's seat (the shaft's last point), ride 1, still. */
+export function leaveSeat(t: TroyState, rooms: Rooms, seatYaw: number): TroyState {
+  return { ...t, where: 'riding', rideDir: 'up', ride: 1, pos: { ...rooms.shaft[rooms.shaft.length - 1]! }, yaw: seatYaw, speed: 0 };
+}
+
 /** M6's sit: Troy into the chair at the top of the shaft, facing the way the seat faces, still. */
 export function sit(t: TroyState, rooms: Rooms): TroyState {
   return { ...t, where: 'riding', rideDir: 'down', ride: 0, pos: { ...rooms.shaft[0]! }, yaw: rooms.chair.yaw + Math.PI, speed: 0 };
 }
 
 /**
- * One step of the ride (M6): a no-op unless Troy is riding down. `seatYaw` is the sub's heading on the cradle
- * (phase 2's yawOut, π) — the way the chair lands facing. Riding up (M6b) is T9's: passed through as it is.
+ * One step of the ride (M6, M6b): a no-op unless Troy is riding. `seatYaw` is the sub's heading on the cradle
+ * (phase 2's yawOut, π) — the way the chair lands facing, and the way it sets off back up.
  */
 export function stepRide(t: TroyState, dt: number, rooms: Rooms, seatYaw: number): TroyState {
-  if (t.where !== 'riding' || t.rideDir !== 'down') return t; // TODO(M6b, T9): the way back up
+  if (t.where !== 'riding') return t;
+  if (t.rideDir === 'up') return stepRideUp(t, dt, rooms, seatYaw);
   const time = rideTimeAt(t.ride) + dt;
   const seat = rooms.shaft[rooms.shaft.length - 1]!;
   // Lock-in (M6): the chair reaches the seat and Troy is aboard in the same step.
@@ -159,6 +196,18 @@ export function stepRide(t: TroyState, dt: number, rooms: Rooms, seatYaw: number
     pos: shaftPoint(rooms.shaft, ride),
     yaw: chairYaw(rooms.shaft, ride, rooms.chair.yaw + Math.PI, seatYaw),
   };
+}
+
+/**
+ * M6b: one step of the way back up — the descent's timetable backwards: `elapsed` seconds into the ascent the chair
+ * is where the descent has it RIDE_SECONDS − elapsed in. At the top, in the same step, Troy stands up (standPoint).
+ */
+function stepRideUp(t: TroyState, dt: number, rooms: Rooms, seatYaw: number): TroyState {
+  const elapsed = RIDE_SECONDS - rideTimeAt(t.ride) + dt;
+  const topYaw = rooms.chair.yaw + Math.PI;
+  if (elapsed >= RIDE_SECONDS - ARRIVE) return onFoot({ pos: standPoint(rooms), yaw: wrapAngle(topYaw) });
+  const ride = rideProgressAt(RIDE_SECONDS - elapsed);
+  return { ...t, ride, pos: shaftPoint(rooms.shaft, ride), yaw: chairYawUp(rooms.shaft, ride, topYaw, seatYaw) };
 }
 
 function legAt(legs: readonly Leg[], s: number): Leg | undefined {
