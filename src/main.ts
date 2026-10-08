@@ -93,7 +93,7 @@ const rig = createCameraRig(camera, world);
 const follow = createFollowCamera(camera, ROOMS);
 const RIG_NEAR = camera.near;
 // Troy's rooms and Troy (phase 3, T1 greybox): the rooms are outside the ocean side and drawn only while the camera is
-// in them (render/rooms.ts); their lamp stays in the scene and dims. Troy is drawn while he is on foot.
+// in them (render/rooms.ts); their lamp stays in the scene and dims. Troy (M8, render/troy.ts) is drawn on foot and riding.
 const rooms = createRooms(ROOMS);
 scene.add(rooms.group, rooms.lamp);
 const troy = createTroy();
@@ -296,7 +296,8 @@ function draw(alpha: number, frameSeconds: number): void {
   // M3: the drawn camera's yaw, for the next steps' on-foot mapping (W = away from the camera).
   game.cameraYaw = yawOfView(camera.getWorldDirection(lookDir), game.cameraYaw);
   rooms.update(camera);
-  troy.pose(g.troy, alpha, game.lastState.troy);
+  // M8: Troy animates on the frame's wall time (the sit blend, the breath) and fades when the camera is on top of him.
+  troy.pose(g.troy, alpha, game.lastState.troy, { dt: frameSeconds, camera, snap: jumped });
   pen.update(camera, penView, frameSeconds, elapsed);
   const door = game.lastState.launch.door + (g.launch.door - game.lastState.launch.door) * alpha;
   tunnel.update(camera, { door, doorMoving: g.launch.doorDir !== 0 }, elapsed);
