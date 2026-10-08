@@ -1,10 +1,11 @@
 import { toSubInput } from '../input/pilot';
 import type { RawInput } from '../input/raw';
+import { toTroyInput } from '../input/troy';
 import { type GameState, type Press, oceanStart, released, standby } from '../sim/launch';
 import { ROOMS, seatOf } from '../sim/rooms';
 import { controlRoom, stepSession } from '../sim/session';
 import { type SubInput, type SubState, NO_INPUT } from '../sim/sub';
-import { STAND_STILL, aboard } from '../sim/troy';
+import { STAND_STILL, aboard, nearestWalkable, onFoot } from '../sim/troy';
 import type { Vec3 } from '../sim/vec3';
 import type { World } from '../sim/world';
 import { type GameMode, mappingOf, sessionMode } from './mode';
@@ -24,6 +25,12 @@ export class Game {
   jumped = true;
   /** The driving input the last step applied (none while clamped), for drawing the craft. */
   input: SubInput = NO_INPUT;
+  /**
+   * M3: the drawn camera's yaw (the sim's convention: 0 looks north, +yaw left), written by main.ts each frame and read
+   * by the next step's on-foot mapping (input/troy.ts) so W walks away from the camera. 0 with no camera (tests,
+   * ?script=), so W is north.
+   */
+  cameraYaw = 0;
   /** Debug: axes that replace the keyboard's while set. */
   override: Partial<SubInput> = {};
   /** Hears every fixed step's (previous, current) pair once, for sound (L7). Never straddles a jump. */
@@ -64,10 +71,11 @@ export class Game {
 
     const live = this.unlatched(held);
     const input = { ...toSubInput(live), ...this.override };
-    // T2 maps the keys to Troy (input/troy.ts, camera-relative); until then he stands still.
-    const troyInput = STAND_STILL;
-    const pressed = this.queue.shift() ?? null;
     const mapping = mappingOf(sessionMode(this.current));
+    // M3: which mapping applies is the session mode's when the keys are read. On foot W A S D walk Troy, relative to
+    // the camera (input/troy.ts); aboard they are the sub's (stepSession gives the sub NO_INPUT unless Troy is aboard).
+    const troyInput = mapping === 'onFoot' ? toTroyInput(live, this.cameraYaw) : STAND_STILL;
+    const pressed = this.queue.shift() ?? null;
     this.previous = this.current;
     this.current = stepSession(this.current, input, troyInput, pressed, dt, this.world, ROOMS);
     if (mappingOf(sessionMode(this.current)) !== mapping) this.latchPending = true;
@@ -95,9 +103,12 @@ export class Game {
     return this.latched;
   }
 
-  /** What the R key does (L4): back to standby in the pen, from anywhere, whichever way the session started. */
+  /**
+   * What the R key does (phase 3 M3/M9, amending L4): back to the game's start — Troy standing in the control room, the
+   * sub in standby — from anywhere, whichever way the session started. The menu's "Return to Pen 3" is toStandby.
+   */
   restartNow(): void {
-    this.toStandby();
+    this.toControlRoom();
   }
 
   /** L4's R: standby in the pen, keeping combat's clock and targets; missiles cleared, door shut at once. */
@@ -119,6 +130,17 @@ export class Game {
   place(sub: SubState): void {
     const troy = aboard(seatOf(this.world.marineville.interior.cradle));
     this.set({ ...this.current, sub, launch: released(this.current.launch), troy });
+  }
+
+  /**
+   * Debug (M10's walkTo, ?script= walk=x:z): Troy on foot at the walkable point nearest (x, z), keeping his facing if
+   * he was on foot (else the start's); the sub, the machinery and combat left as they are. A jump for the camera
+   * (it snaps), but no latch — as place(), the witness scripts hold keys across it.
+   */
+  walkTo(x: number, z: number): void {
+    const t = this.current.troy;
+    const yaw = t.where === 'onFoot' ? t.yaw : ROOMS.start.yaw;
+    this.set({ ...this.current, troy: onFoot({ pos: nearestWalkable(x, z, ROOMS), yaw }) });
   }
 
   /** The detonations of every step since the last call — for the frame that draws them, so none is skipped. */

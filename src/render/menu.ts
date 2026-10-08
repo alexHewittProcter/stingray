@@ -4,10 +4,11 @@
 // not buttons: nothing takes keyboard focus, so the game's keys are live the moment the menu closes.
 
 import { type MenuEvent, type MenuState, itemLabel, menuItems } from '../game/menu';
-import { legendRowsHtml } from './legend';
+import { type LegendSituation, legendRowsHtml } from './legend';
 
 export interface MenuView {
-  update(state: MenuState, muted: boolean): void;
+  /** situation: the current mode's controls card, for the Controls page (phase 3, M9). */
+  update(state: MenuState, muted: boolean, situation?: LegendSituation): void;
 }
 
 const STYLE = `
@@ -120,14 +121,14 @@ export function createMenu(parent: HTMLElement, onEvent: (e: MenuEvent) => void)
   let items: HTMLElement[] = [];
 
   return {
-    update(state, muted) {
+    update(state, muted, situation = 'driving') {
       document.body.dataset.menu = state.kind ?? '';
       root.classList.toggle('open', state.kind !== null);
       // Closing: leave the last page in place while it fades.
       if (state.kind === null) return;
       root.classList.toggle('pause', state.kind === 'pause');
 
-      const key = `${state.kind}|${state.page}|${muted}`;
+      const key = `${state.kind}|${state.page}|${muted}|${situation}`;
       if (key !== built) {
         built = key;
         const list = menuItems(state.kind, state.page);
@@ -135,7 +136,7 @@ export function createMenu(parent: HTMLElement, onEvent: (e: MenuEvent) => void)
           ? `<h1 class="mn-title">Stingray</h1><div class="mn-strap">Stand by for action</div>`
           : `<h1 class="mn-title">Paused</h1>`;
         const head = state.page === 'controls' ? 'CONTROLS' : state.kind === 'title' ? 'MARINEVILLE · PEN 3' : 'STINGRAY · STANDING BY';
-        const screen = state.page === 'controls' ? `<div class="mn-screen">${legendRowsHtml()}</div>` : '';
+        const screen = state.page === 'controls' ? `<div class="mn-screen">${legendRowsHtml(situation)}</div>` : '';
         const back = state.kind === 'pause' && state.page === 'main' ? 'resume' : 'back';
         root.innerHTML = `
           <div class="mn-stack">

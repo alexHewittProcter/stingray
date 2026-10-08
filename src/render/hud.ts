@@ -1,6 +1,9 @@
 // Plain DOM overlay: depth, speed, heading, the way home, targets left, and a key legend. In 'launch' presentation
 // (phase 2, L6) the sea readouts that make no sense inside — the way home and the targets — give way to a one-line
 // status, and the launch panel (launch-panel.ts) sits bottom centre.
+// Phase 3 (M9): the sub's readouts — depth, speed, heading, the way home and the status/targets line — and the
+// reticle are shown only aboard (showReadouts); on foot and riding only the legend is left (T6 adds the prompt and
+// the flavour line).
 
 import { type LegendSituation, legendKeysFor } from './legend';
 
@@ -23,6 +26,8 @@ export interface Hud {
   update(readout: HudReadout): void;
   /** Show or fade the key legend (when: render/legend.ts), the situation's keys first. */
   showLegend(shown: boolean, situation: LegendSituation): void;
+  /** M9: show the sub's readouts (aboard) or hide them (on foot, riding). The reticle goes with them. */
+  showReadouts(shown: boolean): void;
 }
 
 const STYLE = `
@@ -43,6 +48,7 @@ const STYLE = `
 .hud-legend .hud-label { grid-column: 1 / -1; margin-bottom: 1px; letter-spacing: .1em; }
 .hud-status { letter-spacing: .1em; }
 .hud-home-row[hidden] { display: none; }
+.hud.no-readouts .hud-left, .hud.no-readouts .hud-right, .hud.no-readouts .hud-top, .hud.no-readouts .hud-reticle { display: none; }
 .hud-reticle { position: absolute; left: 50%; top: 50%; width: 26px; height: 26px; margin: -13px 0 0 -13px;
   border: 2px solid rgba(255,224,102,.85); border-radius: 50%; box-shadow: 0 0 6px rgba(0,0,0,.5); }
 .hud-reticle::after { content: ''; position: absolute; left: 50%; top: 50%; width: 4px; height: 4px;
@@ -120,6 +126,9 @@ export function createHud(parent: HTMLElement): Hud & { reticle: HTMLElement } {
       targets.textContent = r.status !== null ? r.status : r.targetsLeft === 0
         ? 'ALL TARGETS DESTROYED — RETURN TO MARINEVILLE'
         : `TARGETS ${r.targetsTotal - r.targetsLeft} / ${r.targetsTotal}`;
+    },
+    showReadouts(shown) {
+      root.classList.toggle('no-readouts', !shown);
     },
     showLegend(shown, situation) {
       legend.classList.toggle('faded', !shown);

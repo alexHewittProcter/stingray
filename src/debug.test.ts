@@ -113,3 +113,17 @@ describe('placement near the cradle and steering holds (T6)', () => {
     expect(inputs).toEqual([{ fire: true }, { boost: true }, { fire: false }]);
   });
 });
+
+describe('walk=x:z (phase 3, M10)', () => {
+  it('teleports Troy with a colon pair, alongside the comma words; malformed pairs are skipped', () => {
+    const walks: Array<[number, number]> = [];
+    const seconds: number[] = [];
+    const handle = {
+      walkTo: (x: number, z: number) => walks.push([x, z]),
+      advance: (s: number) => seconds.push(s),
+    } as unknown as DebugHandle;
+    runScript('walk=5.2:-1262,2,walk=-3:-1275,walk=1,walk=a:2,walk=1:2:3', handle);
+    expect(walks).toEqual([[5.2, -1262], [-3, -1275]]);
+    expect(seconds).toEqual([2]);
+  });
+});
