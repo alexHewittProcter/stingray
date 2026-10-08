@@ -5,6 +5,7 @@ import { COAST_Z, MARINEVILLE } from '../sim/world';
 import { cameraIndoors, inRooms, indoorAmount, oceanInView } from './indoors';
 import { VIEW_PRESETS, viewParam } from '../debug';
 import { createRooms, walls } from './rooms';
+import { inShaft, shaftLine } from './shaft';
 
 const I = MARINEVILLE.interior;
 const v = (x: number, y: number, z: number) => new THREE.Vector3(x, y, z);
@@ -81,11 +82,31 @@ describe('the greybox rooms (T1)', () => {
 });
 
 describe('the rooms\' ?view= presets (M10)', () => {
-  it.each(Object.keys(VIEW_PRESETS))('puts the camera for ?view=%s inside the rooms, looking at a point inside them', (name) => {
+  it('has one preset per room, plus the shaft and its hatch (M10)', () => {
+    expect(Object.keys(VIEW_PRESETS).sort()).toEqual(['control', 'corridor', 'hatch', 'lounge', 'shaft']);
+  });
+
+  it.each(['control', 'corridor', 'lounge'])('puts the camera for ?view=%s inside the rooms, looking at a point inside them', (name) => {
     const n = viewParam(name)!;
     expect(n.length).toBe(6);
     expect(inRooms(v(n[0]!, n[1]!, n[2]!))).toBe(true);
     expect(inRooms(v(n[3]!, n[4]!, n[5]!))).toBe(true);
+  });
+
+  it('?view=shaft is inside the drawn shaft, looking along its level run', () => {
+    const n = viewParam('shaft')!;
+    const line = shaftLine(ROOMS, MARINEVILLE.interior);
+    expect(inShaft(v(n[0]!, n[1]!, n[2]!), line)).toBe(true);
+    expect(inShaft(v(n[3]!, n[4]!, n[5]!), line)).toBe(true);
+    expect(Math.abs(n[1]! - SHAFT_RUN_Y)).toBeLessThan(1);
+  });
+
+  it('?view=hatch is in the pen hall, looking up at the housing above the cradle', () => {
+    const n = viewParam('hatch')!;
+    const c = MARINEVILLE.interior.cradle;
+    expect(cameraIndoors(v(n[0]!, n[1]!, n[2]!))).toBe(true);
+    expect(n[1]!).toBeLessThan(n[4]!);
+    expect(Math.hypot(n[3]! - c.pos.x, n[5]! - c.pos.z)).toBeLessThan(1e-9);
   });
 
   it('still reads the six-number form, and ignores anything else', () => {

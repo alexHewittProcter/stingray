@@ -37,6 +37,11 @@ export interface DebugHandle {
   walkTo(x: number, z: number): void;
   /** Phase 3 (M10): queue 'use' (M5), as E does on foot. */
   use(): void;
+  /**
+   * Phase 3 (M10): queue 'leave' — the launch panel's fifth control (M9). Refused 'Dock first' unless Troy is aboard a
+   * docked, raised sub; accepted, it does nothing yet (T9 starts the ride back up).
+   */
+  leave(): void;
 }
 
 declare global {
@@ -52,8 +57,9 @@ export function installDebugHandle(handle: DebugHandle): void {
 const CONTROLS: readonly string[] = ['cradle', 'engines', 'clamps', 'door'];
 
 /**
- * Phase 3 (M10): named ?view= presets, one per room, so each can be screenshotted headless (with ?start=control for
- * Troy in shot): x, y, z, lookX, lookY, lookZ, as the six-number form.
+ * Phase 3 (M10): named ?view= presets, one per room and one each for the shaft and its housing in the pen hall, so each
+ * can be screenshotted headless (the default start puts Troy in the control room): x, y, z, lookX, lookY, lookZ, as the
+ * six-number form. Listed with their URLs in docs/witnessing.md.
  */
 export const VIEW_PRESETS: Readonly<Record<string, readonly [number, number, number, number, number, number]>> = Object.freeze({
   // The control room from its south-east corner, over Troy at the start toward the console bank and the corridor door.
@@ -62,6 +68,11 @@ export const VIEW_PRESETS: Readonly<Record<string, readonly [number, number, num
   corridor: [5.2, 94.4, -1258.6, 4.4, 93.8, -1268],
   // The Standby Lounge from its doorway, toward Troy's chair and the bore beside it.
   lounge: [-6.8, 95.3, -1268.2, 0, 93, -1277],
+  // Inside the injector shaft's level run (leg 2, y 22.4 under the grounds), looking north along it toward the pen.
+  shaft: [0.6, 22.9, -1290, 0, 22.2, -1340],
+  // The pen hall, up at the shaft's housing in the ceiling above the cradle — the arrival shot's hatch — over the
+  // standby sub's roof.
+  hatch: [11, 11, -1380, 0, 17, -1395],
 });
 
 /** The ?view= parameter as six numbers — a preset name or x,y,z,lookX,lookY,lookZ — or null. */
@@ -131,7 +142,9 @@ export function nearCradle(metres: number): { pos: Vec3; yaw: number } {
  *     left), each at rest (all within ±100).
  *   - phase 3 (M10): walk=X:Z (a colon — the words split on commas) puts Troy on foot at the walkable point nearest
  *     world (X, Z), as __stingray.walkTo does; the camera snaps;
- *   - phase 3 (M10): use queues 'use' (M5), as __stingray.use does — E on foot.
+ *   - phase 3 (M10): use queues 'use' (M5), as __stingray.use does — E on foot;
+ *   - phase 3 (M10): leave queues 'leave', as __stingray.leave does — the panel's 5 (refused 'Dock first' unless
+ *     aboard a docked, raised sub; T9 makes it ride back up).
  * "cradle,8.2,engines,2.1,clamps,1" lowers the cradle, starts the engines and releases the clamps;
  * "out=40,door,5" waits in the door chamber while the door opens. Phase 3 (T7), the full loop from the lounge to open
  * water in one page (Troy at his chair, sits, rides down 10 s and locks in, then phase 2's launch, steered out through
@@ -153,6 +166,10 @@ export function runScript(script: string, handle: DebugHandle): void {
     }
     if (word === 'use') {
       handle.use();
+      continue;
+    }
+    if (word === 'leave') {
+      handle.leave();
       continue;
     }
     const [key, value] = word.split('=');

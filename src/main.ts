@@ -125,7 +125,7 @@ const drawnPose: CameraPose = { pos: new THREE.Vector3(), quat: new THREE.Quater
 let wasRiding = false;
 let drawnOnce = false;
 // Witnessing (debug): ?view=x,y,z,lookX,lookY,lookZ fixes the camera there, ignoring the rig; ?view=control,
-// corridor or lounge are the rooms' presets (debug.ts VIEW_PRESETS).
+// corridor, lounge, shaft or hatch are the presets (debug.ts VIEW_PRESETS, M10; docs/witnessing.md).
 const viewNumbers = viewParam(params.get('view'));
 const viewFrom = viewNumbers
   ? [new THREE.Vector3(viewNumbers[0], viewNumbers[1], viewNumbers[2]), new THREE.Vector3(viewNumbers[3], viewNumbers[4], viewNumbers[5])] as const
@@ -513,6 +513,7 @@ installDebugHandle({
   rooms: () => ROOMS,
   walkTo: (x, z) => game.walkTo(x, z),
   use: () => game.press('use'),
+  leave: () => game.press('leave'),
 });
 
 window.addEventListener('resize', () => {
