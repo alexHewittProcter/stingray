@@ -102,6 +102,21 @@ export function orbitTick(s: OrbitState, dt: number, driving: boolean): OrbitSta
   return driven >= DRIVE_RETURN_SECONDS ? { ...s, driven, returning: true } : { ...s, driven };
 }
 
+/**
+ * Phase 3 (M4, on foot): hand the orbit's visible yaw to the follow camera's heading, leaving its pitch and zoom (and
+ * their ease-back) as they were. The composed pose is unchanged — the heading gains exactly what the orbit loses — but
+ * Troy, who walks the way the camera looks (M3), is then followed by a heading that has nothing left to chase: with
+ * the yaw kept as an offset the camera would keep turning after him and he would walk in circles until it eased back.
+ * Returns the state without yaw (at rest, if nothing else is left) and the yaw handed over.
+ */
+export function orbitTakeYaw(s: OrbitState): { orbit: OrbitState; yaw: number } {
+  const yaw = orbitView(s).yaw;
+  if (yaw === 0) return { orbit: s, yaw: 0 };
+  const rest = { ...s, yaw: 0 };
+  const idle = !rest.dragging && rest.pitch === 0 && rest.zoom === 1;
+  return { orbit: idle ? initialOrbit() : rest, yaw };
+}
+
 /** Debug: ?orbit=yawDeg,pitchDeg[,zoom] — a held orbit. */
 export function orbitFromParam(param: string | null): OrbitState | null {
   const n = param?.split(',').map(Number);
