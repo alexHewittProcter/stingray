@@ -33,6 +33,8 @@ export interface DebugHandle {
   troy(): TroyState;
   /** Phase 3 (M10): the rooms' data (sim/rooms.ts). */
   rooms(): Rooms;
+  /** Phase 3 (M10): Troy on foot at the walkable point nearest (x, z); the camera snaps. */
+  walkTo(x: number, z: number): void;
 }
 
 declare global {
@@ -125,6 +127,8 @@ export function nearCradle(metres: number): { pos: Vec3; yaw: number } {
  *   - dock=M puts the released sub at rest on the pen's axis at the lowered cradle's height, M metres south of the
  *     cradle (negative: north), facing it; dx= / dy= / dz= move it that many metres and turn= turns it (degrees,
  *     left), each at rest (all within ±100).
+ *   - phase 3 (M10): walk=X:Z (a colon — the words split on commas) puts Troy on foot at the walkable point nearest
+ *     world (X, Z), as __stingray.walkTo does; the camera snaps.
  * "cradle,8.2,engines,2.1,clamps,1" lowers the cradle, starts the engines and releases the clamps;
  * "out=40,door,5" waits in the door chamber while the door opens. Unknown words are ignored. At most
  * SCRIPT_LIMITS.tokens words run, and at most SCRIPT_LIMITS.totalSeconds in all.
@@ -138,6 +142,11 @@ export function runScript(script: string, handle: DebugHandle): void {
       continue;
     }
     const [key, value] = word.split('=');
+    if (key === 'walk' && value !== undefined) {
+      const [x, z, ...rest] = value.split(':').map(Number);
+      if (rest.length === 0 && x !== undefined && z !== undefined && Number.isFinite(x) && Number.isFinite(z)) handle.walkTo(x, z);
+      continue;
+    }
     if (value !== undefined) {
       const n = Number(value);
       if (!Number.isFinite(n)) continue;

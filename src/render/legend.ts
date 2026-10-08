@@ -7,6 +7,8 @@
 //   - Never over an open menu.
 //   - Which keys it puts first depends on the situation: the launch keys while the clamps hold the craft, the
 //     driving keys once released (legendKeysFor).
+//   - Phase 3 (M9): the card is per mode. On foot it is Troy's own list (W A S D, E, the orbit keys, R, Esc); riding
+//     the chair it is one line; aboard it is phase 2's. The menu's Controls page draws the current mode's list.
 // This replaces T8's "fades 6 s after the first launch control" rule.
 
 /** Seconds without touching a key before the legend comes back. */
@@ -37,15 +39,44 @@ export function legendTick(s: LegendState, dtSeconds: number, now: { held: boole
   return shown === s.shown && idle === s.idle ? s : { ...s, idle, shown };
 }
 
-export type LegendSituation = 'docked' | 'driving';
+/** Aboard: 'docked' (clamped) or 'driving' (released). Phase 3 (M9): 'onFoot' and 'riding' — the session mode's. */
+export type LegendSituation = 'docked' | 'driving' | 'onFoot' | 'riding';
 
-const FIRST: Record<LegendSituation, readonly string[]> = {
+type Aboard = 'docked' | 'driving';
+
+const FIRST: Record<Aboard, readonly string[]> = {
   docked: ['1 2 3 4', 'J L I K', 'M', 'H', 'Esc', 'C'],
   driving: ['W / S', 'A / D', '↓ / E', '↑ / Q', 'Shift', 'Space', 'R', 'Esc'],
 };
 
+type Rows = readonly (readonly [key: string, action: string])[];
+
+/** M9: Troy's card on foot — every row is his, so all of them lead. */
+export const ON_FOOT_KEYS: Rows = [
+  ['W A S D', 'walk'],
+  ['E', 'use'],
+  ['← → ↑ ↓', 'look round'],
+  ['J L I K', 'look round'],
+  ['C', 'recentre'],
+  ['R', 'to control room'],
+  ['M', 'mute'],
+  ['H', 'this help'],
+  ['Esc', 'menu'],
+];
+
+/** M9: riding the chair, one line — only R, Esc (and H, M) do anything (M6). */
+export const RIDING_KEYS: Rows = [['R · Esc', 'control room · menu']];
+
+/** The rows of a situation's card, in reading order (two columns, row by row). */
+export function legendRows(situation: LegendSituation): Rows {
+  return situation === 'onFoot' ? ON_FOOT_KEYS : situation === 'riding' ? RIDING_KEYS : LEGEND_KEYS;
+}
+
 /** The legend's rows for a situation: the keys that matter there first (`first`), then the rest. */
 export function legendKeysFor(situation: LegendSituation): { key: string; action: string; first: boolean }[] {
+  if (situation === 'onFoot' || situation === 'riding') {
+    return legendRows(situation).map(([key, action]) => ({ key, action, first: true }));
+  }
   const first = FIRST[situation];
   const rows = LEGEND_KEYS.map(([key, action]) => ({ key, action, first: first.includes(key) }));
   const lead = first.flatMap((key) => rows.filter((r) => r.key === key));
@@ -53,16 +84,16 @@ export function legendKeysFor(situation: LegendSituation): { key: string; action
 }
 
 /**
- * The keys, in the legend's reading order (two columns, row by row) — the one list the HUD's legend and the menu's
- * Controls page both draw (T9).
+ * The keys aboard, in the legend's reading order (two columns, row by row) — the one list the HUD's legend and the
+ * menu's Controls page both draw aboard (T9). Phase 3 (M9): R reads "to control room" — the game's start.
  */
-export const LEGEND_KEYS: readonly (readonly [key: string, action: string])[] = [
+export const LEGEND_KEYS: Rows = [
   ['1 2 3 4', 'launch'],
   ['Shift', 'boost'],
   ['W / S', 'throttle'],
   ['Space', 'fire'],
   ['A / D', 'turn'],
-  ['R', 'to pen'],
+  ['R', 'to control room'],
   ['↓ / E', 'climb'],
   ['M', 'mute'],
   ['↑ / Q', 'dive'],
@@ -72,5 +103,16 @@ export const LEGEND_KEYS: readonly (readonly [key: string, action: string])[] = 
   ['C', 'recentre'],
 ];
 
-/** The keys as HTML rows (`<div><b>key</b> action</div>`), for either drawing. */
-export const legendRowsHtml = (): string => LEGEND_KEYS.map(([k, a]) => `<div><b>${k}</b> ${a}</div>`).join('');
+/** A situation's keys as HTML rows (`<div><b>key</b> action</div>`), for either drawing (aboard by default). */
+export const legendRowsHtml = (situation: LegendSituation = 'driving'): string =>
+  legendRows(situation).map(([k, a]) => `<div><b>${k}</b> ${a}</div>`).join('');
+
+/**
+ * Which card a moment calls for (M9): the session mode's — on foot, riding — and aboard phase 2's, by the clamps.
+ * (Takes the mode and the clamps rather than the GameState, so render/ needs nothing from game/.)
+ */
+export function legendSituation(mode: 'piloting' | 'launch' | 'onFoot' | 'transport', clamps: 'locked' | 'released'): LegendSituation {
+  if (mode === 'onFoot') return 'onFoot';
+  if (mode === 'transport') return 'riding';
+  return clamps === 'locked' ? 'docked' : 'driving';
+}
