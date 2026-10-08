@@ -93,13 +93,35 @@ const LOUNGE: Room = { id: 'lounge', min: v(-8.5, FLOOR_Y, -1281), max: v(2, FLO
 
 const CHAIR = { pos: v(0, FLOOR_Y, -1277), yaw: 0 };
 
-// Placeholder props (greybox; T4 and T5 dress the rooms and may move these — each drawn prop keeps a collider here).
+// The control room's furniture (T4 — M1 art, after 02_MARINEVILLE_CONTROL_ROOM/): each drawn piece Troy can reach is
+// drawn inside one of these boxes (render/rooms.test.ts). Named so the interactables (M5) can hang on them. The room is
+// x −9…9, z −1259…−1241: north (−z, inland) is the solid wall with the map and the corridor's doorway at x 4…6.4; south
+// (+z) is the window band over Marineville and the sea; the west wall carries the Videophone, the east the locator.
+const F = FLOOR_Y;
+export const CONTROL_ROOM_PROPS = Object.freeze({
+  /** The big wall map on the north wall, its console beneath, the banner above, the Action Area screen, the extinguisher. */
+  map: box(v(-7.6, F, -1259), v(2.6, F + 4.2, -1258.2)),
+  /** The World Videophone on the west wall's perforated panel, over a ledge. */
+  videophone: box(v(-9, F, -1254), v(-8.3, F + 3.4, -1249)),
+  /** The locator compass on the east wall's green panel, and its lamp unit on a pedestal in front. */
+  locator: box(v(7.3, F, -1257.4), v(9, F + 4, -1254.4)),
+  /** The main console bank across the room, its sloping panels facing south (toward the start). */
+  consoles: box(v(-4.5, F, -1252.2), v(4, F + 1.25, -1250.6)),
+  /** Two operators' swivel chairs at the main bank. */
+  chairWest: box(v(-2.9, F, -1249.9), v(-2.1, F + 1.05, -1249.1)),
+  chairEast: box(v(1.1, F, -1249.9), v(1.9, F + 1.05, -1249.1)),
+  /** Commander Shore's desk by the south windows, facing into the room, his hover chair behind it. */
+  shoreDesk: box(v(-2.4, F, -1245.8), v(2.4, F + 1.3, -1243.2)),
+  /** Low console banks under the windows: south-west, south-east, west, east. */
+  bankSouthWest: box(v(-8.7, F, -1241.8), v(-3.2, F + 0.95, -1241)),
+  bankSouthEast: box(v(3.2, F, -1241.8), v(8.7, F + 0.95, -1241)),
+  bankWest: box(v(-9, F, -1246.6), v(-8.2, F + 0.95, -1241.8)),
+  bankEast: box(v(8.2, F, -1250.2), v(9, F + 0.95, -1241.8)),
+});
+
 const PROPS: Box[] = [
-  box(v(-4, FLOOR_Y, -1252), v(4, FLOOR_Y + 1.1, -1250.8)), // the main console bank, across the room
-  box(v(-2, FLOOR_Y, -1245.6), v(2, FLOOR_Y + 0.8, -1244.4)), // Shore's desk, by the windows
-  box(v(-9, FLOOR_Y, -1254), v(-8.4, FLOOR_Y + 3, -1246)), // the wall map's console, along the west wall
-  box(v(7.4, FLOOR_Y, -1252), v(9, FLOOR_Y + 1.3, -1246)), // the locator, along the east wall
-  box(v(-5.5, FLOOR_Y, -1273), v(-3.5, FLOOR_Y + 0.5, -1271)), // a low table in the lounge
+  ...Object.values(CONTROL_ROOM_PROPS),
+  box(v(-5.5, FLOOR_Y, -1273), v(-3.5, FLOOR_Y + 0.5, -1271)), // a low table in the lounge (greybox; T5 dresses it)
 ];
 
 export const ROOMS: Rooms = deepFreeze({
