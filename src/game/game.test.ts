@@ -3,7 +3,11 @@ import { type GameState, REFUSAL, oceanStart, standby } from '../sim/launch';
 import { initialSubState } from '../sim/sub';
 import type { Vec3 } from '../sim/vec3';
 import { COAST_Z, FIXED_DT as DT, createWorld } from '../sim/world';
-import { Game, startState } from './game';
+import { ROOMS } from '../sim/rooms';
+import { controlRoom } from '../sim/session';
+import { NO_INPUT } from '../sim/sub';
+import { onFoot } from '../sim/troy';
+import { DEFAULT_START, Game, startPlace, startState } from './game';
 import { modeOf } from './mode';
 
 const W = createWorld(1964);
@@ -186,3 +190,96 @@ describe('detonations between frames (T8)', () => {
   });
 });
 
+
+describe('the session owner (phase 3, M3, M7)', () => {
+  it.each<[string, 'pen' | 'control' | 'ocean']>([
+    ['', 'pen'],
+    ['?start=pen', 'pen'],
+    ['?start=control', 'control'],
+    ['?start=ocean', 'ocean'],
+    ['?at=0,-40,-1040', 'ocean'],
+    ['?start=control&at=0,-40,-1040', 'ocean'],
+    ['?script=cradle,8', 'pen'],
+    ['?script=cradle,8&start=control', 'control'],
+    ['?script=cradle,8&start=ocean', 'ocean'],
+  ])('starts where the URL says (%s → %s); the pen stays the default until T8', (search, place) => {
+    const params = new URLSearchParams(search);
+    expect(startPlace(params)).toBe(place);
+    const want = place === 'pen' ? standby(W) : place === 'control' ? controlRoom(W, ROOMS) : oceanStart(W);
+    expect(startState(W, params)).toEqual(want);
+  });
+
+  it('keeps the pen as the default start at T1, and ?script= implies the pen whatever the default', () => {
+    expect(DEFAULT_START).toBe('pen');
+    expect(startPlace(new URLSearchParams('?script=1'))).toBe('pen');
+  });
+
+  it('toControlRoom: Troy standing at the start, the sub in standby, combat kept, a jump', () => {
+    const game = sortie();
+    const before = game.state;
+    game.toControlRoom();
+    expect(game.state).toEqual(controlRoom(W, ROOMS, before.combat));
+    expect(game.state.troy).toEqual(onFoot(ROOMS.start));
+    expect(game.mode).toBe('onFoot');
+    expect(game.jumped).toBe(true);
+    expect(game.lastState).toBe(game.state);
+  });
+
+  it('consumes the press union one per step, in order, use and leave included', () => {
+    const game = new Game(W, standby(W));
+    game.press('use');
+    game.press('leave');
+    game.press('cradle');
+    expect(game.queued).toEqual(['use', 'leave', 'cradle']);
+    game.step(NOTHING, DT);
+    expect(game.state.launch.refusal).toBeNull();
+    game.step(NOTHING, DT);
+    expect(game.state.launch.refusal).toBeNull(); // docked and raised: leave is accepted (T9 rides it)
+    game.step(NOTHING, DT);
+    expect(game.state.launch.cradleDir).toBe(1);
+    expect(game.queued).toEqual([]);
+  });
+
+  it("gives the sub NO_INPUT while Troy is not aboard, and refuses the launch keys' presses 'Not aboard'", () => {
+    const game = new Game(W, { ...oceanStart(W), troy: onFoot(ROOMS.start) });
+    const before = game.state.sub;
+    game.press('door');
+    stepFor(game, 1, held('KeyW', 'Space'));
+    expect(game.input).toEqual(NO_INPUT);
+    expect(game.state.sub.pos).toEqual(before.pos);
+    expect(game.state.combat.missiles).toEqual([]);
+    expect(game.state.launch.refusal).toMatchObject({ control: 'door', reason: REFUSAL.notAboard });
+  });
+
+  it('latches the keys held across a jump: ignored until released, then live again', () => {
+    const game = new Game(W, standby(W));
+    game.toOcean();
+    stepFor(game, 0.5, held('KeyW'));
+    expect(game.state.sub.vel).toEqual({ x: 0, y: 0, z: 0 }); // W held across the jump does nothing
+    expect([...game.latchedKeys]).toEqual(['KeyW']);
+    // A key pressed after the jump is live; the latched one still is not.
+    stepFor(game, 0.5, held('KeyW', 'KeyA'));
+    expect(game.input.yaw).toBe(1);
+    expect(game.input.throttle).toBe(0);
+    // Released, then pressed again: live.
+    game.step(NOTHING, DT);
+    expect(game.latchedKeys.size).toBe(0);
+    stepFor(game, 0.5, held('KeyW'));
+    expect(game.input.throttle).toBe(1);
+    expect(Math.hypot(game.state.sub.vel.x, game.state.sub.vel.z)).toBeGreaterThan(1);
+  });
+
+  it('latches on R, toStandby and toControlRoom too, but not on a debug teleport (place)', () => {
+    for (const jump of [(g: Game) => g.toStandby(), (g: Game) => g.toControlRoom(), (g: Game) => g.restartNow()]) {
+      const game = new Game(W, oceanStart(W));
+      jump(game);
+      game.step(held('KeyW', 'Space'), DT);
+      expect([...game.latchedKeys].sort()).toEqual(['KeyW', 'Space']);
+    }
+    const game = new Game(W, oceanStart(W));
+    game.place(at({ x: 0, y: -30, z: -1000 }, Math.PI));
+    stepFor(game, 0.1, held('KeyW'));
+    expect(game.latchedKeys.size).toBe(0);
+    expect(game.input.throttle).toBe(1);
+  });
+});
