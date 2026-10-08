@@ -40,8 +40,10 @@ class Session {
   }
 }
 
-const lamps = (v: PanelView): Record<string, Lamp> => Object.fromEntries(v.controls.map((c) => [c.control, c.lamp]));
-const words = (v: PanelView): string[] => v.controls.map((c) => c.word);
+// Phase 3 (M7, M9): phase 2's assertions are about its four controls; the fifth (LEAVE SEAT, M6b) has its own below.
+const four = (v: PanelView) => v.controls.filter((c) => c.control !== 'leave');
+const lamps = (v: PanelView): Record<string, Lamp> => Object.fromEntries(four(v).map((c) => [c.control, c.lamp]));
+const words = (v: PanelView): string[] => four(v).map((c) => c.word);
 const nextOf = (v: PanelView) => v.controls.find((c) => c.next)?.control ?? null;
 
 describe('the launch panel through a full launch (L6)', () => {
@@ -52,8 +54,8 @@ describe('the launch panel through a full launch (L6)', () => {
     let v = s.view;
     expect(lamps(v)).toEqual({ cradle: 'amber', engines: 'dark', clamps: 'dark', door: 'dark' });
     expect(words(v)).toEqual(['RAISED', 'OFF', 'LOCKED', 'SHUT']);
-    expect(v.controls.map((c) => c.key)).toEqual(['1', '2', '3', '4']);
-    expect(v.controls.map((c) => c.lever)).toEqual([0, 0, 0, 0]);
+    expect(four(v).map((c) => c.key)).toEqual(['1', '2', '3', '4']);
+    expect(four(v).map((c) => c.lever)).toEqual([0, 0, 0, 0]);
     expect(v.status).toBe('STINGRAY ON STANDBY — PEN 3');
     expect(v.prompt).toBe('Press 1 — lower the cradle');
     expect(nextOf(v)).toBe('cradle');
@@ -158,7 +160,7 @@ describe('the launch panel through a full launch (L6)', () => {
       const v = s.view;
       if (v.prompt && seen[seen.length - 1] !== v.prompt) seen.push(v.prompt);
       const next = nextOf(v);
-      if (next && v.prompt?.startsWith('Press')) expect(v.controls.filter((c) => c.lamp === 'amber').map((c) => c.control)).toEqual([next]);
+      if (next && v.prompt?.startsWith('Press')) expect(four(v).filter((c) => c.lamp === 'amber').map((c) => c.control)).toEqual([next]);
     };
     check();
     s.press('cradle'); s.run(8); check();
@@ -284,7 +286,7 @@ describe('the panel by session mode (phase 3, M9)', () => {
     s.game.toStandby();
     s.run(DT);
     expect(s.memory.shown).toBe('launch');
-    expect(s.view.controls.map((c) => c.key)).toEqual(['1', '2', '3', '4']);
+    expect(s.view.controls.map((c) => c.key)).toEqual(['1', '2', '3', '4', '5']);
     expect(s.view.prompt).toBe('Press 1 — lower the cradle');
     // And off again on R.
     s.game.restartNow();
@@ -390,7 +392,7 @@ describe('the panel on the return (L6)', () => {
       const next = nextOf(v);
       if (v.prompt?.startsWith('Press')) {
         expect(next, v.prompt).not.toBeNull();
-        expect(v.controls.filter((c) => c.lamp === 'amber').map((c) => c.control), v.prompt).toEqual([next]);
+        expect(four(v).filter((c) => c.lamp === 'amber').map((c) => c.control), v.prompt).toEqual([next]);
       }
     };
     s.place({ x: 0, y: -40, z: COAST_Z + 100 }, 0); check();
@@ -476,3 +478,56 @@ describe('the panel steps aside while driving (T8)', () => {
   });
 });
 
+
+describe('the fifth control, 5 · LEAVE SEAT (phase 3, M9, M6b)', () => {
+  const leave = (v: PanelView) => v.controls.find((c) => c.control === 'leave');
+
+  it('stands fifth in the pen, lit amber only when docked and raised; dark while the cradle moves or is down', () => {
+    const s = new Session(standby(W));
+    let v = s.view;
+    expect(v.controls.map((c) => c.control)).toEqual(['cradle', 'engines', 'clamps', 'door', 'leave']);
+    expect(leave(v)).toEqual({
+      control: 'leave', key: '5', label: 'LEAVE SEAT', lamp: 'amber', moving: false, lever: 0, word: 'READY', pressable: true, next: false,
+    });
+    s.press('cradle');
+    expect(leave(s.view)).toMatchObject({ lamp: 'dark', pressable: false, word: 'SEATED' }); // lowering
+    s.run(8);
+    expect(s.game.state.launch.cradle).toBe(1);
+    expect(leave(s.view)).toMatchObject({ lamp: 'dark', pressable: false }); // lowered
+    s.press('engines'); s.run(2);
+    s.press('clamps');
+    v = s.view;
+    expect(s.game.state.launch.clamps).toBe('released');
+    expect(leave(v)).toMatchObject({ lamp: 'dark', pressable: false }); // released
+  });
+
+  it('a refused leave shows red with "Dock first" for refusalShow, as phase 2\'s refusals do — in the pen and at sea', () => {
+    const pen = new Session(standby(W));
+    pen.press('cradle');
+    pen.press('leave');
+    expect(pen.view.refusal).toEqual({ control: 'leave', reason: REFUSAL.notDocked });
+    expect(leave(pen.view)!.lamp).toBe('red');
+    pen.run(3.1);
+    expect(pen.view.refusal).toBeNull();
+
+    // At sea the panel shows only the door within its range: the fifth control appears for its refusal's 3 s alone.
+    const sea = new Session(oceanStart(W));
+    expect(leave(sea.view)).toBeUndefined();
+    sea.press('leave');
+    const v = sea.view;
+    expect(v.refusal).toEqual({ control: 'leave', reason: REFUSAL.notDocked });
+    expect(leave(v)).toMatchObject({ lamp: 'red', pressable: false });
+    sea.run(3.1);
+    expect(leave(sea.view)).toBeUndefined();
+  });
+
+  it('goes with the rest of the panel once he leaves the seat (riding up, then on foot)', () => {
+    const s = new Session(standby(W));
+    s.press('leave');
+    expect(s.game.state.troy.where).toBe('riding');
+    expect(s.view.controls).toEqual([]);
+    s.run(10.1);
+    expect(s.game.state.troy.where).toBe('onFoot');
+    expect(s.view.controls).toEqual([]);
+  });
+});

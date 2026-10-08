@@ -8,6 +8,7 @@ import { type GameState, type LaunchControl, LAUNCH_CONTROLS, type Press, REFUSA
 import { TUNING as T } from '../sim/tuning';
 import type { Vec3 } from '../sim/vec3';
 import type { Interior } from '../sim/world';
+import { docked } from '../sim/session';
 import { sessionMode } from './mode';
 
 /**
@@ -39,7 +40,7 @@ export interface PanelMemory {
 
 export type Lamp = 'dark' | 'amber' | 'green' | 'red';
 
-/** Phase 3 (M6b, M9): the panel's controls — phase 2's four and the fifth, 'leave' (shown from T9). */
+/** Phase 3 (M6b, M9): the panel's controls — phase 2's four and the fifth, 'leave' · LEAVE SEAT. */
 export type PanelControl = LaunchControl | 'leave';
 
 export interface ControlView {
@@ -140,9 +141,14 @@ export function panelView(g: GameState, m: PanelMemory, interior: Interior): Pan
     return c === 'door' && l.clamps === 'released' && refusalFor('door', l, g.sub, interior) !== REFUSAL.outOfRange;
   });
 
+  // M9, M6b: the fifth control, LEAVE SEAT — a row beside the four in the pen's panel; elsewhere (at sea, off board)
+  // only while its refusal ("Dock first") shows, as phase 2's refusals display.
+  const showLeave = m.shown === 'launch' || fresh?.control === 'leave';
+  const controls = shownControls.map((c) => controlView(c, g, interior, next, fresh?.control === c, home));
+  if (showLeave) controls.push(leaveView(g, fresh?.control === 'leave'));
   return {
-    controls: shownControls.map((c) => controlView(c, g, interior, next, fresh?.control === c, home)),
-    refusal: fresh && (shownControls as readonly Press[]).includes(fresh.control) ? { control: fresh.control, reason: fresh.reason } : null,
+    controls,
+    refusal: fresh && controls.some((c) => c.control === fresh.control) ? { control: fresh.control, reason: fresh.reason } : null,
     status: m.shown === 'launch' ? statusLine(g, m, interior) : null,
     prompt: m.shown === 'offBoard' ? null : promptLine(g, m, interior, next),
     compact: panelCompact(g),
@@ -174,6 +180,26 @@ function controlView(
     : pressable ? 'amber'
     : 'dark';
   return { control: c, key: KEYS[c], label: LABELS[c], lamp, moving, lever: leverOf(c, g), word: wordOf(c, g, interior), pressable, next: next === c };
+}
+
+/**
+ * M9, M6b: the fifth control — lit amber only when a 'leave' would be accepted (Troy aboard, the sub docked and raised:
+ * session.ts docked), dark otherwise, red just refused. It has no machine behind it: never moving, its lever up, and
+ * never the "next" step (the launch's own controls keep that).
+ */
+function leaveView(g: GameState, refused: boolean): ControlView {
+  const pressable = g.troy.where === 'aboard' && docked(g.launch);
+  return {
+    control: 'leave',
+    key: KEYS.leave,
+    label: LABELS.leave,
+    lamp: refused ? 'red' : pressable ? 'amber' : 'dark',
+    moving: false,
+    lever: 0,
+    word: pressable ? 'READY' : 'SEATED',
+    pressable,
+    next: false,
+  };
 }
 
 function isMoving(c: LaunchControl, g: GameState, interior: Interior): boolean {
