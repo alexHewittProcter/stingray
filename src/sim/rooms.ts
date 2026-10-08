@@ -5,8 +5,8 @@
 //
 // Where (M1 "Where", Functionality notes "Scale check"): the tower stands on the clifftop at world (0, ·, −1250)
 // (render/marineville.ts: TOWER.z −150 under the group at CLIFF_TOP, COAST_Z); its drum is y 72–92, radius 13, and the
-// glazed gallery y 92–97 sits on top. The control room is the gallery level: floor y 92, an 18 m square whose corners
-// (12.7 m out) lie inside the as-built drum. Every floor is flat at y 92 (M1: "flat is fine") — a ramp from the gallery
+// glazed gallery y 92–97 sits on top. The control room is the gallery level: floor y 92.7, an 18 m square whose corners
+// (12.7 m out) lie inside the as-built drum. Every floor is flat at that height (M1: "flat is fine") — a ramp from the gallery
 // one floor down into the drum would need 28 m at 1:4 for 7 m, longer than the corridor may be — so the corridor
 // leaves the control room's north wall through the glazing as an enclosed bridge, turns west, and opens into the
 // lounge, an annexe north of the tower (inland, behind the drum as seen from the sea). The chair's bore drops through
@@ -55,8 +55,11 @@ const box = (min: Vec3, max: Vec3): Box => ({ min, max });
 export const TOWER_AXIS = Object.freeze({ x: 0, z: -1250 });
 /** The as-built drum's radius (render/marineville.ts); T4 may widen it — nothing here depends on it. */
 export const DRUM_RADIUS = 13;
-/** Every floor: the glazed gallery level. */
-export const FLOOR_Y = 92;
+/**
+ * Every floor: the glazed gallery level. The gallery's glazing starts at y 92 on a white sill band whose top is
+ * y 92.6 (render/marineville.ts); the floor sits just above it so the band never shows through it.
+ */
+export const FLOOR_Y = 92.7;
 
 // ---- The seat (M1, phase 2 L3) ----
 
@@ -81,7 +84,8 @@ export const SHAFT_OPEN_TOP = 10;
 
 // ---- The rooms ----
 
-const CONTROL_ROOM: Room = { id: 'controlRoom', min: v(-9, FLOOR_Y, -1259), max: v(9, FLOOR_Y + 4.5, -1241) };
+// 4.2 m high: its ceiling (y 96.9) is just under the gallery's roof (y 97.0–98.6).
+const CONTROL_ROOM: Room = { id: 'controlRoom', min: v(-9, FLOOR_Y, -1259), max: v(9, FLOOR_Y + 4.2, -1241) };
 // The corridor: north out of the control room's north-east corner, then west — 20.8 m along its centreline.
 const CORRIDOR_NORTH: Room = { id: 'corridor', min: v(4, FLOOR_Y, -1268.4), max: v(6.4, FLOOR_Y + 3, -1258) };
 const CORRIDOR_WEST: Room = { id: 'corridor', min: v(-4, FLOOR_Y, -1268.4), max: v(6.4, FLOOR_Y + 3, -1266) };
