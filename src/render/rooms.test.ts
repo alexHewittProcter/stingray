@@ -1,8 +1,10 @@
 import * as THREE from 'three';
 import { describe, expect, it } from 'vitest';
-import { CONTROL_ROOM_PROPS, ROOMS, type Box } from '../sim/rooms';
+import { CONTROL_ROOM_PROPS, CORRIDOR_PROPS, LOUNGE_PROPS, ROOMS, SHAFT_OPEN_TOP, type Box } from '../sim/rooms';
+import { CHAIR_FOOTPLATE_Y, CHAIR_SEAT, createInjectorChair } from './injector-chair';
 import { createMarineville } from './marineville';
-import { ROOMS_EXTERIOR_NAME, createRooms } from './rooms';
+import { BORE_CAP_NAME, BORE_RADIUS, INJECTOR_CHAIR_NAME, ROOMS_EXTERIOR_NAME, createRooms } from './rooms';
+import { TROY_SEAT } from './troy';
 
 // What you see is what you hit, in the control room (M1 art, Global constraints "art respects colliders"): the drawn
 // shell — walls, windows, floor, ceiling — lies on or outside every room box (as interior.test.ts checks the pen's
@@ -137,5 +139,88 @@ describe('the rooms group (Global constraints)', () => {
         && box.min.z < control.max.z && box.max.z > control.min.z;
       expect(overlaps).toBe(false);
     });
+  });
+});
+
+// T5 (M1 art, M8's chair): the corridor and the Standby Lounge. The two checks above already run over every tagged
+// mesh in the group — the lounge's and the corridor's included — so these add what is particular to them.
+
+describe('the corridor and the lounge (M1 art)', () => {
+  const shell = samples('roomShell');
+  const props = samples('roomProp');
+  const lounge = ROOMS.rooms.find((r) => r.id === 'lounge')!;
+  const legs = ROOMS.rooms.filter((r) => r.id === 'corridor');
+  const on = (v: number, face: number) => Math.abs(v - face) < EPSILON;
+  const over = (b: Box, p: THREE.Vector3) => p.x > b.min.x + 0.3 && p.x < b.max.x - 0.3 && p.z > b.min.z + 0.3 && p.z < b.max.z - 0.3;
+
+  it('gives the lounge a floor, a ceiling and a wall on every side', () => {
+    const { min, max } = lounge;
+    const near = shell.filter((p) => p.x >= min.x - 0.3 && p.x <= max.x + 0.3 && p.z >= min.z - 0.3 && p.z <= max.z + 0.3);
+    for (const [axis, face] of [['y', min.y], ['y', max.y], ['x', min.x], ['x', max.x], ['z', min.z], ['z', max.z]] as const) {
+      expect(near.some((p) => on(p[axis], face)), `${axis} ${face}`).toBe(true);
+    }
+  });
+
+  it('gives each corridor leg a floor and a ceiling over it', () => {
+    for (const leg of legs) {
+      expect(shell.some((p) => over(leg, p) && on(p.y, leg.min.y))).toBe(true);
+      expect(shell.some((p) => over(leg, p) && on(p.y, leg.max.y))).toBe(true);
+    }
+  });
+
+  it('draws something in every named lounge and corridor collider — none is an invisible wall', () => {
+    for (const [name, b] of Object.entries({ ...LOUNGE_PROPS, ...CORRIDOR_PROPS })) {
+      expect(props.some((p) => strictlyInside(p, b)), name).toBe(true);
+    }
+  });
+
+  it("leaves the bore open: no floor drawn across it, and its throat runs SHAFT_OPEN_TOP down to the tube's cap", () => {
+    const c = ROOMS.chair.pos;
+    const across = shell.filter((p) => Math.hypot(p.x - c.x, p.z - c.z) < BORE_RADIUS - 0.1 && p.y > c.y - SHAFT_OPEN_TOP && p.y < c.y + 0.5);
+    expect(across.slice(0, 3)).toEqual([]);
+    const throat = shell.filter((p) => on(Math.hypot(p.x - c.x, p.z - c.z), BORE_RADIUS) && p.y < c.y - 0.5);
+    expect(Math.min(...throat.map((p) => p.y))).toBeCloseTo(c.y - SHAFT_OPEN_TOP, 3);
+    const cap = view.group.getObjectByName(BORE_CAP_NAME)!;
+    expect(cap).toBeDefined();
+    expect(new THREE.Box3().setFromObject(cap).max.y).toBeLessThan(c.y - SHAFT_OPEN_TOP);
+  });
+
+  it('keeps each to a modest number of draw calls', () => {
+    for (const [name, cap] of [['corridor', 20], ['lounge', 45]] as const) {
+      let meshes = 0;
+      view.group.getObjectByName(name)!.traverse((o) => { if (o instanceof THREE.Mesh) meshes++; });
+      expect(meshes, name).toBeLessThanOrEqual(cap);
+    }
+  });
+});
+
+describe("Troy's injector chair (M8)", () => {
+  const chairs: THREE.Object3D[] = [];
+  view.group.traverse((o) => { if (o.userData.interactable === 'chair') chairs.push(o); });
+
+  it("is one object, the only one tagged 'chair', standing at ROOMS.chair", () => {
+    expect(chairs).toHaveLength(1);
+    const chair = chairs[0]!;
+    expect(chair.name).toBe(INJECTOR_CHAIR_NAME);
+    expect(view.group.getObjectByName(INJECTOR_CHAIR_NAME)).toBe(chair);
+    const at = chair.getWorldPosition(new THREE.Vector3());
+    expect([at.x, at.y, at.z]).toEqual([ROOMS.chair.pos.x, ROOMS.chair.pos.y, ROOMS.chair.pos.z]);
+  });
+
+  it('faces the side Troy walks up from (its forward, −Z, opposite his facing at ROOMS.chair.yaw)', () => {
+    const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(chairs[0]!.getWorldQuaternion(new THREE.Quaternion()));
+    const his = new THREE.Vector3(-Math.sin(ROOMS.chair.yaw), 0, -Math.cos(ROOMS.chair.yaw));
+    expect(forward.dot(his)).toBeCloseTo(-1, 6);
+  });
+
+  it("seats Troy: CHAIR_SEAT is the cushion's top centre, and his soles land on the footplate", () => {
+    const chair = createInjectorChair();
+    chair.updateMatrixWorld(true);
+    // Straight down onto the seat's centre from above: the first thing hit is the cushion's top.
+    const ray = new THREE.Raycaster(new THREE.Vector3(CHAIR_SEAT.x, 2, CHAIR_SEAT.z), new THREE.Vector3(0, -1, 0));
+    const cushion = 2 - ray.intersectObject(chair, true)[0]!.distance;
+    expect(cushion).toBeCloseTo(CHAIR_SEAT.y, 6);
+    expect(CHAIR_SEAT.y - TROY_SEAT.y).toBeCloseTo(CHAIR_FOOTPLATE_Y, 2);
+    expect(new THREE.Box3().setFromObject(chair).min.y).toBeGreaterThanOrEqual(-1e-6); // nothing below its origin on the floor
   });
 });
