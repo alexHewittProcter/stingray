@@ -258,3 +258,36 @@ describe('phase 3: the ride heard (M6)', () => {
     expect(hall.at(-1)).toBe(1);
   });
 });
+
+describe('phase 3: the way back up heard (M6b — "the same reversed up")', () => {
+  const session = (g: GameState, p: Press | null = null) => stepSession(g, NO_INPUT, STAND_STILL, p, DT, W, ROOMS);
+
+  it('the seat unlocks with a clunk, the rush rises from the seat and falls at the top, and the rooms hum returns', () => {
+    const start = standby(W);
+    let g = session(start, 'leave');
+    const kinds: string[] = [...stepEvents(start, g).map((e) => e.kind)];
+    expect(kinds).toEqual(['chairUnlock']);
+    const rush: number[] = [];
+    while (g.troy.where === 'riding') {
+      const next = session(g);
+      kinds.push(...stepEvents(g, next).map((e) => e.kind));
+      g = next;
+      if (g.troy.where === 'riding') {
+        expect(listenerOf(g)).toEqual(g.troy.pos);
+        rush.push(soundscape(g).shaft.speed);
+      }
+    }
+    expect(count(kinds, 'chairUnlock')).toBe(1);
+    expect(count(kinds, 'chairHome')).toBe(1);
+    expect(count(kinds, 'lockIn') + count(kinds, 'chairStart')).toBe(0);
+    expect(kinds.at(-1)).toBe('chairHome');
+    // From rest at the seat to the cruise, then falling to rest at the top.
+    expect(rush[0]!).toBeLessThan(0.05);
+    expect(Math.max(...rush)).toBe(1);
+    expect(rush.at(-1)!).toBeLessThan(0.01);
+    for (let k = rush.length - 60; k < rush.length; k++) expect(rush[k]!).toBeLessThanOrEqual(rush[k - 1]!);
+    // Standing in the lounge: the rooms' hum, no rush, no hall.
+    expect(soundscape(g).ambience).toMatchObject({ rooms: 1, hall: 0 });
+    expect(soundscape(g).shaft.level).toBe(0);
+  });
+});
