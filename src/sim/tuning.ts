@@ -103,7 +103,8 @@ export const TUNING = {
   rideHold: 1.5, // s — the camera stays in the lounge this long after Troy sits
   rideCatchUp: 1.5, // s — then eases from above the bore onto the chair's boom
   rideBoom: 3, // m behind the chair along the shaft, before the tube's wall shortens it
-  rideRise: 1.1, // m off the shaft's axis, behind-and-above the chair (held inside the tube's wall)
+  rideRise: 1.75, // m off the shaft's axis, behind-and-above the chair (held inside the tube's wall)
+  rideSide: 0.7, // and this much of the offset to the chair's right (per unit of behind / above), past the seat's back
   rideLookAhead: 6, // m ahead of the chair along the shaft: where the camera looks
   rideBlend: 1.5, // s — the final slice over which the camera blends into the rig's (pen camera's) pose
   rideFov: 60, // degrees

@@ -19,7 +19,8 @@ import { createFollowCamera, troyAt } from './render/follow-camera';
 import { createFpsReadout } from './render/fps';
 import { createHud } from './render/hud';
 import { createInteractView } from './render/interact';
-import { oceanInView } from './render/indoors';
+import { cameraIndoors, inRooms, oceanInView } from './render/indoors';
+import { CHAIR_SEAT } from './render/injector-chair';
 import { createLandmarks } from './render/landmarks';
 import { createLaunchPanel } from './render/launch-panel';
 import { initialLegend, legendOn, legendSituation, legendTick } from './render/legend';
@@ -31,15 +32,19 @@ import {
 import { createMotes } from './render/motes';
 import { createParticles } from './render/particles';
 import { createPen } from './render/pen';
-import { createRooms } from './render/rooms';
+import { INJECTOR_CHAIR_NAME, createRooms } from './render/rooms';
+import { type CameraPose, createRideCamera } from './render/ride-camera';
+import { createShaft, inShaft } from './render/shaft';
 import { createSea } from './render/sea';
 import { createSeabed } from './render/seabed';
-import { createTroy } from './render/troy';
+import { TROY_SEAT, createTroy } from './render/troy';
 import { createTunnel } from './render/tunnel';
 import { updateScenery } from './render/sway';
 import { targetsLeft } from './sim/combat';
 import { INTERACTABLES } from './sim/interactables';
-import { ROOMS } from './sim/rooms';
+import { legsOf, rideTimeAt } from './sim/ride';
+import { ROOMS, SEAT_RISE, SHAFT_RUN_Y, shaftLength } from './sim/rooms';
+import { TUNING } from './sim/tuning';
 import { forwardOf, speedOf } from './sim/sub';
 import { FIXED_DT, createWorld } from './sim/world';
 
@@ -88,16 +93,37 @@ pen.reflect(craft.group);
 const tunnel = createTunnel(world.marineville.interior);
 scene.add(tunnel.root);
 const rig = createCameraRig(camera, world);
-// Phase 3 (M4): Troy's follow camera has the view whenever the session mode is 'onFoot'; the rig keeps updating in
-// every mode (its springs stay warm) and has the view otherwise — riding too, until T7's ride camera.
+// Phase 3 (M4): Troy's follow camera has the view whenever the session mode is 'onFoot', the ride camera (T7) while
+// he rides the injector chair; the rig keeps updating in every mode (its springs stay warm) and has the view otherwise
+// — the ride camera blends into its output on arrival.
 const follow = createFollowCamera(camera, ROOMS);
 const RIG_NEAR = camera.near;
 // Troy's rooms and Troy (phase 3, T1 greybox): the rooms are outside the ocean side and drawn only while the camera is
-// in them (render/rooms.ts); their lamp stays in the scene and dims. Troy (M8, render/troy.ts) is drawn on foot and riding.
+// in them (render/rooms.ts); their lamp stays in the scene and dims. Troy (M8, render/troy.ts) is drawn everywhere: on
+// foot in the scene, riding and aboard seated in his injector chair (seatChairAndTroy).
 const rooms = createRooms(ROOMS);
 scene.add(rooms.group, rooms.lamp);
 const troy = createTroy();
 scene.add(troy.group);
+// The ride (phase 3, M6/M4, T7): the injector shaft's tube and its housing in the pen hall; the ride camera; the one
+// chair object (M8) — found in the lounge, re-parented to the shaft path while riding and into the sub's model aboard,
+// Troy seated in it; and the sub's roof hatch, open while the chair is on the shaft's last leg.
+const shaft = createShaft(ROOMS, world.marineville.interior);
+scene.add(shaft.group);
+const rideCamera = createRideCamera(camera, ROOMS, world.marineville.interior, shaft.line);
+const chair = rooms.group.getObjectByName(INJECTOR_CHAIR_NAME)!;
+const chairHome = chair.parent!;
+pen.reflect(chair);
+pen.reflect(troy.group);
+const shaftLegs = legsOf(ROOMS.shaft);
+/** M1: the hatch is open while the chair is on the last leg — from this many seconds into the ride. */
+const LAST_LEG_TIME = rideTimeAt(shaftLegs[shaftLegs.length - 1]!.start / shaftLength(ROOMS.shaft));
+const HATCH_SECONDS = 0.4; // the lid's swing, either way
+let hatch = 0;
+/** The camera as last drawn, for the ride's hold (M4: "the camera stays in the lounge for the chair's first 1.5 s"). */
+const drawnPose: CameraPose = { pos: new THREE.Vector3(), quat: new THREE.Quaternion(), fov: camera.fov };
+let wasRiding = false;
+let drawnOnce = false;
 // Witnessing (debug): ?view=x,y,z,lookX,lookY,lookZ fixes the camera there, ignoring the rig; ?view=control,
 // corridor or lounge are the rooms' presets (debug.ts VIEW_PRESETS).
 const viewNumbers = viewParam(params.get('view'));
@@ -239,6 +265,7 @@ function draw(alpha: number, frameSeconds: number): void {
   const target = craft.update(game.lastState.sub, g.sub, alpha, game.input, frameSeconds, g.launch.engines !== 'off', g.launch.clamps === 'locked');
   const mode = game.mode;
   const onFoot = mode === 'onFoot';
+  const riding = mode === 'transport';
   const enteredFoot = onFoot && !wasOnFoot;
   if (onFoot !== wasOnFoot) orbit = initialOrbit();
   wasOnFoot = onFoot;
@@ -282,26 +309,47 @@ function draw(alpha: number, frameSeconds: number): void {
   } else {
     rig.update(target, g.launch.clamps, frameSeconds, onFoot ? undefined : view);
   }
+  const troyNow = troyAt(game.lastState.troy, g.troy, alpha);
   if (onFoot) {
     // M4: the follow camera, written after the rig. It snaps on jumps (R, the menu, ?start=, walkTo) and on coming onto
-    // foot (standing up — T7/T9 may blend that).
-    const troyNow = troyAt(game.lastState.troy, g.troy, alpha);
+    // foot (standing up — T9 may blend that).
     if (jumped || enteredFoot) follow.snap(troyNow, view);
     else follow.update(troyNow, frameSeconds, view);
   }
+  // M4 "Transitions": riding, the ride camera has the view — written after the rig, whose output it blends into on
+  // arrival. It holds from the pose last drawn (a jump straight into a ride holds from above the bore).
+  const rideTime = riding ? rideTimeNow(alpha) : 0;
+  if (riding) {
+    if (!wasRiding) rideCamera.begin(jumped || !drawnOnce ? null : drawnPose);
+    camera.near = TUNING.followNear;
+    rideCamera.update(rideTime);
+  }
+  wasRiding = riding;
   if (viewFrom) {
     camera.position.copy(viewFrom[0]);
     camera.lookAt(viewFrom[1]);
   }
   // M3: the drawn camera's yaw, for the next steps' on-foot mapping (W = away from the camera).
   game.cameraYaw = yawOfView(camera.getWorldDirection(lookDir), game.cameraYaw);
-  rooms.update(camera);
-  // M8: Troy animates on the frame's wall time (the sit blend, the breath) and fades when the camera is on top of him.
-  troy.pose(g.troy, alpha, game.lastState.troy, { dt: frameSeconds, camera, snap: jumped });
+  // The shaft (T7): down the bore or the tube's first leg the rooms stay drawn; the tube is drawn from the rooms, in
+  // the shaft and in the pen hall; at sea it is not.
+  const camInShaft = inShaft(camera.position, shaft.line);
+  const camIndoors = cameraIndoors(camera.position);
+  rooms.update(camera, camInShaft && camera.position.y > SHAFT_RUN_Y + 3);
+  shaft.group.visible = camInShaft || camIndoors || inRooms(camera.position);
+  // M8: the one chair, and Troy in it once he has sat. Troy animates on the frame's wall time (the sit blend, the
+  // breath) and, on foot, fades when the camera is on top of him.
+  seatChairAndTroy(g.troy.where, troyNow);
+  troy.pose(g.troy, alpha, game.lastState.troy, { dt: frameSeconds, camera, snap: jumped, place: g.troy.where === 'onFoot' });
+  // M1: the roof hatch, open while the chair is on the last leg.
+  const hatchWant = riding && rideTime >= LAST_LEG_TIME ? 1 : 0;
+  hatch = jumped ? hatchWant : hatch + Math.sign(hatchWant - hatch) * Math.min(Math.abs(hatchWant - hatch), frameSeconds / HATCH_SECONDS);
+  craft.setHatch(hatch * hatch * (3 - 2 * hatch));
   pen.update(camera, penView, frameSeconds, elapsed);
   const door = game.lastState.launch.door + (g.launch.door - game.lastState.launch.door) * alpha;
   tunnel.update(camera, { door, doorMoving: g.launch.doorDir !== 0 }, elapsed);
-  const ocean = oceanInView(camera.position, door);
+  // In the shaft's tube (above the pen hall) nothing of the ocean side can be seen.
+  const ocean = oceanInView(camera.position, door) && !(camInShaft && !camIndoors);
   for (const o of oceanSide) o.visible = ocean;
   // Every detonation since the last frame, not only the last step's: a frame that runs two steps keeps both (T8).
   combatView.update({ ...g.combat, detonations: game.takeDetonations() }, frameSeconds);
@@ -346,6 +394,48 @@ function draw(alpha: number, frameSeconds: number): void {
   hud.reticle.style.top = `${(-aim.y * 0.5 + 0.5) * 100}%`;
 
   renderer.render(scene, camera);
+  drawnPose.pos.copy(camera.position);
+  drawnPose.quat.copy(camera.quaternion);
+  drawnPose.fov = camera.fov;
+  drawnOnce = true;
+}
+
+/** The ride's time this frame (sim/ride.ts timetable), interpolated between the last two steps. */
+function rideTimeNow(alpha: number): number {
+  const now = game.state.troy;
+  const before = game.lastState.troy;
+  const t1 = rideTimeAt(now.ride);
+  const t0 = before.where === 'riding' ? rideTimeAt(before.ride) : t1;
+  return t0 + (t1 - t0) * alpha;
+}
+
+/**
+ * M8: one chair object carries Troy. On foot it stands in the lounge (its home in the rooms group) and Troy walks; riding
+ * it is on the shaft path at Troy's seat point, facing his yaw; aboard it is a child of the sub's model at the cabin's
+ * seat point (model-local (0, SEAT_RISE, 0), facing forward). Riding and aboard Troy sits in it (render/troy.ts
+ * place: false — his cushion point on the chair's).
+ */
+function seatChairAndTroy(where: 'onFoot' | 'riding' | 'aboard', at: { pos: { x: number; y: number; z: number }; yaw: number }): void {
+  const parent = where === 'onFoot' ? chairHome : where === 'riding' ? scene : craft.group;
+  if (chair.parent !== parent) parent.add(chair);
+  if (where === 'onFoot') {
+    chair.position.set(ROOMS.chair.pos.x, ROOMS.chair.pos.y, ROOMS.chair.pos.z);
+    chair.rotation.set(0, ROOMS.chair.yaw + Math.PI, 0);
+  } else if (where === 'riding') {
+    chair.position.set(at.pos.x, at.pos.y, at.pos.z);
+    chair.rotation.set(0, at.yaw, 0);
+  } else {
+    chair.position.set(0, SEAT_RISE, 0);
+    chair.rotation.set(0, 0, 0);
+  }
+  const seated = where !== 'onFoot';
+  const troyParent = seated ? chair : scene;
+  if (troy.group.parent !== troyParent) troyParent.add(troy.group);
+  if (seated) {
+    troy.group.position.set(CHAIR_SEAT.x - TROY_SEAT.x, CHAIR_SEAT.y - TROY_SEAT.y, CHAIR_SEAT.z - TROY_SEAT.z);
+    troy.group.rotation.set(0, 0, 0);
+    troy.group.visible = true;
+  }
 }
 
 // Orbit by mouse: only drags that start on the game view itself (the panel, the guide and the menu are not it).
@@ -400,7 +490,9 @@ installDebugHandle({
       pos: { ...pos }, vel: { x: 0, y: 0, z: 0 }, yaw: yaw ?? game.state.sub.yaw, pitch: 0, medium: pos.y > 0 ? 'airborne' : 'submerged',
     });
   },
-  setInput: (input) => { game.override = input; },
+  // Each axis given is held until changed (runScript's "until the script changes them"); {} releases them all. (T7: it
+  // replaced the whole override, so a script could never hold throttle and steer together.)
+  setInput: (input) => { game.override = Object.keys(input).length === 0 ? {} : { ...game.override, ...input }; },
   advance: (seconds) => {
     const steps = Math.round(clampAdvance(seconds) / FIXED_DT);
     // Draw every few steps so the camera and effects follow as they would at 60 fps.
