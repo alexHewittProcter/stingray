@@ -140,3 +140,16 @@ describe('use (phase 3, M10)', () => {
     expect(log).toEqual(['walk', 'use', '1']);
   });
 });
+
+describe('leave (phase 3, M10)', () => {
+  it("queues 'leave' through the handle's leave(), in order with the other words", () => {
+    const log: string[] = [];
+    const handle = {
+      use: () => log.push('use'),
+      leave: () => log.push('leave'),
+      advance: (s: number) => log.push(String(s)),
+    } as unknown as DebugHandle;
+    runScript('leave,12,use,leave', handle);
+    expect(log).toEqual(['leave', '12', 'use', 'leave']);
+  });
+});
