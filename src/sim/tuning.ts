@@ -72,6 +72,16 @@ export const TUNING = {
   missileRadius: 0.5, // m — the missile's hit sphere
   missileBedProbe: 1, // m between seabed samples along a step's travel, so thin ridges are not skipped
   missileBedRefine: 12, // bisection passes that pin the seabed crossing point (≈ 0.25 mm at 1 m probes)
+
+  // Troy on foot (phase 3, M2) — added by phase 3; nothing above changes
+  troyRadius: 0.4, // m — the capsule's foot circle
+  troyHeight: 1.8, // m — feet to crown
+  walkSpeed: 3.2, // m/s — WALK, at full stick
+  walkAccel: 12, // m/s² up to the target speed
+  walkDecel: 16, // m/s² down to it (and to rest)
+  walkTurnRate: 540 * DEG, // rad/s — he turns to face his movement
+  walkTurnSlow: 0.5, // fraction of the target speed while the wanted facing is more than 90° away
+  walkStride: 1.4, // m per full gait cycle (two footfalls)
 } as const;
 
 export type Tuning = typeof TUNING;

@@ -34,6 +34,7 @@ const along = (s: SubState) => dot(s.vel, forwardOf(s.yaw, s.pitch));
 function freeAt(pos: Vec3, yaw: number, door: Partial<Pick<LaunchState, 'door' | 'doorDir'>> = {}, vel: Vec3 = { x: 0, y: 0, z: 0 }): GameState {
   const g = oceanStart(W);
   return {
+    ...g, // phase 3 (M7): Troy aboard, no HUD line, as oceanStart gives them
     sub: { pos: { ...pos }, vel: { ...vel }, yaw, pitch: 0, medium: 'submerged' },
     combat: g.combat,
     launch: released({ door: door.door ?? 0, doorDir: door.doorDir ?? 0 }),
