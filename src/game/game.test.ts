@@ -114,14 +114,14 @@ describe('the game owner (L3, L4)', () => {
     expect(modeOf(standby(W).sub.pos)).toBe('launch');
   });
 
+  // M7's amendment list (T8): a plain load now starts in the control room — see 'starts where the URL says' below.
   it.each<[string, 'standby' | 'ocean']>([
-    ['', 'standby'],
-    ['?seed=7', 'standby'],
     ['?start=pen', 'standby'],
+    ['?start=pen&seed=7', 'standby'],
     ['?start=ocean', 'ocean'],
     ['?at=0,-40,-1040&yaw=0', 'ocean'],
     ['?start=pen&at=0,-40,-900', 'ocean'],
-  ])('L4. the game starts in standby in Pen 3; ?start=ocean or ?at= start at sea (%s)', (search, expected) => {
+  ])('L4. ?start=pen starts in standby in Pen 3; ?start=ocean or ?at= start at sea (%s)', (search, expected) => {
     const g = startState(W, new URLSearchParams(search));
     expect(g).toEqual(expected === 'standby' ? standby(W) : oceanStart(W));
   });
@@ -209,24 +209,28 @@ describe('detonations between frames (T8)', () => {
 
 describe('the session owner (phase 3, M3, M7)', () => {
   it.each<[string, 'pen' | 'control' | 'ocean']>([
-    ['', 'pen'],
+    ['', 'control'],
+    ['?seed=7', 'control'],
     ['?start=pen', 'pen'],
     ['?start=control', 'control'],
+    ['?start=nonsense', 'control'],
+    ['?start=nonsense&script=1', 'pen'],
     ['?start=ocean', 'ocean'],
     ['?at=0,-40,-1040', 'ocean'],
     ['?start=control&at=0,-40,-1040', 'ocean'],
     ['?script=cradle,8', 'pen'],
     ['?script=cradle,8&start=control', 'control'],
     ['?script=cradle,8&start=ocean', 'ocean'],
-  ])('starts where the URL says (%s → %s); the pen stays the default until T8', (search, place) => {
+  ])('starts where the URL says (%s → %s); the control room is the default (M9)', (search, place) => {
     const params = new URLSearchParams(search);
     expect(startPlace(params)).toBe(place);
     const want = place === 'pen' ? standby(W) : place === 'control' ? controlRoom(W, ROOMS) : oceanStart(W);
     expect(startState(W, params)).toEqual(want);
   });
 
-  it('keeps the pen as the default start at T1, and ?script= implies the pen whatever the default', () => {
-    expect(DEFAULT_START).toBe('pen');
+  it('M9: the control room is the default start, and ?script= implies the pen whatever the default (M7)', () => {
+    expect(DEFAULT_START).toBe('control');
+    expect(startState(W, new URLSearchParams(''))).toEqual(startState(W, new URLSearchParams('?start=control')));
     expect(startPlace(new URLSearchParams('?script=1'))).toBe('pen');
   });
 
