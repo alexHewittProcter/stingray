@@ -1,17 +1,17 @@
 import { describe, expect, it } from 'vitest';
 import { Game } from '../game/game';
 import { sessionMode } from '../game/mode';
-import { type GameState, LAUNCH_CONTROLS, type Press, REFUSAL, stepGame } from './launch';
-import { RIDE_SECONDS, chairYaw, legsOf, rideProgressAt, rideTimeAt, shaftPoint, stepRide } from './ride';
+import { type GameState, LAUNCH_CONTROLS, type Press, REFUSAL, oceanStart, standby, stepGame } from './launch';
+import { RIDE_SECONDS, chairYaw, chairYawUp, legsOf, rideProgressAt, rideTimeAt, shaftPoint, standPoint, stepRide } from './ride';
 import { ROOMS, SEAT, shaftLength } from './rooms';
 import { controlRoom, stepSession } from './session';
 import { NO_INPUT, type SubInput } from './sub';
-import { STAND_STILL, type TroyInput, aboard, onFoot } from './troy';
+import { STAND_STILL, type TroyInput, aboard, onFoot, walkable } from './troy';
 import { TUNING as T } from './tuning';
 import { FIXED_DT as DT, createWorld } from './world';
 
 // Phase 3, M6 (down): the sit, the descent's timetable and path, the lock-in — and that the ride touches nothing but
-// Troy (M6 "Lock-in", M7). The way back up (M6b) is T9's.
+// Troy (M6 "Lock-in", M7); and the way back up (M6b).
 
 const W = createWorld(1964);
 const YAW_OUT = W.marineville.interior.cradle.yawOut;
@@ -175,9 +175,8 @@ describe('the lock-in (M6) — and the ride touches nothing but Troy (M7)', () =
     expect(pressed).toEqual(stepGame(last, NO_INPUT, 'cradle', DT, W));
   });
 
-  it('riding up (M6b) is left as it is — T9 builds it', () => {
-    const up = { ...aboard(SEAT), where: 'riding' as const, rideDir: 'up' as const, ride: 1 };
-    expect(stepRide(up, DT, ROOMS, YAW_OUT)).toBe(up);
+  it('stepRide leaves Troy as he is unless he is riding', () => {
+    for (const t of [aboard(SEAT), onFoot(ROOMS.start)]) expect(stepRide(t, DT, ROOMS, YAW_OUT)).toBe(t);
   });
 });
 
@@ -192,5 +191,160 @@ describe("R (M3, M9) from riding", () => {
     // R jumps, then that same step runs: compare with a step from the control room keeping the riding state's combat.
     expect(game.state).toEqual(step(controlRoom(W, ROOMS, mid.combat)));
     expect(combat.t).toBeCloseTo(mid.combat.t + DT, 12);
+  });
+});
+
+// ---- M6b: the way back up ----
+
+/** Press 'leave' aboard the docked standby sub, then step until Troy is on foot (or a limit): the states along the way. */
+function ascent(from: GameState = standby(W), each: (g: GameState) => [Press | null, SubInput, TroyInput] = () => [null, NO_INPUT, STAND_STILL]) {
+  const states: GameState[] = [];
+  let g = step(from, 'leave');
+  states.push(g);
+  for (let k = 0; k < 2 * RIDE_SECONDS / DT && g.troy.where === 'riding'; k++) {
+    const [p, i, t] = each(g);
+    g = step(g, p, i, t);
+    states.push(g);
+  }
+  return states;
+}
+
+const same = (a: number, b: number) => Math.abs(Math.atan2(Math.sin(a - b), Math.cos(a - b))) < 1e-9;
+
+describe("'leave' (M6b: refused 'Dock first' unless docked and raised)", () => {
+  const refused = (g: GameState) => {
+    const next = step(g, 'leave');
+    expect(next.launch.refusal).toEqual({ control: 'leave', reason: REFUSAL.notDocked, age: 0 });
+    expect(next.troy.where).toBe(g.troy.where);
+    expect(next.sub).toEqual(step(g).sub);
+  };
+
+  it('is accepted aboard the docked, raised sub: riding up from the seat, ride 1, still; the sub not touched', () => {
+    const g = standby(W);
+    const left = step(g, 'leave');
+    expect(left.troy).toMatchObject({ where: 'riding', rideDir: 'up', ride: 1, pos: SEAT, speed: 0 });
+    expect(left.launch.refusal).toBeNull();
+    expect(left.sub).toEqual(g.sub);
+    expect(left.launch).toEqual(g.launch);
+    expect(sessionMode(left)).toBe('transport');
+  });
+
+  it('is refused with the clamps released, the cradle lowered, the cradle moving, and at sea', () => {
+    // The cradle moving (lowering), then lowered and still, then the engines on and the clamps released.
+    let g = step(standby(W), 'cradle');
+    expect(g.launch.cradleDir).toBe(1);
+    refused(g);
+    while (g.launch.cradleDir !== 0) g = step(g);
+    expect(g.launch.cradle).toBe(1);
+    refused(g);
+    g = step(g, 'engines');
+    for (let k = 0; k < 3 / DT; k++) g = step(g);
+    g = step(g, 'clamps');
+    expect(g.launch.clamps).toBe('released');
+    refused(g);
+    refused(oceanStart(W));
+    // Raising again: the cradle moving up.
+    const raising = { ...standby(W), launch: { ...standby(W).launch, cradle: 0.5, cradleDir: -1 as const } };
+    refused(raising);
+  });
+
+  it('is refused off the sub: on foot, or riding', () => {
+    refused(controlRoom(W, ROOMS));
+    refused(ride().at(5)!);
+    refused(ascent().at(5)!);
+  });
+});
+
+describe('the ascent (M6b: back to 0 over the same 10 s, facing up, standing up in front of the chair)', () => {
+  it('takes RIDE_SECONDS, ± one step, from the leave to standing up', () => {
+    const states = ascent();
+    expect(states.at(-1)!.troy.where).toBe('onFoot');
+    const steps = states.length - 1;
+    expect(Math.abs(steps * DT - RIDE_SECONDS)).toBeLessThanOrEqual(DT + 1e-9);
+  });
+
+  it('runs the polyline backwards: k steps in, the chair is where the descent has it RIDE_SECONDS − k·DT in', () => {
+    const states = ascent();
+    states.slice(1, -1).forEach((g, k) => {
+      expect(g.troy.where).toBe('riding');
+      expect(g.troy.ride).toBeCloseTo(rideProgressAt(RIDE_SECONDS - (k + 1) * DT), 9);
+      expect(g.troy.pos).toEqual(shaftPoint(ROOMS.shaft, g.troy.ride));
+    });
+    // Monotonic up the shaft; eases in at the seat and out at the top (each slice's first step covers next to nothing).
+    for (let k = 2; k < states.length - 1; k++) expect(states[k]!.troy.ride).toBeLessThan(states[k - 1]!.troy.ride);
+    const rides = states.slice(0, -1).map((g) => g.troy.ride);
+    const mid = rides[Math.floor(rides.length / 2)]! - rides[Math.floor(rides.length / 2) + 1]!;
+    expect(rides[0]! - rides[1]!).toBeLessThan(mid * 0.05);
+    expect(rides.at(-2)! - rides.at(-1)!).toBeLessThan(mid * 0.05);
+  });
+
+  it('faces up the shaft: the level run heading south (the reverse of the way down), the turns continuous', () => {
+    const L = shaftLength(ROOMS.shaft);
+    const [, leg2] = legsOf(ROOMS.shaft);
+    const top = ROOMS.chair.yaw + Math.PI;
+    for (let s = leg2!.start; s <= leg2!.start + leg2!.length; s += 7) {
+      const down = chairYaw(ROOMS.shaft, s / L, top, YAW_OUT);
+      expect(same(chairYawUp(ROOMS.shaft, s / L, top, YAW_OUT), down + Math.PI)).toBe(true);
+    }
+    expect(same(chairYawUp(ROOMS.shaft, 1, top, YAW_OUT), YAW_OUT)).toBe(true);
+    expect(same(chairYawUp(ROOMS.shaft, 0, top, YAW_OUT), top)).toBe(true);
+    const states = ascent();
+    for (let k = 1; k < states.length; k++) {
+      const a = states[k - 1]!.troy.yaw;
+      const b = states[k]!.troy.yaw;
+      expect(Math.abs(Math.atan2(Math.sin(b - a), Math.cos(b - a)))).toBeLessThan(0.15);
+    }
+  });
+
+  it('lands on foot at the walkable point in front of the chair, facing chair.yaw + π, still', () => {
+    const last = ascent().at(-1)!;
+    const c = ROOMS.chair;
+    const p = standPoint(ROOMS);
+    expect(last.troy).toEqual(onFoot({ pos: p, yaw: last.troy.yaw }));
+    expect(same(last.troy.yaw, c.yaw + Math.PI)).toBe(true);
+    expect(walkable(p, ROOMS)).toBe(true);
+    // In front of the chair (along the way its seat faces), not beside it, and within M5's reach of it.
+    const out = { x: -Math.sin(c.yaw + Math.PI), z: -Math.cos(c.yaw + Math.PI) };
+    const d = { x: p.x - c.pos.x, z: p.z - c.pos.z };
+    expect(d.x * out.z - d.z * out.x).toBeCloseTo(0, 9);
+    expect(d.x * out.x + d.z * out.z).toBeGreaterThan(1);
+    expect(Math.hypot(d.x, d.z)).toBeLessThan(2.2);
+    expect(p.y).toBe(c.pos.y);
+    expect(sessionMode(last)).toBe('onFoot');
+    // A still step on foot leaves him where he stood up (no push out of a prop).
+    expect(step(last).troy.pos).toEqual(p);
+  });
+
+  it('sub and launch are deep-equal before and after the whole ascent; combat equals a parallel run with no ride', () => {
+    const start = standby(W);
+    const states = ascent(start, (g) => [g.combat.t % 1 < DT ? 'cradle' : g.combat.t % 1 < 2 * DT ? 'leave' : null, FULL, WALK_NORTH]);
+    for (const g of states) {
+      expect(g.sub).toEqual(start.sub);
+      expect({ ...g.launch, refusal: null }).toEqual(start.launch);
+    }
+    let parallel = start;
+    for (let k = 0; k < states.length; k++) parallel = stepGame(parallel, NO_INPUT, null, DT, W);
+    expect(states.at(-1)!.combat).toEqual(parallel.combat);
+  });
+
+  it("R from the ascent gives the start state", () => {
+    const states = ascent();
+    const mid = states[Math.floor(states.length / 2)]!;
+    expect(mid.troy).toMatchObject({ where: 'riding', rideDir: 'up' });
+    const game = new Game(W, mid);
+    game.step(new Set(['KeyR']), DT);
+    expect(game.state).toEqual(step(controlRoom(W, ROOMS, mid.combat)));
+  });
+
+  it('the loop repeats: turned back to the chair after standing up, use sits him again and he rides down to lock in', () => {
+    let g = ascent().at(-1)!;
+    // Turn round toward the chair (north): he faces away from it standing up, and M5 wants it within 60° of his facing.
+    for (let k = 0; k < 30 && !same(g.troy.yaw, ROOMS.chair.yaw); k++) g = step(g, null, NO_INPUT, WALK_NORTH);
+    for (let k = 0; k < 60; k++) g = step(g);
+    const states = ride(g);
+    expect(states[0]!.troy).toMatchObject({ where: 'riding', rideDir: 'down', ride: 0 });
+    expect(states.at(-1)!.troy).toEqual(aboard(SEAT));
+    // And back up again.
+    expect(ascent(states.at(-1)!).at(-1)!.troy.where).toBe('onFoot');
   });
 });
