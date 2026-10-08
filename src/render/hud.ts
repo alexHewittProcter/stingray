@@ -55,7 +55,7 @@ const STYLE = `
 .hud.no-readouts .hud-left, .hud.no-readouts .hud-right, .hud.no-readouts .hud-top, .hud.no-readouts .hud-reticle { display: none; }
 .hud-prompt { left: 50%; bottom: 14%; transform: translateX(-50%); padding: 7px 16px; letter-spacing: .06em;
   white-space: nowrap; }
-.hud-prompt b { color: #ffe066; margin-right: .2em; }
+.hud-prompt b { color: #ffe066; }
 .hud-line { position: absolute; left: 50%; bottom: calc(14% + 54px); transform: translateX(-50%); width: min(70vw, 760px);
   text-align: center; font-weight: 400; font-size: 17px; font-style: italic; color: #f4fbff; }
 .hud-prompt[hidden], .hud-line[hidden] { display: none; }
@@ -154,7 +154,7 @@ export function createHud(parent: HTMLElement): Hud & { reticle: HTMLElement } {
       if (text !== null) {
         const key = document.createElement('b');
         key.textContent = 'E';
-        prompt.append(key, `· ${text}`);
+        prompt.append(key, ` · ${text}`);
       }
     },
     showLine(text) {
