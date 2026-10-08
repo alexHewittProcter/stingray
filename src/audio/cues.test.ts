@@ -1,9 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { type GameState, type LaunchControl, oceanStart, standby, stepGame } from '../sim/launch';
+import { type GameState, type LaunchControl, type Press, oceanStart, standby, stepGame } from '../sim/launch';
+import { ROOMS } from '../sim/rooms';
+import { controlRoom, stepSession } from '../sim/session';
+import { STAND_STILL, onFoot } from '../sim/troy';
 import { NO_INPUT, type SubInput, type SubState } from '../sim/sub';
 import { TUNING as T } from '../sim/tuning';
 import { COAST_Z, FIXED_DT as DT, MARINEVILLE, createWorld } from '../sim/world';
-import { type SoundEvent, distanceGain, muffleFor, soundscape, stepEvents } from './cues';
+import { type SoundEvent, distanceGain, listenerOf, listenerUnderwater, muffleFor, soundscape, stepEvents } from './cues';
 import { LEVELS as L } from './levels';
 
 const W = createWorld(1964);
@@ -203,5 +206,55 @@ describe('sound cues: ambience and the listener (L7)', () => {
     expect(muffleFor(300, false)).toBeGreaterThan(muffleFor(30, false));
     expect(muffleFor(30, true)).toBeGreaterThan(muffleFor(30, false));
     expect(DOOR).toEqual(MARINEVILLE.interior.door.centre);
+  });
+});
+
+// ---- Phase 3 (M6 "Sound", T7): the listener follows Troy, the ambience by session mode, the chair's cues ----
+
+describe('phase 3: the ride heard (M6)', () => {
+  const atChair = (): GameState => {
+    const c = ROOMS.chair;
+    return { ...controlRoom(W, ROOMS), troy: onFoot({ pos: { x: c.pos.x, y: c.pos.y, z: c.pos.z + 1.5 }, yaw: c.yaw }) };
+  };
+  const session = (g: GameState, p: Press | null = null) => stepSession(g, NO_INPUT, STAND_STILL, p, DT, W, ROOMS);
+
+  it('on foot: the listener is Troy, the rooms hum plays, and neither the pen hall nor the sea does', () => {
+    const g = controlRoom(W, ROOMS);
+    expect(listenerOf(g)).toEqual(g.troy.pos);
+    expect(soundscape(g).ambience).toMatchObject({ rooms: 1, hall: 0, tunnel: 0, seaUnder: 0, seaAbove: 0 });
+    expect(soundscape(g).shaft.level).toBe(0);
+    expect(listenerUnderwater({ ...oceanStart(W), troy: onFoot(ROOMS.start) })).toBe(false);
+  });
+
+  it('aboard, the listener is the sub and the beds are phase 2s (standby: the hall)', () => {
+    expect(listenerOf(standby(W))).toEqual(standby(W).sub.pos);
+    expect(soundscape(standby(W)).ambience).toMatchObject({ rooms: 0, hall: 1 });
+  });
+
+  it('riding: the chair sets off with a clunk, the rush rises with its speed, the hall joins at the foot, and it locks in', () => {
+    let g = session(atChair(), 'use');
+    const kinds: string[] = [...stepEvents(atChair(), g).map((e) => e.kind)];
+    const rush: number[] = [];
+    const hall: number[] = [];
+    while (g.troy.where === 'riding') {
+      const next = session(g);
+      kinds.push(...stepEvents(g, next).map((e) => e.kind));
+      g = next;
+      if (g.troy.where === 'riding') {
+        expect(listenerOf(g)).toEqual(g.troy.pos);
+        rush.push(soundscape(g).shaft.speed);
+        hall.push(soundscape(g).ambience.hall);
+      }
+    }
+    expect(count(kinds, 'chairStart')).toBe(1);
+    expect(count(kinds, 'lockIn')).toBe(1);
+    expect(kinds.at(-1)).toBe('lockIn');
+    // Rising from rest to the cruise, then easing off at the seat.
+    expect(rush[0]!).toBeLessThan(0.01);
+    expect(Math.max(...rush)).toBe(1);
+    expect(rush.at(-1)!).toBeLessThan(0.05);
+    for (let k = 1; k < 60; k++) expect(rush[k]!).toBeGreaterThanOrEqual(rush[k - 1]!);
+    expect(hall[0]).toBe(0);
+    expect(hall.at(-1)).toBe(1);
   });
 });

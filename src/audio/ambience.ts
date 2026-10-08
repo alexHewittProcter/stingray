@@ -9,6 +9,10 @@
 //   Tunnel (inside Marineville, under water): 50 Hz machinery hum with its 100 Hz harmonic, a 25 Hz sawtooth
 //     under 90 Hz, and the bore's resonance — brown noise through a narrow 180 Hz band-pass that drifts slowly.
 //   Hall (Pen 3, in air): 60 Hz mains hum and 120 Hz, air-handling hiss above 2.5 kHz, a soft pool lap.
+//   Rooms (phase 3, on foot in the control tower): a low console hum — 50 Hz and a faint 150 Hz, a soft 3 kHz
+//     relay hiss, and a slow 0.2 Hz swell.
+//   Shaft rush (phase 3, riding the injector chair): white noise through a band-pass that climbs 250 Hz → 1.4 kHz
+//     with the chair's speed, over brown-noise rumble low-passed at 160 Hz; both rise with the speed.
 //   Hull under (clamped, going down): noise low-passed from 3 kHz down to 250 Hz over 1.3 s, with fourteen
 //     rising bubble blips. Hull out (coming up): a 2.5 s pour of band-passed noise and scattered drips.
 //   Splash: leap — a bright band-passed burst falling 1.4 kHz → 700 Hz and a few bubbles; re-entry — a 70 Hz
@@ -84,6 +88,20 @@ export function createAmbience(m: Mixer): Ambience {
   looped(m.brown).connect(filter(m, 'lowpass', 400)).connect(lap).connect(hall);
   lfo(m, lap.gain, 0.3, 0.15);
 
+  // Rooms (phase 3)
+  const rooms = loopGain(m, bus);
+  tonal('sine', 50).connect(level(0.25)).connect(rooms);
+  tonal('sine', 150).connect(level(0.05)).connect(rooms);
+  const relay = level(0.03);
+  looped(m.white).connect(filter(m, 'bandpass', 3000, 2)).connect(relay).connect(rooms);
+  lfo(m, relay.gain, 0.2, 0.015);
+
+  // The shaft's rush (phase 3)
+  const rush = loopGain(m, bus);
+  const rushBp = filter(m, 'bandpass', 250, 0.8);
+  looped(m.white).connect(rushBp).connect(level(0.7)).connect(rush);
+  looped(m.brown).connect(filter(m, 'lowpass', 160)).connect(level(1.2)).connect(rush);
+
   for (const s of sources) {
     if (s instanceof AudioBufferSourceNode) startNoise(s, ctx.currentTime);
     else s.start();
@@ -106,6 +124,10 @@ export function createAmbience(m: Mixer): Ambience {
       seaAbove.gain.setTargetAtTime(L.seaAbove * a.seaAbove, now, L.ambienceFade);
       tunnel.gain.setTargetAtTime(L.tunnel * a.tunnel, now, L.ambienceFade);
       hall.gain.setTargetAtTime(L.hall * a.hall, now, L.ambienceFade);
+      rooms.gain.setTargetAtTime(L.rooms * a.rooms, now, L.ambienceFade);
+      // The rush rises with the chair's speed (quickly — it is the ride's sense of speed).
+      rush.gain.setTargetAtTime(L.shaftRush * s.shaft.level * s.shaft.speed, now, 0.12);
+      rushBp.frequency.setTargetAtTime(250 + 1150 * s.shaft.speed, now, 0.15);
       underLp.frequency.setTargetAtTime(320 - 180 * a.depth, now, 1);
     },
 
