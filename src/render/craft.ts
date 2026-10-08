@@ -21,6 +21,8 @@ export interface Craft {
    * instead of throwing a leap's splash.
    */
   update(prev: SubState, next: SubState, alpha: number, input: SubInput, dtSeconds: number, running?: boolean, held?: boolean): ChaseTarget;
+  /** Phase 3 (T7): the roof hatch over the pilot's seat, 0 shut … 1 open (stingray.ts setHatch). */
+  setHatch(open: number): void;
 }
 
 const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
@@ -70,6 +72,7 @@ export function createCraft(particles: Particles): Craft {
 
   return {
     group,
+    setHatch: (open) => model.setHatch(open),
     update(prev, next, alpha, input, dt, running = true, held = false) {
       pos.x = lerp(prev.pos.x, next.pos.x, alpha);
       pos.y = lerp(prev.pos.y, next.pos.y, alpha);

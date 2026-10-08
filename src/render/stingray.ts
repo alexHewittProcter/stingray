@@ -17,6 +17,11 @@ export interface StingrayModel {
   /** The ratchet drive; rotates about its local Z axis (the hull's long axis). */
   readonly drive: THREE.Object3D;
   setDriveSpin(angleRadians: number): void;
+  /**
+   * Phase 3 (M1, T7): the roof hatch over the pilot's seat — 0 shut, 1 open (the lid swung up and back on its rear
+   * hinge). Driven from Troy (main.ts): open while his chair is on the shaft's last leg, shut otherwise.
+   */
+  setHatch(open: number): void;
 }
 
 // ---- Dimensions (metres) -------------------------------------------------------------------
@@ -61,8 +66,17 @@ const WINDOW_SPANS: ReadonlyArray<readonly [number, number]> = [
 const CABIN_PINSTRIPES = [WINDOW_Y + 0.4, WINDOW_Y - 0.38, CABIN_CENTRE_Y + 0.5];
 const PINSTRIPE_HALF = 0.035;
 
-const DOME_Z = -1.6;
-const PERISCOPE_Z = -1.0;
+// Phase 3 (T7): the dome and the periscope sit a little further forward than phase 2 drew them (−1.6, −1.0), so the
+// roof hatch over the pilot's seat (SEAT_HATCH, at the seat's z = 0) is clear of the dome.
+const DOME_Z = -2.1;
+const DOME_LENGTH = 1.35; // the dome's half-length along z (phase 2: 1.9)
+const PERISCOPE_Z = -1.6;
+/**
+ * Phase 3 (M1 "the sub gains a roof hatch over the seat", T7): the round lid over the pilot's seat (model-local x 0,
+ * z 0 — sim/rooms.ts SEAT_RISE puts the chair's origin at y 2.0 there): its footprint radius, the roof line it sits on,
+ * its rise (it covers Troy's head, ≈ 3.5, when shut), and how far it swings open.
+ */
+const SEAT_HATCH = { radius: 0.85, baseY: 3.12, rise: 0.44, openAngle: (112 * Math.PI) / 180 };
 const PERISCOPE_TOP_Y = 7.1;
 
 // ---- Colours ---------------------------------------------------------------------------------
@@ -151,6 +165,8 @@ interface LoftSpec {
   colour(x: number, y: number, z: number): number;
   /** Surface height for the bump map, 0 (an engraved panel line) to 1 (the skin). */
   relief?(x: number, y: number, z: number): number;
+  /** Phase 3 (T7): true where the skin is cut away (alpha 0 in the livery — the material alpha-tests it). */
+  cut?(x: number, y: number, z: number): boolean;
 }
 
 interface Loft {
@@ -269,7 +285,7 @@ function loft(spec: LoftSpec): Loft {
       paint[k] = (hex >> 16) & 0xff;
       paint[k + 1] = (hex >> 8) & 0xff;
       paint[k + 2] = hex & 0xff;
-      paint[k + 3] = 0xff;
+      paint[k + 3] = spec.cut?.(x, y, z) ? 0 : 0xff;
       if (relief && spec.relief) {
         const h = Math.round(spec.relief(x, y, z) * 255);
         relief[k] = relief[k + 1] = relief[k + 2] = h;
@@ -410,7 +426,18 @@ function createCabin(): Loft {
     topExponent: 3,
     bottomExponent: 2,
     colour: cabinColour,
+    cut: cabinCut,
   });
+}
+
+/**
+ * Phase 3 (M8: "aboard, Troy is visible through the cabin's window band and the hatch"): the cabin's skin is open behind
+ * each side window's pane and under the roof hatch, so the pilot in his chair can be seen from outside.
+ */
+function cabinCut(x: number, y: number, z: number): boolean {
+  if (y > 2.9 && Math.hypot(x, z) < SEAT_HATCH.radius - 0.03) return true;
+  if (Math.abs(x) < 0.6 || Math.abs(y - WINDOW_Y) > WINDOW_HEIGHT / 2) return false;
+  return WINDOW_SPANS.some(([z0, z1]) => z > z0 && z < z1);
 }
 
 // ---- Helpers ---------------------------------------------------------------------------------
@@ -555,36 +582,76 @@ function windowTexture(): THREE.DataTexture {
 
 function addWindows(group: THREE.Group, cabin: Loft, f: Finishes): void {
   const interior = windowTexture();
-  const glass = standard(0xffffff, { map: interior, roughness: 0.1, metalness: 0.3, emissive: 0x2a3c50, emissiveMap: interior });
+  // Phase 3 (M8, T7): the panes are glass now — tinted, with the reflection streak — over the skin's cut-out (cabinCut),
+  // so the pilot shows through them; the frame is a border round each pane rather than a slab behind it.
+  const glass = standard(0xffffff, {
+    map: interior, roughness: 0.1, metalness: 0.3, emissive: 0x2a3c50, emissiveMap: interior, transparent: true, opacity: 0.32, depthWrite: false,
+  });
+  const B = 0.05; // the border's width
   for (const side of SIDES) {
     for (const [z0, z1] of WINDOW_SPANS) {
       const holder = onSurface(cabin, side, (z0 + z1) / 2, WINDOW_Y);
-      const frame = new THREE.Mesh(new THREE.BoxGeometry(0.08, WINDOW_HEIGHT + 0.1, z1 - z0 + 0.1), f.frame);
-      holder.add(frame);
-      const pane = new THREE.Mesh(new THREE.BoxGeometry(0.06, WINDOW_HEIGHT, z1 - z0), glass);
-      pane.position.x = 0.03;
+      const length = z1 - z0;
+      for (const [h, d, y, z] of [
+        [B, length + 2 * B, (WINDOW_HEIGHT + B) / 2, 0], [B, length + 2 * B, -(WINDOW_HEIGHT + B) / 2, 0],
+        [WINDOW_HEIGHT, B, 0, (length + B) / 2], [WINDOW_HEIGHT, B, 0, -(length + B) / 2],
+      ] as const) {
+        const bar = new THREE.Mesh(new THREE.BoxGeometry(0.08, h, d), f.frame);
+        bar.position.set(0, y, z);
+        holder.add(bar);
+      }
+      const pane = new THREE.Mesh(new THREE.BoxGeometry(0.02, WINDOW_HEIGHT, length), glass);
+      pane.position.x = 0.02;
+      pane.renderOrder = 1;
       holder.add(pane);
       group.add(holder);
     }
   }
 }
 
+/**
+ * Phase 3 (M1, T7): the round hatch over the pilot's seat — a shallow light-blue lid on a metal bezel, hinged at its
+ * rear edge. The lid's pivot is returned: rotation.x = openAngle × open swings its front edge up and back.
+ */
+function addSeatHatch(group: THREE.Group, f: Finishes): THREE.Object3D {
+  const { radius: a, baseY, rise: h } = SEAT_HATCH;
+  const sphere = (a * a + h * h) / (2 * h);
+  const theta = Math.asin(a / sphere);
+  const bezel = new THREE.Mesh(new THREE.TorusGeometry(a, 0.055, 6, 36), f.metal);
+  bezel.rotation.x = Math.PI / 2;
+  bezel.position.set(0, baseY + 0.02, 0);
+  group.add(bezel);
+  // The hinge on the lid's rear edge (+z): the pivot sits there, the lid hangs forward of it.
+  const pivot = new THREE.Object3D();
+  pivot.name = 'seat-hatch';
+  pivot.position.set(0, baseY, a);
+  const lid = new THREE.Mesh(new THREE.SphereGeometry(sphere, 28, 6, 0, Math.PI * 2, 0, theta), standard(DOME_BLUE, { roughness: 0.3, side: THREE.DoubleSide }));
+  lid.position.set(0, h - sphere, -a);
+  pivot.add(lid);
+  const hinge = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.5, 10).rotateZ(Math.PI / 2), f.darkMetal);
+  pivot.add(hinge);
+  group.add(pivot);
+  return pivot;
+}
+
 /** The light-blue hatch dome behind the windscreen, its bezel, and the periscope rising from it. */
 function addDomeAndPeriscope(group: THREE.Group, f: Finishes): void {
   const roofY = CABIN_CENTRE_Y + CABIN_TOP;
   const dome = new THREE.Mesh(new THREE.SphereGeometry(1, 28, 12, 0, Math.PI * 2, 0, Math.PI / 2), standard(DOME_BLUE, { roughness: 0.3 }));
-  dome.scale.set(1.1, 0.8, 1.9);
+  dome.scale.set(1.1, 0.8, DOME_LENGTH);
   dome.position.set(0, roofY - 0.15, DOME_Z);
   group.add(dome);
   const bezel = new THREE.Mesh(new THREE.TorusGeometry(1, 0.06, 6, 40), f.metal);
   bezel.rotation.x = Math.PI / 2;
-  bezel.scale.set(1.12, 1.92, 1);
+  bezel.scale.set(1.12, DOME_LENGTH + 0.02, 1);
   bezel.position.set(0, roofY - 0.1, DOME_Z);
   group.add(bezel);
   const hatch = new THREE.Mesh(new THREE.TorusGeometry(0.42, 0.05, 6, 24), f.cabinBlue);
   hatch.rotation.x = Math.PI / 2;
   hatch.scale.set(1, 1.5, 1);
-  hatch.position.set(0, roofY + 0.5, DOME_Z - 0.95);
+  // On the dome's skin forward of its centre (phase 3, T7: nearer the centre and lower, on the shorter dome).
+  const ringZ = 0.62;
+  hatch.position.set(0, roofY - 0.15 + 0.8 * Math.sqrt(1 - (ringZ / DOME_LENGTH) ** 2) - 0.03, DOME_Z - ringZ);
   group.add(hatch);
 
   // Periscope: a flared light-blue collar, a banded mast and a forward-looking head.
@@ -953,12 +1020,18 @@ export function createStingray(): StingrayModel {
   group.add(hullMesh);
 
   const cabin = createCabin();
-  const cabinMesh = new THREE.Mesh(cabin.geometry, standard(0xffffff, { map: cabin.livery, roughness: 0.3, metalness: 0.15 }));
+  // Phase 3 (T7): alpha-tested where the skin is cut away (cabinCut) and drawn both sides, so the cabin reads as a
+  // shell — its inside walls — round the pilot seen through the windows and the hatch.
+  const cabinMesh = new THREE.Mesh(
+    cabin.geometry,
+    standard(0xffffff, { map: cabin.livery, roughness: 0.3, metalness: 0.15, alphaTest: 0.5, side: THREE.DoubleSide }),
+  );
   cabinMesh.name = 'cabin';
   group.add(cabinMesh);
 
   addWindows(group, cabin, finishes);
   addDomeAndPeriscope(group, finishes);
+  const hatch = addSeatHatch(group, finishes);
   addFins(group, finishes);
   addLettering(group, hull);
   addEyePods(group, hull, finishes);
@@ -974,6 +1047,9 @@ export function createStingray(): StingrayModel {
     drive,
     setDriveSpin(angleRadians) {
       drive.rotation.z = angleRadians;
+    },
+    setHatch(open) {
+      hatch.rotation.x = SEAT_HATCH.openAngle * Math.min(1, Math.max(0, open));
     },
   };
 }

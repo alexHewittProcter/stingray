@@ -6,7 +6,7 @@
 // then every call is a no-op. M mutes and unmutes, remembered across reloads.
 
 import type { GameState } from '../sim/launch';
-import { type SoundEvent, soundscape, stepEvents } from './cues';
+import { type SoundEvent, listenerUnderwater, soundscape, stepEvents } from './cues';
 import { type Ambience, createAmbience } from './ambience';
 import { type Engine, createEngine } from './engine';
 import { type Machinery, createMachinery } from './machinery';
@@ -83,14 +83,16 @@ export function createAudio(win: Window): Audio {
   return {
     step(previous, current) {
       if (!on) return;
-      const underwater = current.sub.medium === 'submerged';
+      const underwater = listenerUnderwater(current);
       for (const e of stepEvents(previous, current)) play(on, e, underwater);
     },
     frame(current) {
       if (!on) return;
       const s = soundscape(current);
       const inside = s.ambience.tunnel + s.ambience.hall > 0;
-      on.mixer.setPlace(s.underwater, inside ? 0.55 : s.underwater ? 0.18 : 0.06);
+      // Phase 3: the shaft rings like the halls; the rooms are smaller and dressed.
+      const room = inside || s.shaft.level > 0 ? 0.55 : s.ambience.rooms > 0 ? 0.25 : s.underwater ? 0.18 : 0.06;
+      on.mixer.setPlace(s.underwater, room);
       on.engine.update(s.engine);
       on.machinery.update(s);
       on.ambience.update(s);
@@ -129,6 +131,8 @@ function play(a: Running, e: SoundEvent, underwater: boolean): void {
     case 'missile': return a.weapons.missile();
     case 'detonation': return a.weapons.detonation(e.distance, e.gain, e.muffle, underwater);
     case 'refusal': return a.machinery.refusal();
+    case 'chairStart': return a.machinery.chair(false);
+    case 'lockIn': return a.machinery.chair(true);
   }
 }
 

@@ -47,7 +47,11 @@ export interface RoomsView {
   readonly group: THREE.Group;
   /** The rooms' lamp (outside the group, so it never leaves the scene). */
   readonly lamp: THREE.PointLight;
-  update(camera: THREE.Camera): void;
+  /**
+   * Once per drawn frame. `shaft` (T7): the camera is down the injector shaft's bore or tube — the rooms stay drawn
+   * (the bore's throat and the lounge above it are theirs) and the lamp stays in the lounge.
+   */
+  update(camera: THREE.Camera, shaft?: boolean): void;
 }
 
 export function createRooms(rooms: Rooms): RoomsView {
@@ -61,6 +65,7 @@ export function createRooms(rooms: Rooms): RoomsView {
   if (control) group.add(controlRoom(control, rooms.rooms, mats));
   group.add(corridor(rooms, mats), lounge(rooms, mats));
 
+  const loungeRoom = rooms.rooms.find((r) => r.id === 'lounge') ?? rooms.rooms[0]!;
   const lamp = new THREE.PointLight(0xfff3df, 0, 30, 2);
   lamp.name = 'rooms-lamp';
   const room = new THREE.Vector3();
@@ -69,8 +74,8 @@ export function createRooms(rooms: Rooms): RoomsView {
   return {
     group,
     lamp,
-    update(camera) {
-      const inside = inRooms(camera.position);
+    update(camera, shaft = false) {
+      const inside = inRooms(camera.position) || shaft;
       group.visible = inside;
       lamp.intensity = inside ? LAMP_INTENSITY : 0;
       // The tower's rooms exterior (marineville.ts), looked up once the group is in the scene.
@@ -78,7 +83,7 @@ export function createRooms(rooms: Rooms): RoomsView {
       if (exterior) exterior.visible = !inside;
       if (!inside) return;
       // The lamp hangs under the ceiling of whichever room the camera is in.
-      const r = roomAt(camera.position, rooms.rooms) ?? rooms.rooms[0]!;
+      const r = roomAt(camera.position, rooms.rooms) ?? (shaft ? loungeRoom : rooms.rooms[0]!);
       room.set((r.min.x + r.max.x) / 2, r.max.y - 0.4, (r.min.z + r.max.z) / 2);
       lamp.position.copy(room);
     },
@@ -842,12 +847,11 @@ function corridor(rooms: Rooms, mats: ControlMaterials): THREE.Group {
 export const BORE_RADIUS = 0.95;
 /** How far down the drawn bore runs before it opens into the shaft's tube (sim/rooms.ts SHAFT_OPEN_TOP). */
 const BORE_DEPTH = SHAFT_OPEN_TOP;
-/** The drawn top of the shaft's tube: SHAFT_RADIUS wide, from the bore's flare down this far, then a cap (T7's). */
+/** The drawn top of the shaft's tube: SHAFT_RADIUS wide, from the bore's flare down this far; render/shaft.ts (T7)
+ * continues it from there (TUBE_TOP_Y). */
 const TUBE_STUB = 2;
 /** The bay plinth's height (the chairs' carriages sit flush in it). */
 const PLINTH = 0.08;
-/** The name of the dark disc that closes the drawn tube stub (T7 removes it when it draws the shaft). */
-export const BORE_CAP_NAME = 'shaft-bore-cap';
 
 /**
  * The Standby Lounge (M1 art) after 03_STANDBY_INJECTOR/: the injector bay along the north wall — the plinth with the
@@ -867,7 +871,6 @@ function lounge(rooms: Rooms, mats: ControlMaterials): THREE.Group {
   const top = C + WALL;
   const chair = rooms.chair;
   const P = LOUNGE_PROPS;
-  let cap: THREE.Mesh | null = null;
 
   // The floor: terrazzo under the room and its walls, with the bore's round opening at the chair.
   {
@@ -934,7 +937,7 @@ function lounge(rooms: Rooms, mats: ControlMaterials): THREE.Group {
   }
 
   // The bore (M1: "a visible bore in the floor", the shaft's first SHAFT_OPEN_TOP metres): a lit throat with four
-  // guide rails, flaring at its foot into the top of the shaft's SHAFT_RADIUS tube, closed (for now) by a dark cap.
+  // guide rails, flaring at its foot into the top of the shaft's SHAFT_RADIUS tube, which render/shaft.ts continues (T7).
   {
     const { x, z } = chair.pos;
     const inside = (g: THREE.BufferGeometry) => backFaces(g);
@@ -952,10 +955,6 @@ function lounge(rooms: Rooms, mats: ControlMaterials): THREE.Group {
     const tubeTop = F - BORE_DEPTH - flare;
     shell.add(L.bore, inside(new THREE.CylinderGeometry(SHAFT_RADIUS, SHAFT_RADIUS, TUBE_STUB, 32, 1, true).translate(x, tubeTop - TUBE_STUB / 2, z)));
     shell.add(L.boreLight, inside(new THREE.CylinderGeometry(SHAFT_RADIUS - 0.012, SHAFT_RADIUS - 0.012, 0.12, 32, 1, true).translate(x, tubeTop - 0.6, z)));
-    // The stub's dark cap: its own mesh, so T7 can drop it when it draws the rest of the shaft.
-    cap = new THREE.Mesh(new THREE.CircleGeometry(SHAFT_RADIUS, 32).rotateX(-Math.PI / 2).translate(x, tubeTop - TUBE_STUB, z), L.boreDark);
-    cap.name = BORE_CAP_NAME;
-    cap.userData.roomShell = true;
   }
 
   // The injector bay plinth (LOUNGE_PROPS.injectorBay): grey, the bore through it, a hazard band along its front, a
@@ -1067,7 +1066,6 @@ function lounge(rooms: Rooms, mats: ControlMaterials): THREE.Group {
 
   const group = buildKit(kit, 'lounge');
   group.add(troysChair);
-  if (cap) group.add(cap);
   return group;
 }
 
