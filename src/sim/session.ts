@@ -7,6 +7,7 @@
 // input is NO_INPUT and a launch press is refused 'Not aboard', so a clamped standby sub with nobody in it stays exactly
 // as it was. 'use' and 'leave' are handled here and never reach stepGame. Combat's clock and the targets run throughout.
 
+import { INTERACTABLES, LINE_SECONDS, nearestUsable } from './interactables';
 import { type GameState, type LaunchControl, type LaunchState, type Press, REFUSAL, standby, stepGame } from './launch';
 import type { Rooms } from './rooms';
 import { NO_INPUT, type SubInput } from './sub';
@@ -30,18 +31,37 @@ export function stepSession(
   const next = stepGame({ ...g, troy }, piloted ? input : NO_INPUT, launchPress, dt, env);
 
   const reason = pressed === null || launchPress !== null ? null : refusalOf(pressed, g);
-  if (reason === null) return next;
+  if (reason === null) return pressed === 'use' ? applyUse(g, next) : next;
   return { ...next, launch: { ...next.launch, refusal: { control: pressed!, reason, age: 0 } } };
 }
 
 /**
- * Why a press stepSession handles itself is refused, or null if it is accepted. At T1 an accepted 'use' or 'leave'
- * does nothing yet: 'use' is T6's (interactables) and T7's (the chair), 'leave' is T9's (the way back up).
+ * M5: the step that consumes 'use' applies the Use of whatever is usable as the press is read — judged on Troy as the
+ * step began, the state the HUD was showing its prompt for — or does nothing if nothing is (out of range, facing away,
+ * not on foot). A use is never refused.
+ *   - say → hud.line = { text, until } with until in combat.t seconds, LINE_SECONDS after the step that set it.
+ *   - ride → M6's sit. TODO(M6, T7): Troy becomes where 'riding', rideDir 'down', ride 0, pos = rooms.shaft[0]; the sub
+ *     is not touched. Until T7 a ride use does nothing — `next` comes back as stepped, troy.where still 'onFoot'.
+ */
+function applyUse(g: GameState, next: GameState): GameState {
+  const target = nearestUsable(g.troy, INTERACTABLES);
+  if (target === null) return next;
+  switch (target.use.kind) {
+    case 'say':
+      return { ...next, hud: { line: { text: target.use.line, until: next.combat.t + LINE_SECONDS } } };
+    case 'ride':
+      return next; // TODO(M6, T7): the sit — see above.
+  }
+}
+
+/**
+ * Why a press stepSession handles itself is refused, or null if it is accepted. An accepted 'use' is applied by
+ * applyUse (M5); an accepted 'leave' does nothing yet (T9's, the way back up).
  */
 function refusalOf(p: Press, g: GameState): string | null {
   if (isLaunchControl(p)) return REFUSAL.notAboard; // M6: launch controls need a pilot
   if (p === 'leave') return g.troy.where === 'aboard' && docked(g.launch) ? null : REFUSAL.notDocked;
-  return null; // 'use': nothing to use yet (T6)
+  return null; // 'use' (M5): never refused — applyUse does it, or nothing
 }
 
 /** M6b: raised and still on the cradle with the clamps locked — phase 2's dock complete. */
