@@ -210,6 +210,8 @@ interface Kit {
   /** Instanced pieces, all on props: chunky toggles (boxes), and knobs and lamps (cylinders). */
   switches: Stud[];
   knobs: Stud[];
+  /** Props the interactables (M5, sim/interactables.ts) light up: each its own meshes, tagged with the id. */
+  tag: Record<'wallMap' | 'videophone' | 'locator' | 'shoresDesk', Parts>;
   mats: ReturnType<typeof controlMaterials>;
 }
 
@@ -244,7 +246,10 @@ function controlMaterials(glass: THREE.Material) {
 
 /** The dressed control room: its shell (walls, windows, floor, ceiling) and its furniture, merged per material. */
 function controlRoom(room: Room, all: readonly Room[], glass: THREE.Material): THREE.Group {
-  const kit: Kit = { shell: new Parts(), props: new Parts(), switches: [], knobs: [], mats: controlMaterials(glass) };
+  const kit: Kit = {
+    shell: new Parts(), props: new Parts(), switches: [], knobs: [], mats: controlMaterials(glass),
+    tag: { wallMap: new Parts(), videophone: new Parts(), locator: new Parts(), shoresDesk: new Parts() },
+  };
   controlShell(kit, room, all);
   furniture(kit, room.min.y);
 
@@ -255,6 +260,13 @@ function controlRoom(room: Room, all: readonly Room[], glass: THREE.Material): T
   const props = kit.props.build('controlRoom-props');
   props.traverse((o) => { if (o instanceof THREE.Mesh) o.userData.roomProp = true; });
   group.add(shell, props);
+  // M5's glow (render/interact.ts) lights everything under an object tagged userData.interactable = id.
+  for (const [id, parts] of Object.entries(kit.tag)) {
+    const tagged = parts.build(`controlRoom-${id}`);
+    tagged.userData.interactable = id;
+    tagged.traverse((o) => { if (o instanceof THREE.Mesh) o.userData.roomProp = true; });
+    group.add(tagged);
+  }
   const instanced = (geometry: THREE.BufferGeometry, list: Stud[], name: string) => {
     if (list.length === 0) return;
     const mesh = new THREE.InstancedMesh(geometry, kit.mats.instanced, list.length);
@@ -489,7 +501,7 @@ function rodY(x: number, z: number, y0: number, y1: number, r: number): THREE.Bu
 }
 
 function furniture(kit: Kit, F: number): void {
-  const { props, mats } = kit;
+  const { props, mats, tag } = kit;
   const P = CONTROL_ROOM_PROPS;
   const mid = (b: Box) => ({ x: (b.min.x + b.max.x) / 2, y: F, z: (b.min.z + b.max.z) / 2 });
   /** A round knob, button or lamp of radius r standing len proud, its axis along x or z (wall-mounted) or y. */
@@ -534,8 +546,8 @@ function furniture(kit: Kit, F: number): void {
     const mapH = mapW * (384 / 1024);
     const my = F + 1.15 + mapH / 2;
     const frameTop = my + mapH / 2 + 0.1;
-    props.add(mats.frame, slab({ x: cx - mapW / 2 - 0.1, y: my - mapH / 2 - 0.1, z: wz }, { x: cx + mapW / 2 + 0.1, y: frameTop, z: wz + 0.05 }));
-    props.add(mats.decals, decal('map', mapW, mapH, { x: cx, y: my, z: wz + 0.051 }, 'z+'));
+    tag.wallMap.add(mats.frame, slab({ x: cx - mapW / 2 - 0.1, y: my - mapH / 2 - 0.1, z: wz }, { x: cx + mapW / 2 + 0.1, y: frameTop, z: wz + 0.05 }));
+    tag.wallMap.add(mats.decals, decal('map', mapW, mapH, { x: cx, y: my, z: wz + 0.051 }, 'z+'));
     props.add(mats.decals, decal('banner', mapW, mapW / 16, { x: cx, y: (frameTop + b.max.y) / 2, z: wz + 0.01 }, 'z+'));
     consoleBank(kit, {
       length: mapW, depth: 0.7, height: 0.9, front: 0.74, at: { x: cx, y: F, z: wz + 0.37 }, yaw: 0,
@@ -565,8 +577,8 @@ function furniture(kit: Kit, F: number): void {
     const vy = F + 2.05;
     const vw = 2.1;
     const vh = vw * (384 / 512);
-    props.add(mats.gold, slab({ x: wx, y: vy - vh / 2 - 0.05, z: cz - vw / 2 - 0.05 }, { x: wx + 0.08, y: vy + vh / 2 + 0.05, z: cz + vw / 2 + 0.05 }));
-    props.add(mats.decals, decal('videophone', vw, vh, { x: wx + 0.081, y: vy, z: cz }, 'x+'));
+    tag.videophone.add(mats.gold, slab({ x: wx, y: vy - vh / 2 - 0.05, z: cz - vw / 2 - 0.05 }, { x: wx + 0.08, y: vy + vh / 2 + 0.05, z: cz + vw / 2 + 0.05 }));
+    tag.videophone.add(mats.decals, decal('videophone', vw, vh, { x: wx + 0.081, y: vy, z: cz }, 'x+'));
     const bz = cz + vw / 2 + 0.35;
     props.add(mats.trim, slab({ x: wx, y: F + 1.6, z: bz - 0.17 }, { x: wx + 0.06, y: F + 2.5, z: bz + 0.17 }));
     for (const [y, c] of [[2.38, 0xe8322a], [2.2, 0xf2efe6], [2.05, 0xf2efe6], [1.8, 0xc9a54c]] as const) knob(wx + 0.08, F + y, bz, 'x', 0.05, 0.05, c);
@@ -581,14 +593,14 @@ function furniture(kit: Kit, F: number): void {
     const wx = b.max.x;
     const cz = (b.min.z + b.max.z) / 2;
     const dy = F + 2.75;
-    props.add(mats.bodyDark, new THREE.CylinderGeometry(0.82, 0.82, 0.06, 40).rotateZ(Math.PI / 2).translate(wx - 0.03, dy, cz));
-    props.add(mats.decals, decal('compass', 1.5, 1.5, { x: wx - 0.061, y: dy, z: cz }, 'x-', true));
+    tag.locator.add(mats.bodyDark, new THREE.CylinderGeometry(0.82, 0.82, 0.06, 40).rotateZ(Math.PI / 2).translate(wx - 0.03, dy, cz));
+    tag.locator.add(mats.decals, decal('compass', 1.5, 1.5, { x: wx - 0.061, y: dy, z: cz }, 'x-', true));
     props.add(mats.decals, decal('locatorSign', 1.8, 1.8 * (96 / 512), { x: wx - 0.01, y: dy + 1.05, z: cz }, 'x-'));
     const px = wx - 0.95;
     props.add(mats.trim, slab({ x: px - 0.55, y: F, z: cz - 0.6 }, { x: px + 0.55, y: F + 0.15, z: cz + 0.6 }));
     props.add(mats.frame, rodY(px, cz, F + 0.15, F + 1.1, 0.06));
-    props.add(mats.sky, slab({ x: px - 0.2, y: F + 1.05, z: cz - 0.7 }, { x: px + 0.2, y: F + 1.85, z: cz + 0.7 }));
-    props.add(mats.frame, slab({ x: px - 0.22, y: F + 1.38, z: cz - 0.18 }, { x: px - 0.2, y: F + 1.78, z: cz + 0.18 }));
+    tag.locator.add(mats.sky, slab({ x: px - 0.2, y: F + 1.05, z: cz - 0.7 }, { x: px + 0.2, y: F + 1.85, z: cz + 0.7 }));
+    tag.locator.add(mats.frame, slab({ x: px - 0.22, y: F + 1.38, z: cz - 0.18 }, { x: px - 0.2, y: F + 1.78, z: cz + 0.18 }));
     for (const side of [-1, 1]) {
       for (let i = 0; i < 2; i++) {
         const z = cz + side * (0.31 + i * 0.12);
@@ -604,13 +616,13 @@ function furniture(kit: Kit, F: number): void {
     const b = P.shoreDesk;
     const front = b.min.z + 0.02;
     const back = front + 1.2;
-    props.add(mats.desk, slab({ x: b.min.x + 0.2, y: F + 0.74, z: front }, { x: b.max.x - 0.2, y: F + 0.8, z: back }));
-    props.add(mats.frame, slab({ x: b.min.x + 0.2, y: F + 0.71, z: front }, { x: b.max.x - 0.2, y: F + 0.74, z: back }));
-    props.add(mats.trim, slab({ x: b.min.x + 0.3, y: F + 0.1, z: front + 0.02 }, { x: b.max.x - 0.3, y: F + 0.71, z: front + 0.12 }));
-    props.add(mats.body,
+    tag.shoresDesk.add(mats.desk, slab({ x: b.min.x + 0.2, y: F + 0.74, z: front }, { x: b.max.x - 0.2, y: F + 0.8, z: back }));
+    tag.shoresDesk.add(mats.frame, slab({ x: b.min.x + 0.2, y: F + 0.71, z: front }, { x: b.max.x - 0.2, y: F + 0.74, z: back }));
+    tag.shoresDesk.add(mats.trim, slab({ x: b.min.x + 0.3, y: F + 0.1, z: front + 0.02 }, { x: b.max.x - 0.3, y: F + 0.71, z: front + 0.12 }));
+    tag.shoresDesk.add(mats.body,
       slab({ x: b.min.x + 0.25, y: F, z: front + 0.1 }, { x: b.min.x + 0.75, y: F + 0.71, z: back - 0.1 }),
       slab({ x: b.max.x - 0.75, y: F, z: front + 0.1 }, { x: b.max.x - 0.25, y: F + 0.71, z: back - 0.1 }));
-    props.add(mats.decals, decal('shorePlate', 1.0, 1.0 * (96 / 512), { x: (b.min.x + b.max.x) / 2, y: F + 0.5, z: front + 0.019 }, 'z-'));
+    tag.shoresDesk.add(mats.decals, decal('shorePlate', 1.0, 1.0 * (96 / 512), { x: (b.min.x + b.max.x) / 2, y: F + 0.5, z: front + 0.019 }, 'z-'));
     // The desk's own small console, facing Shore (south).
     consoleBank(kit, {
       length: 2.2, depth: 0.42, height: 0.28, front: 0.08, at: { x: (b.min.x + b.max.x) / 2, y: F + 0.8, z: front + 0.3 }, yaw: 0,

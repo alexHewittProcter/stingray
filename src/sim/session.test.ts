@@ -105,8 +105,8 @@ describe('the seam (M7)', () => {
 });
 
 describe("'use' (M5)", () => {
-  // Facing the wall map's face (x −8.4) from 1.2 m east of it, facing west (yaw π/2).
-  const atWallMap = (): GameState => ({ ...controlRoom(W, ROOMS), troy: onFoot({ pos: { x: -7.2, y: ROOMS.start.pos.y, z: -1250 }, yaw: Math.PI / 2 }) });
+  // Facing the wall map on the north wall (its face at z −1258.2) from 1 m south of it, facing north (yaw 0).
+  const atWallMap = (): GameState => ({ ...controlRoom(W, ROOMS), troy: onFoot({ pos: { x: -3, y: ROOMS.start.pos.y, z: -1257.2 }, yaw: 0 }) });
   const wallMap = INTERACTABLES.find((i) => i.id === 'wallMap')!;
   const lineOf = (i: Interactable) => (i.use.kind === 'say' ? i.use.line : '');
 
