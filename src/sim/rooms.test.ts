@@ -131,9 +131,13 @@ describe('the rooms (M1)', () => {
     }
   });
 
-  it('has start and the chair walkable, and a walkable path from one to the other', () => {
+  it('has start walkable, and a walkable path from it to the front of the chair', () => {
     expect(walkable(R.start.pos, R)).toBe(true);
-    expect(walkable(R.chair.pos, R)).toBe(true);
+    // T5: the chair stands on a solid dais over the bore (LOUNGE_PROPS.troysChair), so its pos is not walkable; Troy
+    // reaches it from the front — the side he faces it from (yaw), inside M5's reach.
+    const front = { x: R.chair.pos.x + Math.sin(R.chair.yaw) * 1.6, y: FLOOR_Y, z: R.chair.pos.z + Math.cos(R.chair.yaw) * 1.6 };
+    expect(walkable(R.chair.pos, R)).toBe(false);
+    expect(walkable(front, R)).toBe(true);
     // Flood fill on a 0.2 m grid from the start.
     const step = 0.2;
     const key = (i: number, j: number) => `${i},${j}`;
@@ -149,7 +153,7 @@ describe('the rooms (M1)', () => {
         seen.add(key(...n));
         queue.push(n);
         const p = point(...n);
-        if (Math.hypot(p.x - R.chair.pos.x, p.z - R.chair.pos.z) < step) reached = true;
+        if (Math.hypot(p.x - front.x, p.z - front.z) < step) reached = true;
       }
     }
     expect(reached).toBe(true);
