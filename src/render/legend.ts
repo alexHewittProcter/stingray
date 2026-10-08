@@ -45,7 +45,7 @@ export type LegendSituation = 'docked' | 'driving' | 'onFoot' | 'riding';
 type Aboard = 'docked' | 'driving';
 
 const FIRST: Record<Aboard, readonly string[]> = {
-  docked: ['1 2 3 4', 'J L I K', 'M', 'H', 'Esc', 'C'],
+  docked: ['1 2 3 4', '5', 'J L I K', 'M', 'H', 'Esc', 'C'],
   driving: ['W / S', 'A / D', '↓ / E', '↑ / Q', 'Shift', 'Space', 'R', 'Esc'],
 };
 
@@ -101,6 +101,7 @@ export const LEGEND_KEYS: Rows = [
   ['J L I K', 'look round'],
   ['Esc', 'menu'],
   ['C', 'recentre'],
+  ['5', 'leave seat'], // phase 3 (M3, M6b): docked and raised, back up to the lounge
 ];
 
 /** A situation's keys as HTML rows (`<div><b>key</b> action</div>`), for either drawing (aboard by default). */

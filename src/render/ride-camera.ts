@@ -26,6 +26,13 @@ import { distanceToLine } from './shaft';
 //     so the camera never looks through rock. At lock-in the weight is 1 and the rig has the view: no cut.
 //
 // Everything is a function of the ride's time (sim/ride.ts timetable): an interpolated frame lands between steps.
+//
+// The way back up (M6b; M4: "Going up reverses it"): the ascent runs the descent's timetable backwards, and main.ts
+// passes `update` the descent's clock for where the chair is (rideTimeAt of its progress), so this same camera plays
+// in reverse: it sets off on the rig's output (the pen camera, where the arrival blend ends), comes off it over the
+// first rideBlend, follows the chair up the shaft from above it (the descent's boom side — ahead of the chair as it
+// rises, looking back down at Troy coming up), and over the last rideHold eases into the pose `begin` was given — for
+// the ascent the follow camera's stand-up pose in the lounge (main.ts standUpView), which then takes over without a cut.
 
 export interface CameraPose {
   pos: THREE.Vector3;
@@ -34,7 +41,10 @@ export interface CameraPose {
 }
 
 export interface RideCamera {
-  /** The ride has begun (Troy sat): hold from this pose — the camera as last drawn — or, after a jump, from above the bore. */
+  /**
+   * The ride has begun (Troy sat): hold from this pose — the camera as last drawn — or, after a jump, from above the
+   * bore. Going up (M6b): the pose to arrive on in the lounge.
+   */
   begin(from: CameraPose | null): void;
   /**
    * Write the camera for `time` seconds into the ride (rideTimeAt of the interpolated ride). The camera holds the rig's

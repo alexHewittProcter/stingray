@@ -39,9 +39,14 @@ export interface DebugHandle {
   use(): void;
   /**
    * Phase 3 (M10): queue 'leave' — the launch panel's fifth control (M9). Refused 'Dock first' unless Troy is aboard a
-   * docked, raised sub; accepted, it does nothing yet (T9 starts the ride back up).
+   * docked, raised sub; accepted, Troy rides back up to the lounge (M6b).
    */
   leave(): void;
+  /**
+   * Phase 3 (T9, witnessing): Troy, on foot, turned in place to face this heading (degrees, the sim's yaw: 0 north, 90
+   * west); the camera snaps. Riding or aboard, nothing. (M6b's loop witness: he stands up facing away from the chair.)
+   */
+  face(degrees: number): void;
 }
 
 declare global {
@@ -144,7 +149,9 @@ export function nearCradle(metres: number): { pos: Vec3; yaw: number } {
  *     world (X, Z), as __stingray.walkTo does; the camera snaps;
  *   - phase 3 (M10): use queues 'use' (M5), as __stingray.use does — E on foot;
  *   - phase 3 (M10): leave queues 'leave', as __stingray.leave does — the panel's 5 (refused 'Dock first' unless
- *     aboard a docked, raised sub; T9 makes it ride back up).
+ *     aboard a docked, raised sub; accepted, M6b, he rides back up to the lounge);
+ *   - phase 3 (T9): face=DEG turns Troy, on foot, to face that heading (the sim's yaw in degrees: 0 north), as
+ *     __stingray.face does — "leave,12,face=0,use,12" stands him up, turns him back to his chair and sits him again.
  * "cradle,8.2,engines,2.1,clamps,1" lowers the cradle, starts the engines and releases the clamps;
  * "out=40,door,5" waits in the door chamber while the door opens. Phase 3 (T7), the full loop from the lounge to open
  * water in one page (Troy at his chair, sits, rides down 10 s and locks in, then phase 2's launch, steered out through
@@ -184,6 +191,8 @@ export function runScript(script: string, handle: DebugHandle): void {
       if (key === 'out' || key === 'in') {
         const at = onCentreline(Math.max(-1000, n), key);
         handle.teleport(at.pos, at.yaw);
+      } else if (key === 'face') {
+        handle.face(n);
       } else if (key === 'fire' || key === 'boost') {
         handle.setInput({ [key]: n !== 0 });
       } else if (key === 'throttle' || key === 'steer' || key === 'climb') {
