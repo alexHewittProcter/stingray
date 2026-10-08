@@ -23,18 +23,27 @@ const choose = (kind: MenuKind, item: string) => {
 };
 
 describe('the menu items', () => {
-  it('the title offers launch (first, the default), ocean, controls and sound', () => {
-    expect(menuItems('title', 'main')).toEqual(['launch', 'ocean', 'controls', 'sound']);
+  // M9 (amending T9's items): the control room first on the title, second on the pause menu.
+  it('the title offers the control room (first, the default), the pen, the ocean, controls and sound', () => {
+    expect(menuItems('title', 'main')).toEqual(['controlRoom', 'pen', 'ocean', 'controls', 'sound']);
     expect(openMenu('title').index).toBe(0);
   });
 
-  it('the pause menu offers resume (first), pen, ocean, controls and sound', () => {
-    expect(menuItems('pause', 'main')).toEqual(['resume', 'pen', 'ocean', 'controls', 'sound']);
+  it('the pause menu offers resume (first), the control room, the pen, the ocean, controls and sound', () => {
+    expect(menuItems('pause', 'main')).toEqual(['resume', 'controlRoom', 'pen', 'ocean', 'controls', 'sound']);
+  });
+
+  it("M9: the title's and the pause menu's words", () => {
+    const words = (kind: MenuKind) => menuItems(kind, 'main').map((i) => itemLabel(i, false, kind));
+    expect(words('title')).toEqual(['Start in the control room', 'Skip to Pen 3', 'Skip to open ocean', 'Controls', 'Sound: On']);
+    expect(words('pause')).toEqual([
+      'Resume', 'Return to the control room', 'Return to Pen 3', 'Skip to open ocean', 'Controls', 'Sound: On',
+    ]);
   });
 
   it('the sound item reads the mute', () => {
-    expect(itemLabel('sound', false)).toBe('Sound: On');
-    expect(itemLabel('sound', true)).toBe('Sound: Off');
+    expect(itemLabel('sound', false, 'title')).toBe('Sound: On');
+    expect(itemLabel('sound', true, 'pause')).toBe('Sound: Off');
   });
 });
 
@@ -42,9 +51,9 @@ describe('navigation', () => {
   it('down and up move the selection and wrap at both ends', () => {
     const t = openMenu('title');
     expect(on(t, DOWN).s.index).toBe(1);
-    expect(on(t, UP).s.index).toBe(3);
-    expect(on(t, DOWN, DOWN, DOWN, DOWN).s.index).toBe(0);
-    expect(on(openMenu('pause'), UP).s.index).toBe(4);
+    expect(on(t, UP).s.index).toBe(4);
+    expect(on(t, DOWN, DOWN, DOWN, DOWN, DOWN).s.index).toBe(0);
+    expect(on(openMenu('pause'), UP).s.index).toBe(5);
   });
 
   it('the pointer selects an item; an index off the page is ignored', () => {
@@ -63,8 +72,14 @@ describe('navigation', () => {
 });
 
 describe('choosing', () => {
-  it('title: launch closes the menu (play begins on standby, as the game already stands)', () => {
-    expect(choose('title', 'launch')).toEqual({ state: CLOSED, action: 'close' });
+  it("M9: the control room is an explicit jump on both menus, not 'close'", () => {
+    expect(choose('title', 'controlRoom')).toEqual({ state: CLOSED, action: 'controlRoom' });
+    expect(choose('pause', 'controlRoom')).toEqual({ state: CLOSED, action: 'controlRoom' });
+  });
+
+  it('M9: Skip to Pen 3 (title) and Return to Pen 3 (pause) both go to standby', () => {
+    expect(choose('title', 'pen')).toEqual({ state: CLOSED, action: 'standby' });
+    expect(choose('pause', 'pen')).toEqual({ state: CLOSED, action: 'standby' });
   });
 
   it('title and pause: ocean closes the menu and puts the game at sea', () => {

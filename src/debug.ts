@@ -27,7 +27,7 @@ export interface DebugHandle {
   camera(): Vec3;
   /** T9: which menu is up, if any. advance() steps the sim whether or not one is (it is a debug tool). */
   menu(): 'title' | 'pause' | null;
-  /** T9: close whichever menu is up, as if Launch / Resume had been chosen. */
+  /** T9: close whichever menu is up and play on as things stand (as Resume does; M9's title items all jump instead). */
   closeMenu(): void;
   /** Phase 3 (M10): Troy's state. */
   troy(): TroyState;

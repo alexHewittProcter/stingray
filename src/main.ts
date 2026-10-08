@@ -174,18 +174,19 @@ window.addEventListener('keydown', (e) => {
 const audio = createAudio(window);
 game.onStep = (previous, current) => audio.step(previous, current);
 
-// The menus (T9, game/menu.ts): the title over the live Pen 3 standby on load, the pause menu on Esc. An overlay on
+// The menus (T9, game/menu.ts): the title over the live start on load (phase 3 M9: Troy in the control room), the pause menu on Esc. An overlay on
 // the one world, never a separate screen. While one is up the sim does not step (frameTimes) and the keys only
 // move through it: a capture listener on the window sees every key first and keeps menu keys from the game, the
 // legend and the sound's M; the key that closes a menu is swallowed until it is released, so Space on Resume does
-// not also fire and Enter on Launch does not press anything.
+// not also fire and Enter on Start does not press anything.
 let menu: MenuState = titleOnLoad(params) ? openMenu('title') : CLOSED;
 const swallow = new Swallow();
 const menuView = createMenu(document.body, (e) => menuEvent(e));
 function menuEvent(e: MenuEvent): void {
   const { state, action } = menuOn(menu, e);
   menu = state;
-  if (action === 'standby') game.toStandby();
+  if (action === 'controlRoom') game.toControlRoom();
+  else if (action === 'standby') game.toStandby();
   else if (action === 'ocean') game.toOcean();
   else if (action === 'toggleSound') audio.toggleMute();
   showMenu();
