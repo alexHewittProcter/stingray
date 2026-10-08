@@ -2,8 +2,8 @@
 // (phase 2, L6) the sea readouts that make no sense inside — the way home and the targets — give way to a one-line
 // status, and the launch panel (launch-panel.ts) sits bottom centre.
 // Phase 3 (M9): the sub's readouts — depth, speed, heading, the way home and the status/targets line — and the
-// reticle are shown only aboard (showReadouts); on foot and riding only the legend is left (T6 adds the prompt and
-// the flavour line).
+// reticle are shown only aboard (showReadouts); on foot and riding only the legend is left — and, on foot, M5's
+// use prompt ("E · …", low centre) and the flavour line above it, which sit outside the hidden panels.
 
 import { type LegendSituation, legendKeysFor } from './legend';
 
@@ -28,6 +28,10 @@ export interface Hud {
   showLegend(shown: boolean, situation: LegendSituation): void;
   /** M9: show the sub's readouts (aboard) or hide them (on foot, riding). The reticle goes with them. */
   showReadouts(shown: boolean): void;
+  /** M5: the use prompt's text (shown as "E · {prompt}" low centre), or null to hide it. */
+  showPrompt(prompt: string | null): void;
+  /** M5: the flavour line (sim/interactables.ts lineAt), or null to hide it. */
+  showLine(text: string | null): void;
 }
 
 const STYLE = `
@@ -49,6 +53,12 @@ const STYLE = `
 .hud-status { letter-spacing: .1em; }
 .hud-home-row[hidden] { display: none; }
 .hud.no-readouts .hud-left, .hud.no-readouts .hud-right, .hud.no-readouts .hud-top, .hud.no-readouts .hud-reticle { display: none; }
+.hud-prompt { left: 50%; bottom: 14%; transform: translateX(-50%); padding: 7px 16px; letter-spacing: .06em;
+  white-space: nowrap; }
+.hud-prompt b { color: #ffe066; margin-right: .2em; }
+.hud-line { position: absolute; left: 50%; bottom: calc(14% + 54px); transform: translateX(-50%); width: min(70vw, 760px);
+  text-align: center; font-weight: 400; font-size: 17px; font-style: italic; color: #f4fbff; }
+.hud-prompt[hidden], .hud-line[hidden] { display: none; }
 .hud-reticle { position: absolute; left: 50%; top: 50%; width: 26px; height: 26px; margin: -13px 0 0 -13px;
   border: 2px solid rgba(255,224,102,.85); border-radius: 50%; box-shadow: 0 0 6px rgba(0,0,0,.5); }
 .hud-reticle::after { content: ''; position: absolute; left: 50%; top: 50%; width: 4px; height: 4px;
@@ -94,6 +104,8 @@ export function createHud(parent: HTMLElement): Hud & { reticle: HTMLElement } {
       <div><span class="hud-label">HEADING</span> <span class="hud-big" data-k="heading"></span></div>
       <div class="hud-home-row" data-k="home-row"><span class="hud-label">MARINEVILLE</span> <span data-k="home"></span></div>
     </div>
+    <div class="hud-line" data-k="line" hidden></div>
+    <div class="hud-panel hud-prompt" data-k="prompt" hidden></div>
     <div class="hud-panel hud-legend" data-k="legend">
     </div>`;
   parent.appendChild(root);
@@ -111,6 +123,10 @@ export function createHud(parent: HTMLElement): Hud & { reticle: HTMLElement } {
   const homeRow = el('home-row');
   const targets = el('targets');
   const legend = el('legend');
+  const prompt = el('prompt');
+  const line = el('line');
+  let promptFor: string | null = null;
+  let lineFor: string | null = null;
   let legendFor: LegendSituation | null = null;
 
   return {
@@ -129,6 +145,23 @@ export function createHud(parent: HTMLElement): Hud & { reticle: HTMLElement } {
     },
     showReadouts(shown) {
       root.classList.toggle('no-readouts', !shown);
+    },
+    showPrompt(text) {
+      if (text === promptFor) return;
+      promptFor = text;
+      prompt.hidden = text === null;
+      prompt.innerHTML = '';
+      if (text !== null) {
+        const key = document.createElement('b');
+        key.textContent = 'E';
+        prompt.append(key, `· ${text}`);
+      }
+    },
+    showLine(text) {
+      if (text === lineFor) return;
+      lineFor = text;
+      line.hidden = text === null;
+      line.textContent = text ?? '';
     },
     showLegend(shown, situation) {
       legend.classList.toggle('faded', !shown);

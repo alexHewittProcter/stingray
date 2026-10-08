@@ -18,6 +18,7 @@ import { createDockGuide } from './render/dock-guide';
 import { createFollowCamera, troyAt } from './render/follow-camera';
 import { createFpsReadout } from './render/fps';
 import { createHud } from './render/hud';
+import { createInteractView } from './render/interact';
 import { oceanInView } from './render/indoors';
 import { createLandmarks } from './render/landmarks';
 import { createLaunchPanel } from './render/launch-panel';
@@ -37,6 +38,7 @@ import { createTroy } from './render/troy';
 import { createTunnel } from './render/tunnel';
 import { updateScenery } from './render/sway';
 import { targetsLeft } from './sim/combat';
+import { INTERACTABLES } from './sim/interactables';
 import { ROOMS } from './sim/rooms';
 import { forwardOf, speedOf } from './sim/sub';
 import { FIXED_DT, createWorld } from './sim/world';
@@ -103,6 +105,8 @@ const viewFrom = viewNumbers
   ? [new THREE.Vector3(viewNumbers[0], viewNumbers[1], viewNumbers[2]), new THREE.Vector3(viewNumbers[3], viewNumbers[4], viewNumbers[5])] as const
   : null;
 const hud = createHud(document.body);
+// M5: the use prompt, the prop's glow (props tagged userData.interactable under the rooms) and the flavour line.
+const interact = createInteractView(rooms.group, hud, INTERACTABLES);
 
 // One scene, one world, one GameState for the session (game.ts); the mode is derived from it and changes only
 // what is drawn. L4: the game starts in standby in Pen 3 (the control room from T8); ?start=control and ?start=ocean
@@ -311,6 +315,7 @@ function draw(alpha: number, frameSeconds: number): void {
   // M9: the card is the mode's; the sub's readouts (and the reticle) show only aboard.
   hud.showLegend(legend.shown, legendSituation(mode, g.launch.clamps));
   hud.showReadouts(mode === 'piloting' || mode === 'launch');
+  interact.update(g);
 
   const s = g.sub;
   const home = world.marineville.tunnelMouth;
@@ -413,6 +418,7 @@ installDebugHandle({
   troy: () => game.state.troy,
   rooms: () => ROOMS,
   walkTo: (x, z) => game.walkTo(x, z),
+  use: () => game.press('use'),
 });
 
 window.addEventListener('resize', () => {

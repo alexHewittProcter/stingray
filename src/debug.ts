@@ -35,6 +35,8 @@ export interface DebugHandle {
   rooms(): Rooms;
   /** Phase 3 (M10): Troy on foot at the walkable point nearest (x, z); the camera snaps. */
   walkTo(x: number, z: number): void;
+  /** Phase 3 (M10): queue 'use' (M5), as E does on foot. */
+  use(): void;
 }
 
 declare global {
@@ -128,7 +130,8 @@ export function nearCradle(metres: number): { pos: Vec3; yaw: number } {
  *     cradle (negative: north), facing it; dx= / dy= / dz= move it that many metres and turn= turns it (degrees,
  *     left), each at rest (all within ±100).
  *   - phase 3 (M10): walk=X:Z (a colon — the words split on commas) puts Troy on foot at the walkable point nearest
- *     world (X, Z), as __stingray.walkTo does; the camera snaps.
+ *     world (X, Z), as __stingray.walkTo does; the camera snaps;
+ *   - phase 3 (M10): use queues 'use' (M5), as __stingray.use does — E on foot.
  * "cradle,8.2,engines,2.1,clamps,1" lowers the cradle, starts the engines and releases the clamps;
  * "out=40,door,5" waits in the door chamber while the door opens. Unknown words are ignored. At most
  * SCRIPT_LIMITS.tokens words run, and at most SCRIPT_LIMITS.totalSeconds in all.
@@ -139,6 +142,10 @@ export function runScript(script: string, handle: DebugHandle): void {
   for (const word of words) {
     if (CONTROLS.includes(word)) {
       handle.press(word as LaunchControl);
+      continue;
+    }
+    if (word === 'use') {
+      handle.use();
       continue;
     }
     const [key, value] = word.split('=');
