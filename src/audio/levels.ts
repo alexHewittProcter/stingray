@@ -15,6 +15,8 @@ export const LEVELS = {
   seaAbove: 0.45, // swell wash and wind above the surface
   tunnel: 0.4, // Marineville's tunnel and pool underwater: machinery hum, a resonant bore
   hall: 0.3, // Pen 3 in air: mains hum and air handling
+  rooms: 0.16, // phase 3: the control tower's low console hum (on foot)
+  shaftRush: 0.5, // phase 3: the injector shaft's air rush at the chair's cruising speed
   ambienceFade: 0.6, // s — time constant of the crossfade between beds
 
   // The craft
@@ -32,6 +34,7 @@ export const LEVELS = {
   clamps: 0.55,
   water: 0.5, // the hull going under / coming out on the cradle
   refusal: 0.1,
+  chair: 0.6, // phase 3: the injector chair's carriage letting go, and locking into the cabin
 
   // The ocean door (both scaled by distance from the door's centre)
   doorMachinery: 0.3,

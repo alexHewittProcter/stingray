@@ -3,12 +3,15 @@
 //
 // Events come from one fixed step's (previous, current) pair, so a frame that runs several steps hears each
 // step once and a frame that runs none hears nothing twice. Continuous parameters come from the current state.
-// The listener is the sub: the chase camera rides a few metres behind it, and the ambience follows the sub's
-// medium (submerged → the underwater beds; surface or airborne → the above-water beds).
+// The listener (phase 3, M6 "Sound") follows Troy on foot and riding, and the sub aboard (the chase camera rides a few
+// metres behind it); the ambience is picked by the session mode (M7) — the rooms' console hum on foot, the shaft's rush
+// riding (the hall's hum joining as the chair drops into Pen 3), and aboard phase 2's beds by the sub's medium
+// (submerged → the underwater beds; surface or airborne → the above-water beds).
 
 import type { GameMode } from '../game/mode';
-import { modeOf } from '../game/mode';
+import { sessionMode } from '../game/mode';
 import type { GameState } from '../sim/launch';
+import { rideSpeedAt, rideTimeAt } from '../sim/ride';
 import { speedOf } from '../sim/sub';
 import { TUNING as T } from '../sim/tuning';
 import type { Vec3 } from '../sim/vec3';
@@ -32,7 +35,9 @@ export type SoundEvent =
   | { kind: 'reentry'; speed: number } // and comes back in
   | { kind: 'missile' }
   | { kind: 'detonation'; distance: number; gain: number; muffle: number }
-  | { kind: 'refusal' };
+  | { kind: 'refusal' }
+  | { kind: 'chairStart' } // phase 3 (M6): Troy sits and the injector chair's carriage lets go
+  | { kind: 'lockIn' }; // and it locks into Stingray's cabin as the pilot's seat
 
 export interface Soundscape {
   /** 0 off … 1 running (follows the 2 s start); speed and boost in 0…1. */
@@ -41,8 +46,13 @@ export interface Soundscape {
   hydraulics: { level: number; dir: -1 | 0 | 1 };
   /** Door machinery: 1 × distance gain while it moves, else 0. */
   door: number;
-  /** Ambience beds, each 0 or 1 (the synth crossfades); depth 0 at the surface … 1 at 200 m. */
-  ambience: { seaUnder: number; seaAbove: number; tunnel: number; hall: number; depth: number };
+  /**
+   * Ambience beds, each 0 or 1 (the synth crossfades); depth 0 at the surface … 1 at 200 m. Phase 3: `rooms` is the
+   * control tower's console hum (on foot).
+   */
+  ambience: { seaUnder: number; seaAbove: number; tunnel: number; hall: number; rooms: number; depth: number };
+  /** Phase 3 (M6): the injector shaft's rush while riding — level 0/1, speed 0…1 of the chair's cruise. */
+  shaft: { level: number; speed: number };
   /** The listener is under water: muffle effects and the engine. */
   underwater: boolean;
 }
@@ -64,9 +74,15 @@ export function muffleFor(distance: number, underwater: boolean): number {
 /** The events one fixed step produced. None across a discontinuity. */
 export function stepEvents(prev: GameState, cur: GameState, jumped = false): SoundEvent[] {
   if (jumped || distance(prev.sub.pos, cur.sub.pos) >= JUMP_DISTANCE) return [];
+  if (distance(listenerOf(prev), listenerOf(cur)) >= JUMP_DISTANCE) return [];
   const a = prev.launch;
   const b = cur.launch;
   const out: SoundEvent[] = [];
+  const ear = listenerOf(cur);
+
+  // The injector chair (phase 3, M6): the sit, and the lock-in at the foot of the shaft.
+  if (prev.troy.where === 'onFoot' && cur.troy.where === 'riding') out.push({ kind: 'chairStart' });
+  if (prev.troy.where === 'riding' && cur.troy.where === 'aboard') out.push({ kind: 'lockIn' });
 
   // Cradle
   if (a.cradleDir === 0 && b.cradleDir !== 0) {
@@ -97,7 +113,7 @@ export function stepEvents(prev: GameState, cur: GameState, jumped = false): Sou
   }
 
   // The ocean door
-  const doorGain = distanceGain(distance(cur.sub.pos, DOOR_CENTRE), L.doorReference);
+  const doorGain = distanceGain(distance(ear, DOOR_CENTRE), L.doorReference);
   if (a.doorDir === 0 && b.doorDir !== 0) out.push({ kind: 'doorStart', gain: doorGain });
   if (a.door < 1 && b.door >= 1) out.push({ kind: 'doorOpened', gain: doorGain });
   if (a.door > 0 && b.door <= 0) out.push({ kind: 'doorSeal', gain: doorGain });
@@ -105,10 +121,10 @@ export function stepEvents(prev: GameState, cur: GameState, jumped = false): Sou
   // Weapons: a launch resets the cooldown upward (it covers a launch that detonates at the door, too)
   if (cur.combat.cooldown > prev.combat.cooldown) out.push({ kind: 'missile' });
   const blasts = cur.combat.detonations
-    .map((p) => distance(cur.sub.pos, p))
+    .map((p) => distance(ear, p))
     .sort((x, y) => x - y)
     .slice(0, L.detonationMaxPerStep);
-  const underwater = cur.sub.medium === 'submerged';
+  const underwater = listenerUnderwater(cur);
   for (const d of blasts) {
     out.push({ kind: 'detonation', distance: d, gain: distanceGain(d, L.detonationReference), muffle: muffleFor(d, underwater) });
   }
@@ -118,13 +134,27 @@ export function stepEvents(prev: GameState, cur: GameState, jumped = false): Sou
   return out;
 }
 
-/** The continuous parameters for the current state. */
-export function soundscape(cur: GameState, mode: GameMode = modeOf(cur.sub.pos)): Soundscape {
+/** Phase 3 (M6): where the sound is heard from — Troy on foot or riding, the sub aboard. */
+export function listenerOf(g: GameState): Vec3 {
+  return g.troy.where === 'aboard' ? g.sub.pos : g.troy.pos;
+}
+
+/** The listener is under water only aboard a submerged sub (Troy's rooms and the shaft are dry). */
+export function listenerUnderwater(g: GameState): boolean {
+  return g.troy.where === 'aboard' && g.sub.medium === 'submerged';
+}
+
+/** The continuous parameters for the current state; the ambience by the session mode (M7). */
+export function soundscape(cur: GameState, mode: GameMode = sessionMode(cur)): Soundscape {
   const l = cur.launch;
   const speed = speedOf(cur.sub);
   const level = l.engines === 'on' ? 1 : l.engines === 'starting' ? clamp01(l.engineStart / T.engineStart) : 0;
-  const underwater = cur.sub.medium === 'submerged';
+  const underwater = listenerUnderwater(cur);
+  const aboard = mode === 'launch' || mode === 'piloting';
   const inside = mode === 'launch';
+  const riding = mode === 'transport';
+  // Riding, the hall's hum joins as the chair drops out of the tube into Pen 3.
+  const inHall = riding && cur.troy.pos.y < MARINEVILLE.interior.pen.max.y + 2;
   return {
     engine: {
       level,
@@ -132,14 +162,16 @@ export function soundscape(cur: GameState, mode: GameMode = modeOf(cur.sub.pos))
       boost: level > 0 ? clamp01((speed - T.cruiseSpeed) / (T.boostSpeed - T.cruiseSpeed)) : 0,
     },
     hydraulics: { level: l.cradleDir !== 0 ? 1 : 0, dir: l.cradleDir },
-    door: l.doorDir !== 0 ? distanceGain(distance(cur.sub.pos, DOOR_CENTRE), L.doorReference) : 0,
+    door: l.doorDir !== 0 ? distanceGain(distance(listenerOf(cur), DOOR_CENTRE), L.doorReference) : 0,
     ambience: {
-      seaUnder: !inside && underwater ? 1 : 0,
-      seaAbove: !inside && !underwater ? 1 : 0,
+      seaUnder: aboard && !inside && underwater ? 1 : 0,
+      seaAbove: aboard && !inside && !underwater ? 1 : 0,
       tunnel: inside && underwater ? 1 : 0,
-      hall: inside && !underwater ? 1 : 0,
-      depth: clamp01(-cur.sub.pos.y / 200),
+      hall: (inside && !underwater) || inHall ? 1 : 0,
+      rooms: mode === 'onFoot' ? 1 : 0,
+      depth: aboard ? clamp01(-cur.sub.pos.y / 200) : 0,
     },
+    shaft: { level: riding ? 1 : 0, speed: riding ? rideSpeedAt(rideTimeAt(cur.troy.ride)) : 0 },
     underwater,
   };
 }

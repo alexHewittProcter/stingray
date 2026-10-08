@@ -150,13 +150,13 @@ describe("'use' (M5)", () => {
     expect(again.hud.line!.until).toBeCloseTo(again.combat.t + LINE_SECONDS, 12);
   });
 
-  it('at the chair a ride use does nothing until M6 (T7): Troy stays on foot, the state as with no press', () => {
+  it("at the chair a ride use sits Troy (M6, T7): riding down from shaft[0]; nothing but troy differs from no press", () => {
     const c = ROOMS.chair;
     const g = { ...controlRoom(W, ROOMS), troy: onFoot({ pos: { x: c.pos.x, y: c.pos.y, z: c.pos.z + 1 }, yaw: c.yaw }) };
     expect(nearestUsable(g.troy)?.id).toBe('chair');
     const used = step(g, NO_INPUT, 'use');
-    expect(used.troy.where).toBe('onFoot');
-    expect(used).toEqual(step(g));
+    expect(used.troy).toMatchObject({ where: 'riding', rideDir: 'down', ride: 0, pos: ROOMS.shaft[0] });
+    expect({ ...used, troy: null }).toEqual({ ...step(g), troy: null });
   });
 
   it('aboard, use does nothing (nothing is usable)', () => {
