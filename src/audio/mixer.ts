@@ -64,8 +64,7 @@ export function createMixer(ctx: AudioContext, muted: boolean): Mixer {
   ambience.connect(master);
   const ui = gain(ctx, L.effectsBus);
   ui.connect(master);
-  // LEVELS.musicBus arrives with T6 (levels.ts is another task's file in T5); until then the readme's 0.35.
-  const music = gain(ctx, (L as unknown as { musicBus?: number }).musicBus ?? 0.35);
+  const music = gain(ctx, L.musicBus);
   music.connect(master);
 
   return {
