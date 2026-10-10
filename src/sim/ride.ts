@@ -3,14 +3,15 @@
 //
 //   - Sit (M6): on 'use' of the chair while on foot (session.ts applyUse) Troy becomes where 'riding', rideDir 'down',
 //     ride 0, pos = shaft[0], facing the way the chair faces (chair.yaw + π). The sub is not touched.
-//   - Descent (M6): ride advances so the chair covers the shaft in RIDE_SECONDS with a 1.5 s ease-in and a 1 s ease-out —
-//     the speed is a smoothstep over those time slices of the 10 s, constant between — and pos is the shaft polyline
+//   - Descent (M6): ride advances so the chair covers the shaft in RIDE_SECONDS with an ease-in and an ease-out (tuning.ts;
+//     phase 4 D4: 6 s, 1 s / 1 s) — the speed is a smoothstep over those time slices, constant between — and pos is the shaft polyline
 //     sampled at ride by arc length. The state carries only `ride`; the time is recovered from it (rideTimeAt, the
 //     timetable's inverse), so TroyState keeps M2's shape.
 //   - Facing (M6: "the chair faces along the path (yaw from the current leg; on the last leg it turns to the sub's
 //     yaw, π)"): a level leg's yaw is its own heading; a vertical leg has none, so over it the chair turns from the
 //     heading it came in with (the chair's own yaw + π, at the top) to the next leg's heading — or, on the last leg, to
-//     the sub's yaw — eased by its progress along the leg.
+//     the sub's yaw — eased by its progress along the leg. Phase 4 (D1, D4): the shaft is one vertical leg, and the chair
+//     sets off with the seat's yaw (π) and lands on the sub's (π), so it keeps π all the way down — no turn.
 //   - Lock-in (M6): the step on which the timetable reaches RIDE_SECONDS ends with ride at 1 and, in the same step,
 //     where 'aboard' — Troy's aboard state exactly as phase 2's standby has it (seat, the sub's yaw, ride 0) — and
 //     nothing else changes: sub, launch and combat are stepGame's alone.
@@ -153,10 +154,10 @@ export function chairYawUp(shaft: readonly Vec3[], ride: number, topYaw: number,
 }
 
 /**
- * M6b: where Troy stands up. The contract says shaft[0] (the chair's own point), but that is on the injector bay's
- * plinth — a prop Troy may never stand in (M2) — so he stands at the faithful nearest thing: the first walkable point
- * straight out in front of the chair along the way its seat faces (chair.yaw + π), ≈ 1.5 m out (the plinth's front edge
- * is 1.1 m from the chair, plus his radius), where he stood to sit. Falls back on the nearest walkable point.
+ * M6b: where Troy stands up. The contract says shaft[0] (the chair's own point), but that is on the injector station's
+ * dais — a prop Troy may never stand in (M2) — so he stands at the faithful nearest thing: the first walkable point
+ * straight out in front of the chair along the way its seat faces (chair.yaw + π), ≈ 1.6 m out (phase 4: the dais's
+ * front edge is 1.2 m from the chair, plus his radius), where he stood to sit. Falls back on the nearest walkable point.
  */
 export function standPoint(rooms: Rooms): Vec3 {
   const c = rooms.chair;

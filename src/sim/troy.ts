@@ -140,7 +140,7 @@ function resolve(p: Vec3, rooms: Rooms, from?: Vec3): Vec3 | null {
  * stood in before the move (`from`), when given. T5: clamping into a box that holds his last position is a projection
  * onto a convex set holding it, so the clamp never carries him further than the move did (M2: "a push never moves him
  * more than the overlap"); clamping into whichever box is nearest jumped him round a doorway's jamb corner by up to
- * ~1.3× a step's travel (troy.test.ts's seeded walks, at the T5 lounge doorway and T4's control-room doorway).
+ * ~1.3× a step's travel (troy.test.ts's seeded walks, at phase 3's T5 lounge doorway and T4's control-room doorway).
  */
 function clampIntoRooms(p: Vec3, rooms: Rooms, from?: Vec3): Vec3 {
   if (inShrunkRoom(p, rooms)) return p;

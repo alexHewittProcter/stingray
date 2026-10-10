@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { northOfFace } from './interior';
-import { type Box, DRUM_RADIUS, FLOOR_Y, ROOMS, type Room, SEAT, SHAFT_OPEN_TOP, SHAFT_RADIUS, TOWER_AXIS, shaftLength } from './rooms';
+import {
+  type Box, CONTROL_ROOM_PROPS, DRUM_RADIUS, FLOOR_Y, ROOMS, type Room, SEAT, SEATS_LOCAL, SHAFT_OPEN_TOP, SHAFT_RADIUS, STATION_CHAIRS,
+  STATION_PROP_NAMES, TOWER_AXIS, shaftLength,
+} from './rooms';
 import { walkable } from './troy';
 import type { Vec3 } from './vec3';
 import { CLIFF_TOP, MARINEVILLE } from './world';
@@ -8,26 +11,6 @@ import { CLIFF_TOP, MARINEVILLE } from './world';
 const R = ROOMS;
 const I = MARINEVILLE.interior;
 const byId = (id: Room['id']) => R.rooms.filter((r) => r.id === id);
-
-/** The overlap of two boxes' footprints (x, z), or null if they do not overlap. */
-function overlap(a: Box, b: Box): Box | null {
-  const min = { x: Math.max(a.min.x, b.min.x), y: Math.max(a.min.y, b.min.y), z: Math.max(a.min.z, b.min.z) };
-  const max = { x: Math.min(a.max.x, b.max.x), y: Math.min(a.max.y, b.max.y), z: Math.min(a.max.z, b.max.z) };
-  return min.x < max.x && min.z < max.z && min.y < max.y ? { min, max } : null;
-}
-
-const doorways = (): Array<[Room, Room, Box]> => {
-  const out: Array<[Room, Room, Box]> = [];
-  for (let i = 0; i < R.rooms.length; i++) {
-    for (let j = i + 1; j < R.rooms.length; j++) {
-      const o = overlap(R.rooms[i]!, R.rooms[j]!);
-      if (o) out.push([R.rooms[i]!, R.rooms[j]!, o]);
-    }
-  }
-  return out;
-};
-
-const inUnion = (x: number, z: number) => R.rooms.some((r) => x >= r.min.x && x <= r.max.x && z >= r.min.z && z <= r.max.z);
 
 /** Points along the shaft every `step` metres of arc, with their arc length. */
 function alongShaft(step: number): Array<{ p: Vec3; s: number; leg: number }> {
@@ -66,11 +49,10 @@ function distanceToCentreline(p: Vec3): number {
   return best;
 }
 
-describe('the rooms (M1)', () => {
-  it('has a control room, a corridor and a lounge, all on the gallery floor, north of the face and above the clifftop', () => {
-    expect(byId('controlRoom').length).toBe(1);
-    expect(byId('corridor').length).toBeGreaterThanOrEqual(2); // it turns
-    expect(byId('lounge').length).toBe(1);
+describe('the rooms (M1; phase 4, D2)', () => {
+  it('is the control room alone (D2), on the gallery floor, north of the face and above the clifftop', () => {
+    expect(R.rooms.length).toBeGreaterThanOrEqual(1);
+    expect(byId('controlRoom').length).toBe(R.rooms.length);
     for (const r of R.rooms) {
       expect(r.min.y).toBe(FLOOR_Y);
       expect(r.min.y).toBeGreaterThan(CLIFF_TOP);
@@ -90,40 +72,6 @@ describe('the rooms (M1)', () => {
     expect(c!.max.z - c!.min.z).toBeGreaterThanOrEqual(18);
   });
 
-  it('has a corridor 10–25 m long with a turn, and a lounge 10–16 m across', () => {
-    const corridor = byId('corridor');
-    const long = corridor.map((b) => Math.max(b.max.x - b.min.x, b.max.z - b.min.z));
-    const total = long.reduce((a, b) => a + b, 0);
-    expect(total).toBeGreaterThanOrEqual(10);
-    expect(total).toBeLessThanOrEqual(25);
-    const axes = new Set(corridor.map((b) => (b.max.x - b.min.x > b.max.z - b.min.z ? 'x' : 'z')));
-    expect(axes.size).toBe(2);
-    const [l] = byId('lounge');
-    for (const d of [l!.max.x - l!.min.x, l!.max.z - l!.min.z]) {
-      expect(d).toBeGreaterThanOrEqual(10);
-      expect(d).toBeLessThanOrEqual(16);
-    }
-  });
-
-  it('joins control room ↔ corridor ↔ lounge, and not the control room to the lounge directly', () => {
-    const touches = (a: Room['id'], b: Room['id']) =>
-      doorways().some(([x, y]) => (x.id === a && y.id === b) || (x.id === b && y.id === a));
-    expect(touches('controlRoom', 'corridor')).toBe(true);
-    expect(touches('corridor', 'lounge')).toBe(true);
-    expect(touches('controlRoom', 'lounge')).toBe(false);
-  });
-
-  it('makes every doorway at least 1.6 m wide and 1 m deep, and keeps every prop out of every doorway', () => {
-    const all = doorways();
-    expect(all.length).toBeGreaterThanOrEqual(3);
-    for (const [a, b, o] of all) {
-      const dims = [o.max.x - o.min.x, o.max.z - o.min.z].sort((p, q) => p - q);
-      expect(dims[0], `${a.id}↔${b.id}`).toBeGreaterThanOrEqual(1 - 1e-9);
-      expect(dims[1], `${a.id}↔${b.id}`).toBeGreaterThanOrEqual(1.6);
-      for (const prop of R.props) expect(overlap(prop, o), `${a.id}↔${b.id}`).toBeNull();
-    }
-  });
-
   it('stands every prop on the floor inside a room', () => {
     for (const p of R.props) {
       expect(p.min.y).toBe(FLOOR_Y);
@@ -131,11 +79,56 @@ describe('the rooms (M1)', () => {
     }
   });
 
-  it('has start walkable, and a walkable path from it to the front of the chair', () => {
-    expect(walkable(R.start.pos, R)).toBe(true);
-    // T5: the chair stands on a solid dais over the bore (LOUNGE_PROPS.troysChair), so its pos is not walkable; Troy
-    // reaches it from the front — the side he faces it from (yaw), inside M5's reach.
+  it("D2: the station at the room's centre — a dais ≤ 0.3 m, Troy's chair on it 0.6 m east of the axis, plumb over SEAT", () => {
+    const P = CONTROL_ROOM_PROPS;
+    const [c] = byId('controlRoom');
+    expect((c!.min.x + c!.max.x) / 2).toBeCloseTo(TOWER_AXIS.x, 9);
+    expect((c!.min.z + c!.max.z) / 2).toBeCloseTo(TOWER_AXIS.z, 9);
+    expect(P.station.max.y - P.station.min.y).toBeLessThanOrEqual(0.3);
+    expect((P.station.min.x + P.station.max.x) / 2).toBeCloseTo(TOWER_AXIS.x, 9);
+    expect(R.chair.pos.x).toBe(SEAT.x);
+    expect(R.chair.pos.z).toBe(SEAT.z);
+    expect(R.chair.pos.x - TOWER_AXIS.x).toBeCloseTo(0.6, 9);
+    expect(R.chair.yaw).toBe(0); // he walks up facing north, so the seat faces south (the windows)
+    // Troy's and Phones's side by side, 1.2 m apart (Phones west); Marina's behind (north), between them.
+    expect(STATION_CHAIRS.troy).toEqual(R.chair.pos);
+    expect(STATION_CHAIRS.troy.x - STATION_CHAIRS.phones.x).toBeCloseTo(1.2, 9);
+    expect(STATION_CHAIRS.phones.z).toBe(STATION_CHAIRS.troy.z);
+    expect(STATION_CHAIRS.marina.x).toBeCloseTo(TOWER_AXIS.x, 9);
+    expect(STATION_CHAIRS.marina.z).toBeLessThan(STATION_CHAIRS.troy.z);
+    // Every chair stands on the dais.
+    for (const ch of Object.values(STATION_CHAIRS)) {
+      expect(ch.x).toBeGreaterThan(P.station.min.x);
+      expect(ch.x).toBeLessThan(P.station.max.x);
+      expect(ch.z).toBeGreaterThan(P.station.min.z);
+      expect(ch.z).toBeLessThan(P.station.max.z);
+    }
+  });
+
+  it("D2: no furniture within 1.6 m of the chair's front; start near the south windows, facing the station", () => {
     const front = { x: R.chair.pos.x + Math.sin(R.chair.yaw) * 1.6, y: FLOOR_Y, z: R.chair.pos.z + Math.cos(R.chair.yaw) * 1.6 };
+    const furniture = Object.entries(CONTROL_ROOM_PROPS).filter(([name]) => !(STATION_PROP_NAMES as readonly string[]).includes(name));
+    // The segment from the chair out to its front point: every piece of furniture at least 1.6 m from all of it.
+    for (const [name, b] of furniture) {
+      for (let f = 0; f <= 1; f += 0.05) {
+        const p = { x: R.chair.pos.x + (front.x - R.chair.pos.x) * f, y: FLOOR_Y, z: R.chair.pos.z + (front.z - R.chair.pos.z) * f };
+        expect(distanceToBox({ ...p, y: b.min.y }, b), name).toBeGreaterThanOrEqual(1.6);
+      }
+    }
+    const [c] = byId('controlRoom');
+    expect(c!.max.z - R.start.pos.z).toBeLessThanOrEqual(4); // by the south windows (the follow camera's boom behind him)
+    expect(R.start.pos.z - R.chair.pos.z).toBeGreaterThan(4); // across the room from the station
+    // Facing it: the heading from start to the chair is within 30° of start's yaw (yaw of (dx, dz) = atan2(−dx, −dz)).
+    const toChair = Math.atan2(-(R.chair.pos.x - R.start.pos.x), -(R.chair.pos.z - R.start.pos.z));
+    expect(Math.abs(Math.atan2(Math.sin(toChair - R.start.yaw), Math.cos(toChair - R.start.yaw)))).toBeLessThan(Math.PI / 6);
+  });
+
+  it('has start walkable, a point 1.6 m south of the chair walkable, and a walkable path from one to the other', () => {
+    expect(walkable(R.start.pos, R)).toBe(true);
+    // The chair stands on the solid dais over the bore, so its pos is not walkable; Troy reaches it from the front —
+    // the south, the side he faces it from (yaw 0), inside M5's reach.
+    const front = { x: R.chair.pos.x + Math.sin(R.chair.yaw) * 1.6, y: FLOOR_Y, z: R.chair.pos.z + Math.cos(R.chair.yaw) * 1.6 };
+    expect(front.z).toBeCloseTo(R.chair.pos.z + 1.6, 9); // south
     expect(walkable(R.chair.pos, R)).toBe(false);
     expect(walkable(front, R)).toBe(true);
     // Flood fill on a 0.2 m grid from the start.
@@ -158,64 +151,59 @@ describe('the rooms (M1)', () => {
     }
     expect(reached).toBe(true);
   });
-
-  it('keeps the lounge out of sight of the control room: no straight line between them stays inside the rooms', () => {
-    const [c] = byId('controlRoom');
-    const [l] = byId('lounge');
-    const grid = (b: Box) => {
-      const out: Array<[number, number]> = [];
-      for (let x = b.min.x + 0.5; x < b.max.x; x += 1) for (let z = b.min.z + 0.5; z < b.max.z; z += 1) out.push([x, z]);
-      return out;
-    };
-    const lounge = grid(l!);
-    for (const [ax, az] of grid(c!)) {
-      for (const [bx, bz] of lounge) {
-        const n = Math.ceil(Math.hypot(bx - ax, bz - az) / 0.25);
-        let clear = true;
-        for (let k = 1; k < n && clear; k++) clear = inUnion(ax + ((bx - ax) * k) / n, az + ((bz - az) * k) / n);
-        expect(clear, `(${ax},${az}) → (${bx},${bz})`).toBe(false);
-      }
-    }
-  });
 });
 
-describe('the shaft (M1)', () => {
-  it("runs from the chair to SEAT, the pilot's seat of the raised sub (cradle x/z, raisedY + 2)", () => {
+describe('the shaft (M1; phase 4, D1)', () => {
+  it("runs from the chair to SEAT, Troy's seat in the raised sub (port side, the cabin roof's forward third)", () => {
     expect(R.shaft[0]).toEqual(R.chair.pos);
     expect(R.shaft[R.shaft.length - 1]).toEqual(SEAT);
-    expect(SEAT).toEqual({ x: I.cradle.pos.x, y: I.cradle.raisedY + 2, z: I.cradle.pos.z });
+    // D3: the model-local seat turned by the sub's yaw (π): world x +0.6, z ≈ cradle z + 3, raisedY + 2.
+    expect(SEATS_LOCAL.troy.x).toBe(-0.6);
+    expect(SEATS_LOCAL.phones.x).toBe(0.6);
+    expect(SEATS_LOCAL.troy.z).toBe(SEATS_LOCAL.phones.z);
+    expect(SEATS_LOCAL.troy.z).toBeGreaterThanOrEqual(-3.5);
+    expect(SEATS_LOCAL.troy.z).toBeLessThanOrEqual(-2.5);
+    expect(SEAT.x).toBeCloseTo(I.cradle.pos.x + 0.6, 9);
+    expect(SEAT.z - I.cradle.pos.z).toBeCloseTo(-SEATS_LOCAL.troy.z, 9);
+    expect(SEAT.y).toBe(I.cradle.raisedY + 2);
   });
 
-  it('is three legs, 180–240 m in all: down, a level run north, a vertical drop', () => {
-    expect(R.shaft.length).toBe(4);
-    const [a, b, c, d] = R.shaft as [Vec3, Vec3, Vec3, Vec3];
-    expect([a.x, a.z]).toEqual([b.x, b.z]); // leg 1 vertical
-    expect(b.y).toBe(c.y); // leg 2 level
-    expect(c.z).toBeLessThan(b.z); // … and north
-    expect([c.x, c.z]).toEqual([d.x, d.z]); // leg 3 vertical
+  it("D1: TOWER_AXIS is the cradle's x and SEAT's z", () => {
+    expect(TOWER_AXIS.x).toBe(I.cradle.pos.x);
+    expect(TOWER_AXIS.z).toBe(SEAT.z);
+  });
+
+  it('is one vertical leg, 80–90 m long: top = the chair, bottom = SEAT', () => {
+    expect(R.shaft.length).toBe(2);
+    const [a, b] = R.shaft as [Vec3, Vec3];
+    expect([a.x, a.z]).toEqual([b.x, b.z]);
+    expect(a).toEqual(R.chair.pos);
+    expect(b).toEqual(SEAT);
     const length = shaftLength(R.shaft);
-    expect(length).toBeGreaterThanOrEqual(180);
-    expect(length).toBeLessThanOrEqual(240);
+    expect(length).toBeCloseTo(FLOOR_Y - SEAT.y, 9);
+    expect(length).toBeGreaterThanOrEqual(80);
+    expect(length).toBeLessThanOrEqual(90);
   });
 
-  it('never hangs in the air: past its first 10 m it is under the clifftop, or in the column straight under the chair', () => {
-    for (const v of R.shaft.slice(1)) expect(v.y).toBeLessThanOrEqual(CLIFF_TOP);
-    for (const { p, s } of alongShaft(0.5)) {
-      if (s <= SHAFT_OPEN_TOP || p.y <= CLIFF_TOP) continue;
-      expect([p.x, p.z]).toEqual([R.chair.pos.x, R.chair.pos.z]);
-    }
+  it("stays inside the tower's stalk: the tube's wall within the stalk's 4.2 m top radius of the axis", () => {
+    const [a] = R.shaft as [Vec3, Vec3];
+    expect(Math.hypot(a.x - TOWER_AXIS.x, a.z - TOWER_AXIS.z) + SHAFT_RADIUS).toBeLessThanOrEqual(4.2);
   });
 
-  it("keeps its tube out of phase 2's Interior (the pen and the bore) except on its last leg, and under the grounds", () => {
-    for (const { p, leg } of alongShaft(0.5)) {
-      if (leg === R.shaft.length - 1) continue;
-      expect(distanceToBox(p, I.pen)).toBeGreaterThanOrEqual(SHAFT_RADIUS);
+  it("keeps its tube out of phase 2's Interior (the pen and the bore) except below the hall's ceiling", () => {
+    for (const { p } of alongShaft(0.5)) {
+      if (p.y < I.pen.max.y) {
+        // Below the ceiling it is in the open hall, inside the pen's box.
+        expect(p.y).toBeGreaterThan(I.pen.min.y);
+        continue;
+      }
+      // Above the ceiling the tube clears the pen box (but for its foot, where it meets the ceiling) and the bore.
+      if (p.y >= I.pen.max.y + SHAFT_RADIUS) expect(distanceToBox(p, I.pen)).toBeGreaterThanOrEqual(SHAFT_RADIUS);
       expect(distanceToCentreline(p)).toBeGreaterThanOrEqual(I.tunnel.radius + SHAFT_RADIUS);
-      // The level run's tube stays inside the 5 m of rock between the pen's ceiling and the grounds.
-      if (leg === 2) expect(p.y + SHAFT_RADIUS).toBeLessThanOrEqual(CLIFF_TOP);
     }
-    const [, , c, d] = R.shaft as [Vec3, Vec3, Vec3, Vec3];
-    expect(c.y).toBeGreaterThan(I.pen.max.y); // the drop comes through the pen's roof …
-    expect(d.y).toBeLessThan(I.pen.max.y); // … into the hall
+    const [a, b] = R.shaft as [Vec3, Vec3];
+    expect(a.y).toBeGreaterThan(CLIFF_TOP); // from the room …
+    expect(b.y).toBeLessThan(I.pen.max.y); // … through the pen's roof into the hall
+    expect(SHAFT_OPEN_TOP).toBeLessThan(a.y - CLIFF_TOP);
   });
 });

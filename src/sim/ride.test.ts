@@ -20,10 +20,10 @@ const WALK_NORTH: TroyInput = { move: { x: 0, z: -1 }, use: false };
 const step = (g: GameState, p: Press | null = null, i: SubInput = NO_INPUT, t: TroyInput = STAND_STILL) =>
   stepSession(g, i, t, p, DT, W, ROOMS);
 
-/** Troy on foot 1 m in front of his chair, facing it — where M5's prompt shows. */
+/** Troy on foot 1.6 m in front of his chair (south of it, phase 4 D2), facing it — where M5's prompt shows. */
 const atChair = (): GameState => {
   const c = ROOMS.chair;
-  return { ...controlRoom(W, ROOMS), troy: onFoot({ pos: { x: c.pos.x, y: c.pos.y, z: c.pos.z + 1.5 }, yaw: c.yaw }) };
+  return { ...controlRoom(W, ROOMS), troy: onFoot({ pos: { x: c.pos.x, y: c.pos.y, z: c.pos.z + 1.6 }, yaw: c.yaw }) };
 };
 
 /** Sit, then step until Troy is aboard (or a limit): the states along the way, the sit's included. */
@@ -55,26 +55,30 @@ describe('the sit (M6)', () => {
   });
 });
 
-describe('the timetable (M6: RIDE_SECONDS, 1.5 s ease-in, 1 s ease-out, constant between)', () => {
+describe('the timetable (M6; phase 4 D4: RIDE_SECONDS 6, 1 s ease-in, 1 s ease-out, constant between)', () => {
   it('runs 0 → 1 over RIDE_SECONDS, and its inverse agrees', () => {
-    expect(RIDE_SECONDS).toBe(10);
+    expect(RIDE_SECONDS).toBe(6);
+    expect(T.rideEaseIn).toBe(1);
+    expect(T.rideEaseOut).toBe(1);
     expect(rideProgressAt(0)).toBe(0);
     expect(rideProgressAt(RIDE_SECONDS)).toBe(1);
     for (let t = 0; t <= RIDE_SECONDS; t += 0.37) expect(rideTimeAt(rideProgressAt(t))).toBeCloseTo(t, 9);
   });
 
-  it('eases in over the first 1.5 s and out over the last 1 s, with a constant speed between (smoothstep slices)', () => {
+  it('eases in over the first slice and out over the last, with a constant speed between (smoothstep slices)', () => {
     const v = (t: number) => (rideProgressAt(t + 1e-4) - rideProgressAt(t - 1e-4)) / 2e-4;
-    const cruise = v(5);
+    const cruise = v(RIDE_SECONDS / 2);
     expect(v(1e-4)).toBeLessThan(cruise * 1e-3);
-    for (const t of [1.6, 3, 5, 7, 8.9]) expect(v(t)).toBeCloseTo(cruise, 6);
+    for (const t of [T.rideEaseIn + 0.1, 2, 3, 4, RIDE_SECONDS - T.rideEaseOut - 0.1]) expect(v(t)).toBeCloseTo(cruise, 6);
     // Smoothstep inside the slices: half speed half way through each.
     expect(v(T.rideEaseIn / 2) / cruise).toBeCloseTo(0.5, 4);
     expect(v(RIDE_SECONDS - T.rideEaseOut / 2) / cruise).toBeCloseTo(0.5, 4);
     expect(v(RIDE_SECONDS - 1e-4)).toBeLessThan(cruise * 1e-3);
-    // ≈ 22 m/s over the ≈ 210 m shaft (M6).
-    expect(cruise * shaftLength(ROOMS.shaft)).toBeGreaterThan(20);
-    expect(cruise * shaftLength(ROOMS.shaft)).toBeLessThan(26);
+    // D4: ≈ 14 m/s on average over the ≈ 84 m shaft — ≈ 17 m/s at cruise.
+    expect(shaftLength(ROOMS.shaft) / RIDE_SECONDS).toBeGreaterThan(12);
+    expect(shaftLength(ROOMS.shaft) / RIDE_SECONDS).toBeLessThan(16);
+    expect(cruise * shaftLength(ROOMS.shaft)).toBeGreaterThan(15);
+    expect(cruise * shaftLength(ROOMS.shaft)).toBeLessThan(19);
     // Monotonic.
     for (let t = 0; t < RIDE_SECONDS; t += 0.05) expect(rideProgressAt(t + 0.05)).toBeGreaterThanOrEqual(rideProgressAt(t));
   });
@@ -89,7 +93,7 @@ describe('the timetable (M6: RIDE_SECONDS, 1.5 s ease-in, 1 s ease-out, constant
   });
 });
 
-describe('the path (M6: by arc length; the chair faces along it)', () => {
+describe('the path (M6: by arc length; phase 4 D4: one vertical leg)', () => {
   const L = shaftLength(ROOMS.shaft);
 
   it('pos is the shaft polyline sampled at ride by arc length', () => {
@@ -113,25 +117,26 @@ describe('the path (M6: by arc length; the chair faces along it)', () => {
     }
   });
 
-  it("faces along a level leg, turns over a vertical one, and lands facing the sub's yaw (π)", () => {
-    const [leg1, leg2, leg3] = legsOf(ROOMS.shaft);
-    const yawAt = (s: number) => chairYaw(ROOMS.shaft, s / L, ROOMS.chair.yaw + Math.PI, YAW_OUT);
+  it("D4: down the one vertical leg the chair keeps the seat's yaw (π, facing the windows) and lands facing the sub's", () => {
+    const top = ROOMS.chair.yaw + Math.PI;
     const same = (a: number, b: number) => Math.abs(Math.atan2(Math.sin(a - b), Math.cos(a - b))) < 1e-9;
-    // The top: the seat's own facing. The level run north: heading 0 (north). The seat: the sub's yaw.
-    expect(same(yawAt(0), ROOMS.chair.yaw + Math.PI)).toBe(true);
-    const north = Math.atan2(-(leg2!.to.x - leg2!.from.x), -(leg2!.to.z - leg2!.from.z));
-    expect(same(north, 0)).toBe(true);
-    for (let s = leg2!.start; s <= leg2!.start + leg2!.length; s += 7) expect(same(yawAt(s), north)).toBe(true);
-    expect(same(yawAt(leg1!.length), north)).toBe(true); // turned by the foot of leg 1
-    expect(same(yawAt(leg3!.start), north)).toBe(true);
-    expect(same(yawAt(L), YAW_OUT)).toBe(true);
-    // The turn is continuous: no step turns the chair more than ≈ 9° (leg 3's half-turn takes its ≈ 1.1 s).
-    const states = ride();
-    for (let k = 2; k < states.length; k++) {
-      const a = states[k - 1]!.troy.yaw;
-      const b = states[k]!.troy.yaw;
-      expect(Math.abs(Math.atan2(Math.sin(b - a), Math.cos(b - a)))).toBeLessThan(0.15);
-    }
+    expect(same(top, YAW_OUT)).toBe(true);
+    for (let r = 0; r <= 1; r += 0.01) expect(same(chairYaw(ROOMS.shaft, r, top, YAW_OUT), top)).toBe(true);
+    for (const g of ride()) expect(same(g.troy.yaw, YAW_OUT)).toBe(true);
+    // chairYaw stays general: a vertical leg between different start and end yaws still turns, continuously.
+    expect(same(chairYaw(ROOMS.shaft, 0.5, 0, Math.PI / 2), Math.PI / 4)).toBe(true);
+  });
+
+  it('legsOf, shaftPoint and chairYaw still take any polyline (a level leg between two drops faces along itself)', () => {
+    const bent = [{ x: 0, y: 10, z: 0 }, { x: 0, y: 0, z: 0 }, { x: 0, y: 0, z: -20 }, { x: 0, y: -10, z: -20 }];
+    const legs = legsOf(bent);
+    expect(legs.map((l) => l.length)).toEqual([10, 20, 10]);
+    expect(legs.map((l) => l.start)).toEqual([0, 10, 30]);
+    expect(shaftPoint(bent, 0.5)).toEqual({ x: 0, y: 0, z: -10 });
+    const same = (a: number, b: number) => Math.abs(Math.atan2(Math.sin(a - b), Math.cos(a - b))) < 1e-9;
+    expect(same(chairYaw(bent, 0.5, Math.PI, Math.PI), 0)).toBe(true); // the level run north: heading 0
+    expect(same(chairYaw(bent, 10 / 40, Math.PI, Math.PI), 0)).toBe(true); // turned by the foot of the first drop
+    expect(same(chairYaw(bent, 1, Math.PI, Math.PI), Math.PI)).toBe(true); // and lands facing the end yaw
   });
 });
 
@@ -255,7 +260,7 @@ describe("'leave' (M6b: refused 'Dock first' unless docked and raised)", () => {
   });
 });
 
-describe('the ascent (M6b: back to 0 over the same 10 s, facing up, standing up in front of the chair)', () => {
+describe('the ascent (M6b: back to 0 over the same RIDE_SECONDS, facing up, standing up in front of the chair)', () => {
   it('takes RIDE_SECONDS, ± one step, from the leave to standing up', () => {
     const states = ascent();
     expect(states.at(-1)!.troy.where).toBe('onFoot');
@@ -278,22 +283,10 @@ describe('the ascent (M6b: back to 0 over the same 10 s, facing up, standing up 
     expect(rides.at(-2)! - rides.at(-1)!).toBeLessThan(mid * 0.05);
   });
 
-  it('faces up the shaft: the level run heading south (the reverse of the way down), the turns continuous', () => {
-    const L = shaftLength(ROOMS.shaft);
-    const [, leg2] = legsOf(ROOMS.shaft);
+  it("D4: faces the windows all the way up (the seat's yaw, π), no turn", () => {
     const top = ROOMS.chair.yaw + Math.PI;
-    for (let s = leg2!.start; s <= leg2!.start + leg2!.length; s += 7) {
-      const down = chairYaw(ROOMS.shaft, s / L, top, YAW_OUT);
-      expect(same(chairYawUp(ROOMS.shaft, s / L, top, YAW_OUT), down + Math.PI)).toBe(true);
-    }
-    expect(same(chairYawUp(ROOMS.shaft, 1, top, YAW_OUT), YAW_OUT)).toBe(true);
-    expect(same(chairYawUp(ROOMS.shaft, 0, top, YAW_OUT), top)).toBe(true);
-    const states = ascent();
-    for (let k = 1; k < states.length; k++) {
-      const a = states[k - 1]!.troy.yaw;
-      const b = states[k]!.troy.yaw;
-      expect(Math.abs(Math.atan2(Math.sin(b - a), Math.cos(b - a)))).toBeLessThan(0.15);
-    }
+    for (let r = 0; r <= 1; r += 0.01) expect(same(chairYawUp(ROOMS.shaft, r, top, YAW_OUT), top)).toBe(true);
+    for (const g of ascent()) expect(same(g.troy.yaw, top)).toBe(true);
   });
 
   it('lands on foot at the walkable point in front of the chair, facing chair.yaw + π, still', () => {
