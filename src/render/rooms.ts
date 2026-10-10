@@ -708,7 +708,7 @@ function stationMaterials(mats: ControlMaterials) {
     boreDark: lambert(0x1c2024),
     boreLight: new THREE.MeshBasicMaterial({ color: 0xf6f0d8 }),
     chair: {
-      upholstery: lambert(0x5b6f8f), frame: mats.frame, pad: mats.trim, dark: mats.bodyDark, body: mats.body,
+      upholstery: lambert(0x5b6f8f), frame: mats.frame, pad: mats.trim, dark: mats.bodyDark, body: mats.panel,
     } satisfies InjectorChairMaterials,
   };
 }
@@ -771,14 +771,14 @@ function station(rooms: Rooms, mats: ControlMaterials): StationView {
   const top = F + DAIS_HEIGHT - 0.004; // the slab's top: the band, ring and plate sit just on it, inside the collider
   const midX = (b.min.x + b.max.x) / 2;
 
-  // The dais: a grey slab, inset a little inside its collider so the trim can stand on the collider's faces, with the
+  // The dais: a mid-grey slab (the consoles' panel grey, so the trim and the lit ring read against it), inset a little inside its collider so the trim can stand on the collider's faces, with the
   // bore's round hole under Troy's chair.
   {
     const i = 0.005;
     const shape = new THREE.Shape();
     shape.moveTo(b.min.x + i, -b.max.z + i).lineTo(b.max.x - i, -b.max.z + i).lineTo(b.max.x - i, -b.min.z - i).lineTo(b.min.x + i, -b.min.z - i).closePath();
     shape.holes.push(new THREE.Path().absarc(chair.pos.x, -chair.pos.z, BORE_RADIUS, 0, Math.PI * 2, true));
-    props.add(mats.body, new THREE.ExtrudeGeometry(shape, { depth: top - F, bevelEnabled: false, curveSegments: 48 }).rotateX(-Math.PI / 2).translate(0, F, 0));
+    props.add(mats.panel, new THREE.ExtrudeGeometry(shape, { depth: top - F, bevelEnabled: false, curveSegments: 48 }).rotateX(-Math.PI / 2).translate(0, F, 0));
     // The silver edge trim on all four sides, from the floor to just under the collider's top.
     const t = 0.04;
     const h = DAIS_HEIGHT - 0.001;
