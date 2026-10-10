@@ -81,7 +81,7 @@ export const VIEW_PRESETS: Readonly<Record<string, readonly [number, number, num
   shaft: [C.x + 0.9, 60, C.z + 0.6, C.x, 25, C.z],
   // The pen hall from beside the docked sub, looking up at Troy's port (lid open), Phones's dummy beside it and the pole
   // standing from the port down to the cabin roof.
-  port: [SEAT.x + 9, SEAT.y + 1.5, SEAT.z + 7, SEAT.x - 0.5, HALL_CEILING_Y - 4.5, SEAT.z],
+  port: [SEAT.x + 11, SEAT.y + 6, SEAT.z + 11, SEAT.x - 0.6, HALL_CEILING_Y - 6.5, SEAT.z],
   // The docked sub's cabin roof close, from above and behind (north-east): Troy's hatch open with the pole coming down
   // into it, Phones's dummy beside it, the dome aft.
   hatch: [SEAT.x + 2.4, SEAT.y + 3.4, SEAT.z - 3.2, SEAT.x - 0.3, SEAT.y + 1.2, SEAT.z + 0.3],
