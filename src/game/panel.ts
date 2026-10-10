@@ -173,11 +173,14 @@ function controlView(
     : c === 'clamps' ? l.clamps === 'released'
     : l.door >= 1);
   const pressable = wouldAct(c, g, interior);
+  // Phase 4 D6: the door's request range (340 m) reaches the pen, so coming home a shut door is requestable from the
+  // pool — but it is not a step home; it stays dark there, so the one amber lamp is still the next step.
+  const offTrip = home && c === 'door' && inPen(g.sub.pos, interior);
   // Green wins over amber unless the press that would take it out of position is the next step (coming home).
   const lamp: Lamp = refused ? 'red'
     : moving ? 'amber'
     : inPosition && !(pressable && next === c) ? 'green'
-    : pressable ? 'amber'
+    : pressable && !offTrip ? 'amber'
     : 'dark';
   return { control: c, key: KEYS[c], label: LABELS[c], lamp, moving, lever: leverOf(c, g), word: wordOf(c, g, interior), pressable, next: next === c };
 }
@@ -250,7 +253,9 @@ function carrying(g: GameState, interior: Interior): boolean {
 
 export function nextControl(g: GameState, m: PanelMemory, interior: Interior): LaunchControl | null {
   const l = g.launch;
-  const doorWanted = l.clamps === 'released' && l.door < 1 && l.doorDir !== 1 && refusalFor('door', l, g.sub, interior) === null;
+  // Phase 4 D6: the request range reaches the pen, but coming home the door is behind the sub once it is in the pool.
+  const doorWanted = l.clamps === 'released' && l.door < 1 && l.doorDir !== 1 && refusalFor('door', l, g.sub, interior) === null
+    && !(m.trip === 'home' && inPen(g.sub.pos, interior));
   if (l.clamps === 'locked') {
     if (l.cradleDir !== 0 || l.engines === 'starting') return null;
     if (m.trip === 'out') {

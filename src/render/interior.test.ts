@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { cradleHeight } from '../sim/launch';
 import { MARINEVILLE, type Interior } from '../sim/world';
 import { isInteriorMaterial, oceanInView } from './indoors';
-import { DOOR_BORE_RADIUS } from './ocean-door';
+import { DOOR_BORE_RADIUS, DOOR_RING_DEPTH } from './ocean-door';
 import { createPen } from './pen';
 import { createTunnel } from './tunnel';
 
@@ -246,7 +246,7 @@ describe('the ocean side from inside (T6)', () => {
   const last = interior.tunnel.centreline[interior.tunnel.centreline.length - 1]!;
   const places: Array<[string, THREE.Vector3]> = [
     ['the door chamber', new THREE.Vector3(0, -35, mouth.z - 40)],
-    ['the S-bend', new THREE.Vector3(12, -34, -1220)],
+    ['the incline, mid-bore', new THREE.Vector3(6, -30, -1255)], // phase 4 D6: the straight bore, 6 m off its axis
     ['the bore\'s last metres', new THREE.Vector3(last.x, last.y, last.z + 3)],
     ['the pen, on the walkway', new THREE.Vector3(27, 8.6, -1391)],
     ['the pool', new THREE.Vector3(0, -10, -1390)],
@@ -267,9 +267,10 @@ describe('the ocean side from inside (T6)', () => {
     }
   });
 
-  it('the S-bend does not hide the mouth: a sightline from the pen\'s end of the tunnel clears the bore to the door', () => {
-    // Why the rule ignores where inside the camera is. Sampled on a straight line from a camera place in the bore's
-    // last metres to the edge of the door's opening: every point on it is inside the drawn bore (13 m).
+  it('the straight bore shows the door from the pen (phase 4 D6): sightlines from the bore\'s end and the lowered cradle to the door\'s opening stay inside the bore', () => {
+    // The launch's reveal: with the S-bend gone the door is the view from the cradle. Sampled on straight lines from
+    // camera places at the pen's end of the tunnel to the door's centre and round a 6 m circle of its opening: every
+    // point on them south of the pen's wall (and short of the door's ring in the slab) is inside the drawn bore.
     const line = interior.tunnel.centreline;
     const distanceToCentreline = (p: THREE.Vector3) => {
       let best = Infinity;
@@ -284,14 +285,29 @@ describe('the ocean side from inside (T6)', () => {
       }
       return best;
     };
-    const from = new THREE.Vector3(-9.64, -22.38, -1328.2); // within 12 m of the centreline: a camera place
-    const to = new THREE.Vector3(13.2, -40, mouth.z);
-    expect(distanceToCentreline(from)).toBeLessThanOrEqual(12);
-    const p = new THREE.Vector3();
-    for (let i = 1; i < 400; i++) {
-      p.lerpVectors(from, to, i / 400);
-      if (p.z > mouth.z - 12) break; // the door's ring through the cliff's slab: 13.2 m bore
-      expect(distanceToCentreline(p)).toBeLessThanOrEqual(interior.tunnel.radius);
+    const froms = [
+      new THREE.Vector3(last.x, last.y, last.z + 3), // the bore's last metres
+      new THREE.Vector3(0, interior.cradle.loweredY, interior.cradle.pos.z), // Stingray on the lowered cradle
+      new THREE.Vector3(0, interior.cradle.loweredY + 2, interior.cradle.pos.z + 14), // the pen camera behind and above her
+    ];
+    const tos = [new THREE.Vector3(mouth.x, mouth.y, mouth.z)];
+    for (let k = 0; k < 8; k++) {
+      const a = (k / 8) * Math.PI * 2;
+      tos.push(new THREE.Vector3(mouth.x + 6 * Math.cos(a), mouth.y + 6 * Math.sin(a), mouth.z));
     }
+    const p = new THREE.Vector3();
+    let checked = 0;
+    for (const from of froms) {
+      for (const to of tos) {
+        for (let i = 1; i < 400; i++) {
+          p.lerpVectors(from, to, i / 400);
+          if (p.z < interior.pen.max.z) continue; // in the hall: open
+          if (p.z > mouth.z - DOOR_RING_DEPTH) break; // the door's ring through the cliff's slab
+          expect(distanceToCentreline(p)).toBeLessThan(interior.tunnel.radius);
+          checked++;
+        }
+      }
+    }
+    expect(checked).toBeGreaterThan(1000);
   });
 });

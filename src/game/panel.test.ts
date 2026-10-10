@@ -92,23 +92,28 @@ describe('the launch panel through a full launch (L6)', () => {
     expect(v.status).toBe('ENGINES RUNNING — READY TO RELEASE');
     expect(v.prompt).toBe('Press 3 — release the clamps');
 
-    // Released, away in the pen; the door is out of range from here.
+    // Released, away in the pen. Phase 4 D6: the door's request range (340 m) reaches the cradle (296 m), so the
+    // door is the next step from here — a boosting sub asks now and finds it open.
     s.press('clamps');
     v = s.view;
-    expect(lamps(v)).toEqual({ cradle: 'green', engines: 'green', clamps: 'green', door: 'dark' });
-    // Only the clamps would act (re-locking while still over the cradle) — but they show green, not amber.
-    expect(v.controls.filter((c) => c.pressable).map((c) => c.control)).toEqual(['clamps']);
+    expect(lamps(v)).toEqual({ cradle: 'green', engines: 'green', clamps: 'green', door: 'amber' });
+    // The clamps (re-locking while still over the cradle) show green, not amber; the door is the amber one.
+    expect(v.controls.filter((c) => c.pressable).map((c) => c.control)).toEqual(['clamps', 'door']);
+    expect(v.status).toBe('STINGRAY AWAY — PEN 3');
+    expect(v.prompt).toBe('Press 4 — open the ocean door');
+
+    // At the pen's north end, out of door range: drive into the tunnel.
+    s.place({ x: 0, y: -14, z: -1446 });
+    v = s.view;
     expect(v.status).toBe('STINGRAY AWAY — PEN 3');
     expect(v.prompt).toBe('W to drive, A / D to steer — into the tunnel');
+    expect(lamps(v).door).toBe('dark');
 
-    // In the tunnel, out of door range.
+    // In the tunnel, within range of the door: request it.
     s.place({ x: 0, y: -40, z: COAST_Z - 150 });
     v = s.view;
     expect(v.status).toBe('LAUNCH TUNNEL — OCEAN DOOR 150 M');
-    expect(v.prompt).toBe('Follow the tunnel to the ocean door');
-    expect(lamps(v).door).toBe('dark');
-
-    // Within range of the door: request it.
+    expect(v.prompt).toBe('Press 4 — open the ocean door');
     s.place({ x: 0, y: -40, z: COAST_Z - 60 });
     v = s.view;
     expect(lamps(v).door).toBe('amber');
@@ -168,11 +173,11 @@ describe('the launch panel through a full launch (L6)', () => {
     s.press('clamps'); check();
     s.place({ x: 0, y: -40, z: COAST_Z - 60 }); check();
     s.press('door'); check(); s.run(5); check();
+    // Phase 4 D6: the door is requestable from the cradle, so its prompt follows the release directly.
     expect(seen).toEqual([
       'Press 1 — lower the cradle',
       'Press 2 — start the engines',
       'Press 3 — release the clamps',
-      'W to drive, A / D to steer — into the tunnel',
       'Press 4 — open the ocean door',
       'The ocean door is opening — drive on through',
       'Door open — W to drive out to sea',
@@ -237,9 +242,10 @@ describe('the panel at sea (L6)', () => {
     expect(v.controls.map((c) => c.control)).toEqual(['door']);
     expect(v.controls[0]).toMatchObject({ lamp: 'amber', word: 'SHUT', pressable: true, next: true });
 
-    s.place({ x: 0, y: -40, z: COAST_Z + 119 }, 0);
+    // Phase 4 D6: the request range is 340 m.
+    s.place({ x: 0, y: -40, z: COAST_Z + 339 }, 0);
     expect(s.view.controls.map((c) => c.control)).toEqual(['door']);
-    s.place({ x: 0, y: -40, z: COAST_Z + 121 }, 0);
+    s.place({ x: 0, y: -40, z: COAST_Z + 341 }, 0);
     expect(s.view.controls).toEqual([]);
     s.place({ x: 200, y: -40, z: -800 }, 0);
     v = s.view;
@@ -322,18 +328,23 @@ describe('the panel on the return (L6)', () => {
     s.place({ x: 0, y: -40, z: COAST_Z - 60 }, 0);
     let v = s.view;
     expect(s.memory.trip).toBe('home');
-    expect(v.status).toBe('OCEAN DOOR OPEN — PEN 3 192 M');
+    expect(v.status).toBe('OCEAN DOOR OPEN — PEN 3 182 M'); // phase 4 D6: 110 m of chamber + the 172 m straight incline
     // Cradle lowered and Stingray away: green, not pressable.
     expect(lamps(v)).toEqual({ cradle: 'green', engines: 'green', clamps: 'green', door: 'green' });
     expect(v.controls[0]!.pressable).toBe(false);
 
+    // Phase 4 D6: the door stays open the length of the tunnel (its close range, 280 m, is past the pen's wall) …
     s.place({ x: 0, y: -14, z: COAST_Z - 200 }, 0);
-    s.run(DT); // the tower sees the hull beyond range and starts the door closing
+    s.run(DT);
     v = s.view;
-    expect(v.status).toBe('OCEAN DOOR CLOSING BEHIND YOU');
-    s.run(5.1);
-    expect(s.view.status).toBe('LAUNCH TUNNEL — PEN 3 38 M');
+    expect(v.status).toBe('OCEAN DOOR OPEN — PEN 3 40 M');
     expect(s.view.prompt).toBeNull();
+    // … and the tower starts it closing once the hull is in the pen beyond that range.
+    s.place({ x: 0, y: -14, z: -1385 }, 0);
+    s.run(DT);
+    expect(s.view.status).toBe('OCEAN DOOR CLOSING BEHIND YOU');
+    s.run(5.1);
+    expect(s.game.state.launch.door).toBe(0);
 
     // In the pen, short of the cradle.
     s.place({ x: 0, y: -14, z: -1380 }, 0);
@@ -382,7 +393,7 @@ describe('the panel on the return (L6)', () => {
     s.press('engines'); s.run(2);
     s.press('clamps');
     // Out at sea (a launch reached the sea), then back toward the mouth with the door shut.
-    s.place({ x: 0, y: -40, z: COAST_Z + 300 }, 0);
+    s.place({ x: 0, y: -40, z: COAST_Z + 360 }, 0); // beyond the 340 m request range (D6)
     expect(s.memory).toMatchObject({ trip: 'home', launched: true });
     expect(s.view.controls).toEqual([]); // out of door range: nothing on show
     const seen: string[] = [];
@@ -398,7 +409,7 @@ describe('the panel on the return (L6)', () => {
     s.place({ x: 0, y: -40, z: COAST_Z + 100 }, 0); check();
     s.press('door'); check(); s.run(2); check(); s.run(3.1); check();
     s.place({ x: 0, y: -40, z: COAST_Z - 40 }, 0); check();
-    s.place({ x: 0, y: -14, z: -1370 }, 0); check();
+    s.place({ x: 0, y: -14, z: -1385 }, 0); check(); // beyond the 280 m close range (D6)
     s.run(5.1); check(); // the tower shuts the door behind her
     expect(s.game.state.launch.door).toBe(0);
     s.place({ x: 1, y: -14, z: -1394 }, Math.PI); check();
