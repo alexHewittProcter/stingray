@@ -73,8 +73,9 @@ const DOME_LENGTH = 1.35; // the dome's half-length along z (phase 2: 1.9)
 const PERISCOPE_Z = -1.6;
 /**
  * Phase 3 (M1 "the sub gains a roof hatch over the seat", T7): the round lid over the pilot's seat (model-local x 0,
- * z 0 — sim/rooms.ts SEAT_RISE puts the chair's origin at y 2.0 there): its footprint radius, the roof line it sits on,
- * its rise (it covers Troy's head, ≈ 3.5, when shut), and how far it swings open.
+ * z 0 — phase 3's seat point, y 2.0): its footprint radius, the roof line it sits on, its rise (it covers Troy's head,
+ * ≈ 3.5, when shut), and how far it swings open. Phase 4 (D3, T3): it moves to Troy's seat, sim/rooms.ts
+ * SEATS_LOCAL.troy — until T3 the aboard chair sits there and this hatch stays at z 0.
  */
 const SEAT_HATCH = { radius: 0.85, baseY: 3.12, rise: 0.44, openAngle: (112 * Math.PI) / 180 };
 const PERISCOPE_TOP_Y = 7.1;
