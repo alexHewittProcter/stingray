@@ -178,7 +178,7 @@ export const CONTROL_ROOM_PROPS = Object.freeze({
   phonesChair: chairBox(STATION_CHAIRS.phones),
   marinasChair: chairBox(STATION_CHAIRS.marina),
   /** D2: the maroon back panel and its mesh grille behind the row (T2 dresses it). */
-  stationPanel: box(v(AX - DAIS_HALF_WIDTH, F, AZ - 2.4), v(AX + DAIS_HALF_WIDTH, F + 3.2, AZ - 2.2)),
+  stationPanel: box(v(AX - DAIS_HALF_WIDTH, F, AZ - 2.4), v(AX + DAIS_HALF_WIDTH, F + 2.6, AZ - 2.2)),
 });
 
 /** The station's own props (D2) — the rest of CONTROL_ROOM_PROPS is the room's furniture. */
