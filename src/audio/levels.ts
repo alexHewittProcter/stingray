@@ -9,6 +9,9 @@ export const LEVELS = {
   ambienceBus: 0.55,
   engineBus: 0.5,
   effectsBus: 0.9,
+  // Phase 4 (S2, S3): the score. Non-diegetic, straight to master, and it sits UNDER the effects (tuned at T7 by ear);
+  // the drop's roll is the one cue allowed forward, through the music's intensity (audio/music-cues.ts), not this.
+  musicBus: 0.35,
 
   // Ambience beds (continuous, crossfaded by where the sub is)
   seaUnder: 0.5, // deep, slow, filtered rumble of the open sea below the surface
@@ -51,4 +54,23 @@ export const LEVELS = {
   detonationMaxPerStep: 3, // more detonations in one step than this play as this many
   underwaterCutoff: 1400, // Hz — effects and the engine are low-passed this hard while the sub is submerged
   airCutoff: 16000, // Hz — and this open in air
+
+  // Phase 4 (S2, S3): the score's instruments (audio/instruments.ts), each scaled by the music bus above — except
+  // `alert`, the level of the ALERT section (the base's PA, diegetic), which plays through the effects bus instead:
+  // quiet, under the console hum's room, read as an alarm somewhere in the building rather than as the score.
+  music: {
+    snareNoise: 0.5, // the wires: noise through a band-pass at ≈ 1.8 kHz
+    snareCrack: 0.16, // the stick on the head: a short high-passed tick
+    snareBody: 0.28, // the shell: a 180 Hz tone
+    snareFlam: 0.38, // the grace stroke, relative to the main one
+    flamAhead: 0.024, // s — how far the grace stroke leads
+    rollRise: 0.4, // a short roll (≤ half a bar) rises from (1 − this) of its velocity to its velocity
+    longRollRise: 0.15, // a sustained roll swells more gently
+    kick: 0.7,
+    timp: 0.6,
+    brass: 0.26, // per voicing, divided across its pitches
+    brassVibrato: 7, // cents
+    bass: 0.5,
+    alert: 0.3, // the ALERT's output gain into the effects bus (× effectsBus 0.9)
+  },
 } as const;

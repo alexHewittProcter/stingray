@@ -2,27 +2,13 @@
 // in the game. Each takes the time to sound at and a velocity, and cleans up after itself. music.ts calls `playHit`
 // for every hit the scheduler hands it.
 
+import { LEVELS } from './levels';
 import type { Mixer } from './mixer';
 import { midiHz, type Instrument } from './score';
 import { burst, envelope, filter, osc, thump, tone } from './synth';
 
-// Instrument levels. T6 folds these into levels.ts (LEVELS.music*), which is another task's file during T5.
-export const MUSIC_LEVELS = {
-  snareNoise: 0.5, // the wires: noise through a band-pass at ≈ 1.8 kHz
-  snareCrack: 0.16, // the stick on the head: a short high-passed tick
-  snareBody: 0.28, // the shell: a 180 Hz tone
-  snareFlam: 0.38, // the grace stroke, relative to the main one
-  flamAhead: 0.024, // s — how far the grace stroke leads
-  rollRise: 0.4, // a short roll (≤ half a bar) rises from (1 − this) of its velocity to its velocity
-  longRollRise: 0.15, // a sustained roll swells more gently
-  kick: 0.7,
-  timp: 0.6,
-  brass: 0.26, // per voicing, divided across its pitches
-  brassVibrato: 7, // cents
-  bass: 0.5,
-} as const;
-
-const L = MUSIC_LEVELS;
+// Instrument levels live in levels.ts (LEVELS.music), with every other sound's.
+const L = LEVELS.music;
 
 export interface Strike {
   inst: Instrument;
