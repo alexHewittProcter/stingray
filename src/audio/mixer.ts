@@ -1,10 +1,11 @@
-// The shared mixer: three buses, an underwater muffle, a room, and a master chain that cannot clip.
+// The shared mixer: four buses, an underwater muffle, a room, and a master chain that cannot clip.
 //
 //   engine bus ─┐
 //   effects bus ┴→ muffle (low-pass: shut under water) ─→ dry ─────────────→ master → compressor → limiter → out
 //                                                     └→ room send → reverb ┘
 //   ambience bus ─────────────────────────────────────────────────────────→ master
 //   ui (refusal buzz) ─────────────────────────────────────────────────────→ master
+//   music bus (phase 4 S2: the score — non-diegetic, so no muffle, no room) ─→ master
 //
 // The reverb's impulse is generated noise (no file); the room send is wide in the pen and tunnel, slight at sea.
 
@@ -16,6 +17,8 @@ export interface Mixer {
   effects: GainNode;
   ambience: GainNode;
   ui: GainNode;
+  /** The score (music.ts). Straight to master: the muffle and the room never touch it; master mutes it with the rest. */
+  music: GainNode;
   /** Two seconds of white noise and of brown (deep, rumbling) noise, for looping and bursts. */
   white: AudioBuffer;
   brown: AudioBuffer;
@@ -61,6 +64,9 @@ export function createMixer(ctx: AudioContext, muted: boolean): Mixer {
   ambience.connect(master);
   const ui = gain(ctx, L.effectsBus);
   ui.connect(master);
+  // LEVELS.musicBus arrives with T6 (levels.ts is another task's file in T5); until then the readme's 0.35.
+  const music = gain(ctx, (L as unknown as { musicBus?: number }).musicBus ?? 0.35);
+  music.connect(master);
 
   return {
     ctx,
@@ -68,6 +74,7 @@ export function createMixer(ctx: AudioContext, muted: boolean): Mixer {
     effects,
     ambience,
     ui,
+    music,
     white: noiseBuffer(ctx, 'white'),
     brown: noiseBuffer(ctx, 'brown'),
     setMuted(m) {
