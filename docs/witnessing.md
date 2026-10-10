@@ -81,10 +81,22 @@ Troy walked to the front of his chair, sits, and rides straight down; vary the l
 for each shot:
 
 ```
-?start=control&menu=0&hold&script=walk=0.6:-1390.6,1,use,N
+?start=control&menu=0&hold&script=walk=0.6:-1390.6,use,N
 ```
 
-`use,8` locks him in (the sub on standby, Troy in the pilot's seat).
+| N | What it shows |
+|---|---|
+| `0.5` | the hold (`rideHold` 0.8 s): still in the room, looking down on the chair dropping into the bore past the other two chairs |
+| `2.5` | in the tube, above and behind the chair, looking down the shaft's light rings |
+| `4.6` | over the chair at the tube's foot: down the annulus's cone to the open lid, the sub's roof through the port |
+| `4.85` | the chair going through the port; the camera inside the annulus, closed in on the axis (it never leaves the cone) |
+| `5.05` | the camera through the port into the hall, over Troy, the sub and the pool below |
+| `5.4` | the arrival blend: the hall, Troy on the pole above the open hatch |
+
+`use,8` locks him in (the sub on standby, Troy in the pilot's seat). The chair passes the port (y 20) at ≈ 4.84 s;
+the camera, 3 m up its boom, at ≈ 5.03 s. The view (orientation, fov) blends into the pen camera over the last 1.5 s
+as phase 3 had it; the camera's *place* starts its blend only once it is through the port (D4: it keeps inside the
+annulus's cone and the collar, `render/ride-camera.ts` `rideWallRadius`/`boomRise`), so it never looks through rock.
 
 ### The way back up (T9, M6b)
 
@@ -137,17 +149,62 @@ pole is drawn from the port down to the chair's pole top once that is below the 
 At sea it is refused — the panel shows the fifth control red with *DOCK FIRST* for 3 s, as phase 2's refusals:
 `?start=ocean&menu=0&script=leave,1`.
 
-### The full loop (T7) — control room to open water in one page
+### The full loop (T7; phase 4 T4) — control room to open water in one page
 
-Troy at his chair, sits, rides down 6 s and locks in, then phase 2's launch, steered out through the tunnel, ending
-out at sea (one line in the URL; the tunnel's legs are still phase 2's S-bend steering — T4 re-steers them for the
-straight bore):
+Troy at his chair, sits, rides down 6 s and locks in, then phase 2's launch — and phase 4's straight tunnel (D6): the
+door is asked for from the cradle as the clamps let go (it is open 5 s later, before Stingray gets there), and
+Stingray boosts straight out at 60 m/s, ending 100 m out at sea (one line in the URL):
 
 ```
-?start=control&menu=0&script=walk=0.6:-1390.6,1,use,8,cradle,8.2,engines,2.2,clamps,1,throttle=1,1.5,1.5,1.5,steer=-0.5,climb=-0.25,1.5,steer=0.5,climb=0,1.5,climb=-0.25,1.5,steer=-0.25,1.5,steer=0.25,climb=0.25,1.5,steer=-0.5,1.5,steer=0.25,1.5,door,steer=-1,climb=-0.5,1.5,steer=1,1.5,steer=-0.75,climb=0.5,1.5,steer=1,1.5,steer=-1,climb=0,1.5,steer=1,climb=-0.5,1.5,steer=-1,climb=0.25,1.5,steer=1,climb=0.5,1.5,steer=-1,1.5,steer=0,climb=0,6
+?start=control&menu=0&script=walk=0.6:-1390.6,1,use,8,cradle,8.2,engines,2.2,clamps,door,throttle=1,boost=1,4,climb=-1,0.15,climb=-0.001,3.6,climb=0,6
 ```
+
+The steering is one nudge of the nose: `climb=-1,0.15` at the pen's south wall pitches it down the incline's 8.7°,
+`climb=-0.001` holds it there (the sub levels itself only while the pitch axis is zero), and `climb=0` at the door
+chamber levels it. Stop it early with `&hold` for the stages: `…,climb=-0.001,1.5&hold` on the incline just off the
+ramp, 75 kn and gathering speed; `…,3.6,climb=0,0.8&hold` the level door chamber at 117 kn (60 m/s), the door open ahead.
 
 Phase 2's launch alone: `?script=cradle,8.2,engines,2.2,clamps,1` (starts in the pen by the implication).
+
+### The straight tunnel (phase 4 D6)
+
+The centreline is three points: the mouth `(0, −40, −1100)`, the end of the level 70 m door chamber `(0, −40, −1170)`,
+and the pen's south wall `(0, −14, −1340)` — one straight incline of 26 m over 170 m (≈ 8.7°). From the pen's south
+wall the ocean door is in sight down the bore:
+
+| URL | What it shows |
+|---|---|
+| `?start=pen&menu=0&view=0,-11,-1345,0,-40,-1100&hold&script=cradle,8.2,engines,2.2,clamps,door,5.02` | from just inside the bore at the pen's wall, straight down it to the open door and the sea |
+| `?start=pen&menu=0&script=cradle,8.2,engines,2.2,clamps,1,throttle=1,2&hold` | the pen camera behind the sub at the wall, the bore ahead (the sub hides the door's centre) |
+
+**Speed (`sim/interior.ts` `capAt`).** The cap is a ramp by distance to the pen: the full cruise/boost cap (60 m/s)
+more than `capRamp` 60 m south of the pen's south wall — the tunnel proper and the sea — falling linearly to
+`interiorSpeedCap` 15 m/s at the wall, and 15 inside the pen. Boost works wherever the cap is above cruise (30).
+
+**The door's two ranges (`tuning.ts`).** `doorRequestRange` 340 m — a request is accepted within it, so from the
+lowered cradle (296 m) and from the pen's mouth; `doorCloseRange` 280 m — the tower shuts an open door once the hull is
+beyond it, so docking still shuts it (the cradle is 296 m away) and at sea it shuts behind a departing sub as before.
+A sub that asks from the cradle and then waits there sees the door open and close again (it is beyond 280 m).
+
+**Pitch on the incline.** The bore's confinement is phase 2's: a hull held level runs into the incline's crown and
+slides along it, shedding speed (≈ 7 m/s, 14 kn, at full boost — `?start=pen&menu=0&hold&script=cradle,8.2,engines,2.2,clamps,door,throttle=1,boost=1,9`).
+Pitched to the incline it runs at 60 m/s. (A feel item for T7: the keyboard's pitch keys level the nose on release.)
+
+### Coming home (phase 4 D6)
+
+From 200 m out at sea, facing in: the door, a boosted run in, the nose up the incline at the door chamber's end, the
+ramp slowing Stingray from 60 m/s to 15 into the pen, then docked and raised — and the door shut behind her:
+
+```
+?start=ocean&menu=0&hold&script=in=-200,door,throttle=1,boost=1,6.1,climb=1,0.15,climb=0.001,N
+```
+
+| N | What it shows |
+|---|---|
+| `1.8` | mid-incline at 117 kn (60 m/s), "OCEAN DOOR OPEN — PEN 3 71 M" |
+| `2.8,climb=0,0.3` | on the ramp, 14 m from the pen: 50 kn and falling; the docking guide up |
+| `2.8,climb=0,1.6` | at the pen's wall: 29 kn (15 m/s), "STINGRAY IN PEN 3 — DOCKING" |
+| `2.8,climb=0,2,throttle=0,boost=0,dock=0,clamps,1,engines,cradle,8.2` | docked and raised: the ocean door SHUT (the tower closed it once the hull was beyond 280 m) |
 
 ## Other switches
 
