@@ -136,6 +136,8 @@ function play(a: Running, e: SoundEvent, underwater: boolean): void {
     // M6b, reversed: the unlock is the lock-in's clunk; home at the station, the setting-off latch and hiss.
     case 'chairUnlock': return a.machinery.chair(true);
     case 'chairHome': return a.machinery.chair(false);
+    case 'portLid': return a.machinery.portLid(e.open);
+    case 'pole': return a.machinery.pole(e.extend);
   }
 }
 
