@@ -58,8 +58,12 @@ const DRIVE_VANE_COUNT = 9;
 
 const WINDOW_Y = 2.6;
 const WINDOW_HEIGHT = 0.46;
+// Phase 4 (D3): the first pane runs forward and is centred on the seats (z −2.8), so the pilot is seen through the
+// window band at the front of the cabin as the series' is (cockpit-troy-and-phones-side-by-side.png); phase 3's first
+// pane (−2.8 … −0.1) is split behind it.
 const WINDOW_SPANS: ReadonlyArray<readonly [number, number]> = [
-  [-2.8, -0.1],
+  [-3.6, -2.0],
+  [-1.8, -0.1],
   [0.1, 1.1],
   [1.3, 2.4],
   [2.6, 3.7],
