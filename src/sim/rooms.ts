@@ -129,8 +129,12 @@ export const STATION_CHAIRS = Object.freeze({
 });
 /** Every chair fits inside this radius about its pole (D2). */
 export const CHAIR_RADIUS = 0.6;
-/** The station dais's height (D2: ≤ 0.3 m). */
-export const DAIS_HEIGHT = 0.25;
+/**
+ * The station dais's height (D2: ≤ 0.3 m). Phase 4 T2: 0.1 (T1's greybox had 0.25) — the chairs hang on their poles
+ * over it, and a seated Troy's soles are 0.13 m above the chair's floor point (render/injector-chair.ts
+ * CHAIR_FOOTPLATE_Y), so the footplate's underside (CHAIR_LOWEST_Y 0.115) must clear the dais and the bore's lid on it.
+ */
+export const DAIS_HEIGHT = 0.1;
 /**
  * The dais's front (south) edge: 1.2 m in front of the chair's pos — the open bore under the chair (render/rooms.ts
  * BORE_RADIUS 1.2, D1) reaches exactly to it, so the bore never cuts the walkable floor — and Troy stands 1.6 m from
@@ -140,7 +144,11 @@ export const DAIS_FRONT_Z = CHAIR.pos.z + 1.2;
 /** The dais's half-width about the axis: wide enough for the bore under Troy's chair (0.6 m east of the axis + 1.2). */
 const DAIS_HALF_WIDTH = 2;
 
-const chairBox = (c: Vec3): Box => box(v(c.x - CHAIR_RADIUS, F, c.z - CHAIR_RADIUS), v(c.x + CHAIR_RADIUS, F + 1.7, c.z + CHAIR_RADIUS));
+/**
+ * A chair's collider: its CHAIR_RADIUS footprint, from the floor to the ceiling — phase 4 T2: each chair's pole runs on
+ * up into a sleeve hanging from a ceiling boss (render/rooms.ts), so the column is solid all the way up (T1: 1.7 m).
+ */
+const chairBox = (c: Vec3): Box => box(v(c.x - CHAIR_RADIUS, F, c.z - CHAIR_RADIUS), v(c.x + CHAIR_RADIUS, CONTROL_ROOM.max.y, c.z + CHAIR_RADIUS));
 
 // The control room's furniture (phase 3 T4 — M1 art, after 02_MARINEVILLE_CONTROL_ROOM/; phase 4 D2 re-laid out round
 // the station): each drawn piece Troy can reach is drawn inside one of these boxes (render/rooms.test.ts). Named so the
@@ -173,7 +181,7 @@ export const CONTROL_ROOM_PROPS = Object.freeze({
    * it under Troy's chair.
    */
   station: box(v(AX - DAIS_HALF_WIDTH, F, AZ - 2.2), v(AX + DAIS_HALF_WIDTH, F + DAIS_HEIGHT, DAIS_FRONT_Z)),
-  /** D2: the chairs' own colliders (each inside CHAIR_RADIUS of its pole) — Troy's (the one that drops), Phones's, Marina's. */
+  /** D2: the chairs' own colliders (each chair inside CHAIR_RADIUS of its axis, floor to ceiling) — Troy's (the one that drops), Phones's, Marina's. */
   troysChair: chairBox(STATION_CHAIRS.troy),
   phonesChair: chairBox(STATION_CHAIRS.phones),
   marinasChair: chairBox(STATION_CHAIRS.marina),
