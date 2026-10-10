@@ -75,7 +75,7 @@ export const VIEW_PRESETS: Readonly<Record<string, readonly [number, number, num
   // The control room from the south windows (west of Troy's start), across the room to the station.
   control: [A.x - 2.2, FLOOR_Y + 2.6, A.z + 8.4, C.x, FLOOR_Y + 0.9, C.z - 0.5],
   // The station from behind (north, over the back panel): the chairs' backs, the dais and the bore under Troy's.
-  station: [A.x - 1.4, FLOOR_Y + 3.4, A.z - 4.2, C.x, FLOOR_Y - 0.3, C.z + 0.4],
+  station: [A.x - 1, FLOOR_Y + 4, A.z - 3.4, C.x, FLOOR_Y - 0.2, C.z + 0.6],
   // Inside the injector shaft's tube, high in the stalk, looking down it toward the pen.
   shaft: [C.x + 0.9, 60, C.z + 0.6, C.x, 25, C.z],
   // The pen hall, up at the ceiling over Troy's hatch — where the port is (T3) — over the standby sub's roof.
