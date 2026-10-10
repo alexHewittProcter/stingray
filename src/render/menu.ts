@@ -3,12 +3,15 @@
 // DOM and CSS only; every decision comes from the pure state machine in game/menu.ts. The items are plain elements,
 // not buttons: nothing takes keyboard focus, so the game's keys are live the moment the menu closes.
 
-import { type MenuEvent, type MenuState, itemLabel, menuItems } from '../game/menu';
+import { type MenuEvent, type MenuState, type SoundSwitches, itemLabel, menuItems } from '../game/menu';
 import { type LegendSituation, legendRowsHtml } from './legend';
 
 export interface MenuView {
-  /** situation: the current mode's controls card, for the Controls page (phase 3, M9). */
-  update(state: MenuState, muted: boolean, situation?: LegendSituation): void;
+  /**
+   * sound: what the Sound and Music items read (phase 4 S4); situation: the current mode's controls card, for the
+   * Controls page (phase 3, M9).
+   */
+  update(state: MenuState, sound: SoundSwitches, situation?: LegendSituation): void;
 }
 
 const STYLE = `
@@ -121,7 +124,7 @@ export function createMenu(parent: HTMLElement, onEvent: (e: MenuEvent) => void)
   let items: HTMLElement[] = [];
 
   return {
-    update(state, muted, situation = 'driving') {
+    update(state, sound, situation = 'driving') {
       document.body.dataset.menu = state.kind ?? '';
       root.classList.toggle('open', state.kind !== null);
       // Closing: leave the last page in place while it fades.
@@ -129,7 +132,7 @@ export function createMenu(parent: HTMLElement, onEvent: (e: MenuEvent) => void)
       const kind = state.kind;
       root.classList.toggle('pause', state.kind === 'pause');
 
-      const key = `${state.kind}|${state.page}|${muted}|${situation}`;
+      const key = `${state.kind}|${state.page}|${sound.muted}|${sound.music}|${situation}`;
       if (key !== built) {
         built = key;
         const list = menuItems(state.kind, state.page);
@@ -147,7 +150,7 @@ export function createMenu(parent: HTMLElement, onEvent: (e: MenuEvent) => void)
               ${screen}
               <div class="mn-list">${list.map((item, i) => `
                 <div class="mn-item" data-i="${i}" data-item="${item}"><span class="mn-lamp"></span>
-                  <span class="mn-label">${itemLabel(item, muted, kind)}</span><span class="mn-key">Enter</span></div>`).join('')}
+                  <span class="mn-label">${itemLabel(item, sound, kind)}</span><span class="mn-key">Enter</span></div>`).join('')}
               </div>
               <div class="mn-hints"><span><kbd>↑</kbd><kbd>↓</kbd> select</span><span><kbd>Enter</kbd> choose</span>${
                 state.kind === 'title' && state.page === 'main' ? '' : `<span><kbd>Esc</kbd> ${back}</span>`}</div>

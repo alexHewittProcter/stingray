@@ -10,7 +10,8 @@ export type MenuPage = 'main' | 'controls';
 
 // M9: 'controlRoom' is the title's "Start in the control room" and the pause menu's "Return to the control room";
 // 'pen' is "Skip to Pen 3" / "Return to Pen 3" — one item each, labelled by the menu's kind (itemLabel).
-export type MenuItem = 'controlRoom' | 'resume' | 'pen' | 'ocean' | 'controls' | 'sound' | 'back';
+// Phase 4 (S4): 'music' — the Music switch, beside Sound on both menus.
+export type MenuItem = 'controlRoom' | 'resume' | 'pen' | 'ocean' | 'controls' | 'sound' | 'music' | 'back';
 
 export interface MenuState {
   /** Which menu is up; null in play. */
@@ -33,9 +34,15 @@ export type MenuEvent =
 /**
  * What the game must do after an event: nothing; close the menu and play on as things stand; close it and go to the
  * control room (M9: R, the game's start — toControlRoom), to standby in Pen 3 (toStandby) or to the open ocean
- * (?start=ocean); or toggle the persisted mute (M).
+ * (?start=ocean); toggle the persisted mute (M); or (phase 4 S4) toggle the persisted Music switch.
  */
-export type MenuAction = 'none' | 'close' | 'controlRoom' | 'standby' | 'ocean' | 'toggleSound';
+export type MenuAction = 'none' | 'close' | 'controlRoom' | 'standby' | 'ocean' | 'toggleSound' | 'music';
+
+/** What the Sound and Music items read: the mute (M) and the Music switch (S4). */
+export interface SoundSwitches {
+  muted: boolean;
+  music: boolean;
+}
 
 export const CLOSED: MenuState = Object.freeze({ kind: null, page: 'main', index: 0 });
 
@@ -43,22 +50,23 @@ export const openMenu = (kind: MenuKind): MenuState => ({ kind, page: 'main', in
 
 export function menuItems(kind: MenuKind, page: MenuPage): readonly MenuItem[] {
   if (page === 'controls') return ['back'];
-  // M9: title — Start in the control room · Skip to Pen 3 · Skip to open ocean · Controls · Sound;
-  // pause — Resume · Return to the control room · Return to Pen 3 · Skip to open ocean · Controls · Sound.
+  // M9: title — Start in the control room · Skip to Pen 3 · Skip to open ocean · Controls · Sound · Music;
+  // pause — Resume · Return to the control room · Return to Pen 3 · Skip to open ocean · Controls · Sound · Music.
   return kind === 'title'
-    ? ['controlRoom', 'pen', 'ocean', 'controls', 'sound']
-    : ['resume', 'controlRoom', 'pen', 'ocean', 'controls', 'sound'];
+    ? ['controlRoom', 'pen', 'ocean', 'controls', 'sound', 'music']
+    : ['resume', 'controlRoom', 'pen', 'ocean', 'controls', 'sound', 'music'];
 }
 
 /** An item's words on the menu `kind` it is on (M9: the title starts or skips; the pause menu returns). */
-export function itemLabel(item: MenuItem, muted: boolean, kind: MenuKind): string {
+export function itemLabel(item: MenuItem, sound: SoundSwitches, kind: MenuKind): string {
   switch (item) {
     case 'controlRoom': return kind === 'title' ? 'Start in the control room' : 'Return to the control room';
     case 'resume': return 'Resume';
     case 'pen': return kind === 'title' ? 'Skip to Pen 3' : 'Return to Pen 3';
     case 'ocean': return 'Skip to open ocean';
     case 'controls': return 'Controls';
-    case 'sound': return muted ? 'Sound: Off' : 'Sound: On';
+    case 'sound': return sound.muted ? 'Sound: Off' : 'Sound: On';
+    case 'music': return sound.music ? 'Music: On' : 'Music: Off';
     case 'back': return 'Back';
   }
 }
@@ -90,6 +98,7 @@ export function menuOn(s: MenuState, e: MenuEvent): { state: MenuState; action: 
         case 'ocean': return { state: CLOSED, action: 'ocean' };
         case 'controls': return { state: { kind: s.kind, page: 'controls', index: 0 }, action: 'none' };
         case 'sound': return { state: s, action: 'toggleSound' };
+        case 'music': return { state: s, action: 'music' };
         case 'back': return { state: backFromControls(s.kind), action: 'none' };
         default: return stay;
       }

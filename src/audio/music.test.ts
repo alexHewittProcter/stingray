@@ -171,7 +171,8 @@ describe('the scheduler over a fake clock', () => {
 
 describe('rolls (instruments.ts)', () => {
   it('a roll is `roll` strokes a step across its length, evenly spaced, rising to its velocity', async () => {
-    const { rollStrokes, MUSIC_LEVELS } = await import('./instruments');
+    const { rollStrokes } = await import('./instruments');
+    const MUSIC_LEVELS = (await import('./levels')).LEVELS.music;
     const s = rollStrokes(2, 0.8, 3, 2, SS);
     expect(s.length).toBe(6);
     s.forEach(([t], i) => expect(t).toBeCloseTo(2 + (i * SS) / 3, 9));
