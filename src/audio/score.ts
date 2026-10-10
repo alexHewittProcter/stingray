@@ -43,7 +43,26 @@ export interface Section {
   ending?: { steps: number; tracks: Tracks };
   /** In-world (the base's PA): plays through the effects bus, taking the room and the muffle (S2). */
   diegetic?: boolean;
+  /** A recorded clip the section plays instead of (or as well as) its tracks: ALERT's Launch Stations signal. */
+  clip?: Clip;
 }
+
+/**
+ * A sampled asset under public/ (fetched and decoded once by music.ts). A looping section sounds it from its top
+ * every `seconds` + the caller's gap (LEVELS.alertGap): a signal, retriggered, not a drone.
+ */
+export interface Clip {
+  /** Path under the site's base, e.g. 'sfx/launch-stations.wav'. */
+  url: string;
+  /** The file's length (s). score.test.ts reads the WAV's header and holds it to this. */
+  seconds: number;
+}
+
+/**
+ * The "Launch Stations" PA drum signal: an original modelled recreation, made by tools/launch-stations.py (180 bpm,
+ * three 4/4 bars — the drumming fills ≈ 3.65 s and the file ends on the bar, at 4.000 s). See public/sfx/README.md.
+ */
+export const LAUNCH_STATIONS: Clip = { url: 'sfx/launch-stations.wav', seconds: 4 };
 
 export interface Score {
   bpm: number;
@@ -131,7 +150,8 @@ const SNARE_LIGHT: D[] = [
 ];
 
 // The tattoo: the alarm figure — flams, a quick ruff and driving sixteenths; the second bar answers the first and
-// climbs to a roll. Used alone for ALERT and to open the FANFARE.
+// climbs to a roll. Opens the FANFARE. (The ALERT was this tattoo alone until it became the sampled Launch Stations
+// signal, LAUNCH_STATIONS.)
 const TATTOO_A: D[] = [
   [0, 0.92, { flam: true }],
   [1, 0.42],
@@ -357,12 +377,6 @@ function stingEnd(): Tracks {
   return t;
 }
 
-function alert(): Tracks {
-  const t = empty();
-  t.snare = [...drums(0, TATTOO_A, 0.85), ...drums(1, TATTOO_B, 0.85)];
-  return t;
-}
-
 export const SCORE: Score = {
   // 152: brisk, inside the idiom's 150–160 (research §4), a touch under the top so the sixteenth-note tattoo
   // (≈ 10 strokes a second) and the three-to-a-step rolls stay articulate on synthesised drums.
@@ -375,7 +389,9 @@ export const SCORE: Score = {
     ROLL: roll(),
     STING_HOME: { bars: 4, loop: false, tracks: stingHome() },
     STING_END: { bars: 2, loop: false, tracks: stingEnd() },
-    ALERT: { bars: 2, loop: true, tracks: alert(), diegetic: true },
+    // The PA's Launch Stations signal: a sampled clip, no tracks. It is SFX (the effects bus, the Music switch does not
+    // silence it); `bars` only keeps the section's shape for the scheduler — the clip's own timing is in LAUNCH_STATIONS.
+    ALERT: { bars: 1, loop: true, tracks: empty(), diegetic: true, clip: LAUNCH_STATIONS },
   },
 };
 

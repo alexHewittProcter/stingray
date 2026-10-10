@@ -5,7 +5,7 @@
 // A play is a short list of segments laid end to end on the audio clock: [the left section's ending?] → the body
 // → [its `then`?]. A looping body has no end; it plays until the next play replaces the sequence.
 
-import { type Placed, type Score, type SectionId, placedBetween, sectionSeconds, sectionSteps, stepSeconds } from './score';
+import { type Clip, type Placed, type Score, type SectionId, placedBetween, sectionSeconds, sectionSteps, stepSeconds } from './score';
 
 /** Seconds from a play call to its first hit (a hit scheduled in the past would sound late and clipped). */
 export const START_DELAY = 0.05;
@@ -36,6 +36,14 @@ export interface Timed extends Placed {
   seconds: number;
 }
 
+/** A clip to start from its top at `time` (a section with a `clip`: ALERT's Launch Stations signal). */
+export interface ClipStart {
+  id: SectionId;
+  clip: Clip;
+  /** Audio-clock time the clip starts. */
+  time: number;
+}
+
 export interface PlayOptions {
   then?: SectionId;
   /** Play the left section's ending first, if it has one (default true). */
@@ -61,6 +69,33 @@ export function due(score: Score, seg: Segment, fromTime: number, toTime: number
     time: seg.start + h.step * ss,
     seconds: (h.len ?? 1) * ss,
   }));
+}
+
+/**
+ * When a clip sounds: from `start`, every `period` seconds (a looping section; a one-shot sounds it once), while
+ * before `end` — the times in [from, to). Consecutive windows hand each start out exactly once.
+ */
+export function clipTimes(start: number, end: number, period: number, loop: boolean, from: number, to: number): number[] {
+  const out: number[] = [];
+  const lo = Math.max(from, start);
+  const hi = Math.min(to, end);
+  if (!(hi > lo)) return out;
+  if (!loop || !(period > 0)) return start >= lo && start < hi ? [start] : out;
+  // Index arithmetic, not repeated addition: the k-th start is exactly start + k × period, however far along.
+  for (let k = Math.max(0, Math.ceil((lo - start) / period - 1e-9)); ; k++) {
+    const t = start + k * period;
+    if (t >= hi) break;
+    if (t >= lo) out.push(t);
+  }
+  return out;
+}
+
+/** The clip starts of one segment in [fromTime, toTime): its section's clip, every clip.seconds + `gap`. */
+export function clipsDue(score: Score, seg: Segment, fromTime: number, toTime: number, gap: number): ClipStart[] {
+  const section = score.sections[seg.id];
+  const clip = section.clip;
+  if (!clip || seg.part !== 'body') return [];
+  return clipTimes(seg.start, seg.end, clip.seconds + Math.max(0, gap), section.loop, fromTime, toTime).map((time) => ({ id: seg.id, clip, time }));
 }
 
 /** Time → step leaves float dust (16.000000001); a bound within a hair of a step is that step. Deterministic, so
@@ -95,16 +130,24 @@ export function begin(score: Score, now: number, id: SectionId, opts: PlayOption
 }
 
 /**
- * Everything due from where the last call stopped up to `now + ahead`. If the caller fell behind (a stalled frame),
- * the missed span is skipped rather than played late in a burst. With the clock stopped (a suspended context),
- * repeated calls hand out nothing new.
+ * Everything due from where the last call stopped up to `now + ahead`: the hits, and the clip starts (`clipGap`: the
+ * silence between a looping clip's soundings — music.ts passes LEVELS.alertGap). If the caller fell behind (a stalled
+ * frame), the missed span is skipped rather than played late in a burst. With the clock stopped (a suspended
+ * context), repeated calls hand out nothing new.
  */
-export function advance(score: Score, seq: Sequence, now: number, ahead = LOOK_AHEAD): { hits: Timed[]; seq: Sequence } {
+export function advance(
+  score: Score,
+  seq: Sequence,
+  now: number,
+  ahead = LOOK_AHEAD,
+  clipGap = 0,
+): { hits: Timed[]; clips: ClipStart[]; seq: Sequence } {
   const from = Math.max(seq.cursor, now);
   const to = now + ahead;
-  if (!(to > from)) return { hits: [], seq };
+  if (!(to > from)) return { hits: [], clips: [], seq };
   const hits = seq.segments.flatMap((s) => due(score, s, from, to)).sort((a, b) => a.time - b.time);
-  return { hits, seq: { segments: seq.segments, cursor: to } };
+  const clips = seq.segments.flatMap((s) => clipsDue(score, s, from, to, clipGap)).sort((a, b) => a.time - b.time);
+  return { hits, clips, seq: { segments: seq.segments, cursor: to } };
 }
 
 /** What `Music.playing()` reports: the section asked for (an ending counts as the section that follows it); null once done. */

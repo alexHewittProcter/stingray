@@ -1,6 +1,9 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   INSTRUMENTS,
+  LAUNCH_STATIONS,
   PITCHED,
   SCORE,
   SECTION_IDS,
@@ -13,6 +16,30 @@ import {
 } from './score';
 
 const BAR = SCORE.stepsPerBeat * 4;
+
+/** A PCM WAV's format and samples (16-bit). Walks the RIFF chunks, so a LIST chunk before `data` does not matter. */
+function parseWav(b: Buffer): { channels: number; rate: number; bits: number; seconds: number; samples: Int16Array } {
+  expect(b.toString('ascii', 0, 4)).toBe('RIFF');
+  expect(b.toString('ascii', 8, 12)).toBe('WAVE');
+  let channels = 0;
+  let rate = 0;
+  let bits = 0;
+  for (let at = 12; at + 8 <= b.length; ) {
+    const id = b.toString('ascii', at, at + 4);
+    const size = b.readUInt32LE(at + 4);
+    if (id === 'fmt ') {
+      expect(b.readUInt16LE(at + 8)).toBe(1); // PCM
+      channels = b.readUInt16LE(at + 10);
+      rate = b.readUInt32LE(at + 12);
+      bits = b.readUInt16LE(at + 22);
+    } else if (id === 'data') {
+      const samples = new Int16Array(b.buffer.slice(b.byteOffset + at + 8, b.byteOffset + at + 8 + size));
+      return { channels, rate, bits, seconds: samples.length / channels / rate, samples };
+    }
+    at += 8 + size + (size % 2);
+  }
+  throw new Error('no data chunk');
+}
 
 function allTracks(s: Section) {
   const out = [{ name: 'body', tracks: s.tracks, steps: sectionSteps(s) }];
@@ -36,7 +63,7 @@ describe('the score (S1, S2)', () => {
     expect(s.ROLL.loop).toBe(true);
     expect(s.STING_HOME).toMatchObject({ bars: 4, loop: false });
     expect(s.STING_END).toMatchObject({ bars: 2, loop: false });
-    expect(s.ALERT).toMatchObject({ bars: 2, loop: true });
+    expect(s.ALERT).toMatchObject({ loop: true, diegetic: true });
   });
 
   it('ROLL is open-ended: it loops until it is left, and leaving it lands a brass hit', () => {
@@ -51,12 +78,35 @@ describe('the score (S1, S2)', () => {
     expect(roll.tracks.timp.length).toBeGreaterThan(0);
   });
 
-  it('ALERT is the snare tattoo alone, 2 bars, looping, diegetic (the PA)', () => {
+  it('ALERT is the Launch Stations clip alone — no synthesised tracks — looping, diegetic (the PA)', () => {
     const a = SCORE.sections.ALERT;
-    expect(a.tracks.snare.length).toBeGreaterThan(8);
-    for (const inst of INSTRUMENTS) if (inst !== 'snare') expect(a.tracks[inst]).toEqual([]);
+    expect(a.clip).toBe(LAUNCH_STATIONS);
+    for (const inst of INSTRUMENTS) expect(a.tracks[inst]).toEqual([]);
     expect(a.diegetic).toBe(true);
     for (const id of SECTION_IDS) if (id !== 'ALERT') expect(SCORE.sections[id].diegetic ?? false).toBe(false);
+    for (const id of SECTION_IDS) if (id !== 'ALERT') expect(SCORE.sections[id].clip).toBeUndefined();
+  });
+
+  it('the Launch Stations WAV (public/, committed) is what LAUNCH_STATIONS says: mono 16-bit, its length, small', () => {
+    const bytes = readFileSync(join(process.cwd(), 'public', LAUNCH_STATIONS.url));
+    const wav = parseWav(bytes);
+    expect(wav.channels).toBe(1);
+    expect(wav.bits).toBe(16);
+    expect([44100, 48000]).toContain(wav.rate);
+    expect(wav.seconds).toBeCloseTo(LAUNCH_STATIONS.seconds, 3);
+    expect(bytes.length).toBeLessThan(400 * 1024);
+    // Brief: ≈ 180 bpm, 3.5–4.0 s, ending on the bar — three 4/4 bars at 180 bpm is exactly 4 s.
+    expect(LAUNCH_STATIONS.seconds).toBeGreaterThanOrEqual(3.5);
+    expect(LAUNCH_STATIONS.seconds).toBeLessThanOrEqual(4.0);
+    expect((LAUNCH_STATIONS.seconds / (60 / 180)) % 4).toBeCloseTo(0, 6);
+    // It loops clean: the drums have rung out well before the end, and the very last samples are silence.
+    const tail = wav.samples.subarray(wav.samples.length - Math.round(0.1 * wav.rate));
+    expect(Math.max(...Array.from(tail, Math.abs))).toBeLessThan(10); // under −70 dBFS
+    expect(wav.samples[wav.samples.length - 1]).toBe(0);
+    // And it is a loud, finished asset: peak-normalised to about −1 dBFS.
+    let peak = 0;
+    for (const v of wav.samples) peak = Math.max(peak, Math.abs(v));
+    expect(20 * Math.log10(peak / 32768)).toBeCloseTo(-1, 0);
   });
 
   it('the MARCH is the piece: a brass tune over the march snare with a bass line and timpani accents', () => {
