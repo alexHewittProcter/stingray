@@ -1,5 +1,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
+import { SEATS_LOCAL } from '../sim/rooms';
+import { CHAIR_LOWEST_Y } from './injector-chair';
 
 // Stingray, built from code. Visible appearance follows the TV frames (silver-grey lower hull,
 // yellow stripe, light-blue deck, navy cabin, tall blue tail fin with the "3"); hidden geometry
@@ -18,8 +20,9 @@ export interface StingrayModel {
   readonly drive: THREE.Object3D;
   setDriveSpin(angleRadians: number): void;
   /**
-   * Phase 3 (M1, T7): the roof hatch over the pilot's seat — 0 shut, 1 open (the lid swung up and back on its rear
-   * hinge). Driven from Troy (main.ts): open while his chair is on the shaft's last leg, shut otherwise.
+   * Phase 3 (M1, T7; phase 4 D3): Troy's roof hatch over his seat — 0 shut, 1 open (the lid swung up and forward on
+   * its front hinge). Driven from (troy, launch) by render/boarding.ts in main.ts: open as the chair comes into the
+   * hall and while the pole is down, shut once the pole has retracted.
    */
   setHatch(open: number): void;
 }
@@ -55,8 +58,12 @@ const DRIVE_VANE_COUNT = 9;
 
 const WINDOW_Y = 2.6;
 const WINDOW_HEIGHT = 0.46;
+// Phase 4 (D3): the first pane runs forward and is centred on the seats (z −2.8), so the pilot is seen through the
+// window band at the front of the cabin as the series' is (cockpit-troy-and-phones-side-by-side.png); phase 3's first
+// pane (−2.8 … −0.1) is split behind it.
 const WINDOW_SPANS: ReadonlyArray<readonly [number, number]> = [
-  [-2.8, -0.1],
+  [-3.6, -2.0],
+  [-1.8, -0.1],
   [0.1, 1.1],
   [1.3, 2.4],
   [2.6, 3.7],
@@ -66,18 +73,34 @@ const WINDOW_SPANS: ReadonlyArray<readonly [number, number]> = [
 const CABIN_PINSTRIPES = [WINDOW_Y + 0.4, WINDOW_Y - 0.38, CABIN_CENTRE_Y + 0.5];
 const PINSTRIPE_HALF = 0.035;
 
-// Phase 3 (T7): the dome and the periscope sit a little further forward than phase 2 drew them (−1.6, −1.0), so the
-// roof hatch over the pilot's seat (SEAT_HATCH, at the seat's z = 0) is clear of the dome.
-const DOME_Z = -2.1;
-const DOME_LENGTH = 1.35; // the dome's half-length along z (phase 2: 1.9)
-const PERISCOPE_Z = -1.6;
+// Phase 4 (D3: "The dome and periscope move aft to about z 0…+1"): phase 3 had moved them forward to −2.1/−1.6, exactly
+// where the seats (SEATS_LOCAL, z −2.8) put the hatches; aft of the hatches now (the dome spans −1.05…+1.65).
+export const DOME_Z = 0.3;
+export const DOME_LENGTH = 1.35; // the dome's half-length along z (phase 2: 1.9)
+export const DOME_HALF_WIDTH = 1.1;
+export const PERISCOPE_Z = 0.8;
 /**
- * Phase 3 (M1 "the sub gains a roof hatch over the seat", T7): the round lid over the pilot's seat (model-local x 0,
- * z 0 — phase 3's seat point, y 2.0): its footprint radius, the roof line it sits on, its rise (it covers Troy's head,
- * ≈ 3.5, when shut), and how far it swings open. Phase 4 (D3, T3): it moves to Troy's seat, sim/rooms.ts
- * SEATS_LOCAL.troy — until T3 the aboard chair sits there and this hatch stays at z 0.
+ * Phase 4 (D3): Troy's roof hatch, over his seat (sim/rooms.ts SEATS_LOCAL.troy — model-local x −0.6, z −2.8; the
+ * readme's "centred 0.2 m forward of his seat point" is not used: the chair reaches 0.58–0.6 m all round its axis, so
+ * a hatch 0.2 m forward would clip its back and pole — T2's hand-off). `radius` 0.65 is the footprint, sized to the
+ * chair (D2's 0.6 m circle). It stands on a coaming whose foot follows the roof and whose top is level at `coamingY`;
+ * the lid is a flattened dome (`rise`, superellipse `power`) tall enough to cover Troy's head (≈ 3.51) and the chair's
+ * back and head bar (≈ 3.57, 0.3–0.55 m aft of the centre) when shut. It is hinged on its forward edge and swings up
+ * and forward by `openAngle` — away from the pole, which stands 0.48 m aft of the centre.
  */
-const SEAT_HATCH = { radius: 0.85, baseY: 3.12, rise: 0.44, openAngle: (112 * Math.PI) / 180 };
+export const SEAT_HATCH = Object.freeze({
+  x: SEATS_LOCAL.troy.x, z: SEATS_LOCAL.troy.z, radius: 0.65, coamingY: 3.25, rise: 0.45, power: 4, openAngle: (112 * Math.PI) / 180,
+});
+/** Phase 4 (D3): Phones's hatch — "a dummy disc, radius 0.45 m, shut, at Phones's" seat. */
+export const DUMMY_HATCH = Object.freeze({ x: SEATS_LOCAL.phones.x, z: SEATS_LOCAL.phones.z, radius: 0.45 });
+/**
+ * Phase 4 (D3: "if it falls below, the implementer flattens the loft's crown at z_f, art not seat"): with the cabin's
+ * cubic top the roof at the hatch's outer rim (x −1.25) is 2.850 — on the limit. The crown is flattened round z_f by
+ * raising the top's superellipse exponent from 3 to 3 + CROWN_FLATTEN (a gaussian along z, CROWN_SPREAD wide), which
+ * lifts the rim's lowest roof point to ≈ 2.94 and leaves the cabin aft of the windscreen as it was.
+ */
+const CROWN_FLATTEN = 0.6;
+const CROWN_SPREAD = 1.4;
 const PERISCOPE_TOP_Y = 7.1;
 
 // ---- Colours ---------------------------------------------------------------------------------
@@ -162,6 +185,8 @@ interface LoftSpec {
   bottom: Profile;
   /** Superellipse exponents: >2 flattens that half (a flatter deck / roof). */
   topExponent: number;
+  /** Phase 4 (D3): the top's exponent along z, where it varies (else topExponent). */
+  topExponentAt?(z: number): number;
   bottomExponent: number;
   colour(x: number, y: number, z: number): number;
   /** Surface height for the bump map, 0 (an engraved panel line) to 1 (the skin). */
@@ -209,7 +234,7 @@ function loft(spec: LoftSpec): Loft {
     const cos = Math.cos(theta);
     const sin = Math.sin(theta);
     const upper = sin >= 0;
-    const n = upper ? spec.topExponent : spec.bottomExponent;
+    const n = upper ? (spec.topExponentAt?.(z) ?? spec.topExponent) : spec.bottomExponent;
     const h = evaluate(upper ? spec.top : spec.bottom, z);
     const x = evaluate(spec.halfWidth, z) * Math.sign(cos) * Math.pow(Math.abs(cos), 2 / n);
     const y = spec.centreY + h * Math.sign(sin) * Math.pow(Math.abs(sin), 2 / n);
@@ -304,7 +329,7 @@ function loft(spec: LoftSpec): Loft {
       const dy = y - spec.centreY;
       const upper = dy >= 0;
       const h = evaluate(upper ? spec.top : spec.bottom, z);
-      const n = upper ? spec.topExponent : spec.bottomExponent;
+      const n = upper ? (spec.topExponentAt?.(z) ?? spec.topExponent) : spec.bottomExponent;
       const s = Math.min(Math.abs(dy) / h, 0.999);
       const x = w * Math.pow(1 - Math.pow(s, n), 1 / n);
       // Gradient of |x/w|^n + |dy/h|^n is the outward normal.
@@ -406,6 +431,37 @@ function createHull(): Loft {
   });
 }
 
+const CABIN_WIDTH: Profile = {
+  max: CABIN_HALF_WIDTH,
+  front: { start: CABIN_START_Z, full: -3, power: 2, exponent: 0.4 },
+  rear: { start: 3, end: CABIN_END_Z, min: 0.05 },
+};
+const CABIN_TOP_PROFILE: Profile = {
+  max: CABIN_TOP,
+  front: { start: CABIN_START_Z, full: -2.5, power: 2, exponent: 0.5 },
+  rear: { start: 3, end: CABIN_END_Z, min: 0.2 },
+};
+/** The cabin top's superellipse exponent along z: 3, flattened round the seats' z (CROWN_FLATTEN). */
+function cabinTopExponent(z: number): number {
+  return 3 + CROWN_FLATTEN * Math.exp(-(((z - SEAT_HATCH.z) / CROWN_SPREAD) ** 2));
+}
+
+/**
+ * Phase 4 (D3): the cabin roof's height at model-local (x, z) — the loft's top surface, where it is over (x, z); the
+ * cabin's centre line where it is not (outside the loft's width or length).
+ */
+export function cabinRoofY(x: number, z: number): number {
+  if (z <= CABIN_START_Z || z >= CABIN_END_Z) return CABIN_CENTRE_Y;
+  const w = evaluate(CABIN_WIDTH, z);
+  const h = evaluate(CABIN_TOP_PROFILE, z);
+  const n = cabinTopExponent(z);
+  const s = Math.min(1, Math.abs(x) / w);
+  return CABIN_CENTRE_Y + h * Math.pow(1 - Math.pow(s, n), 1 / n);
+}
+
+/** Phase 4 (D3): the window band's top edge (WINDOW_Y + half its height) — every hatch rim stays above it. */
+export const WINDOW_BAND_TOP = WINDOW_Y + WINDOW_HEIGHT / 2;
+
 function createCabin(): Loft {
   return loft({
     zStart: CABIN_START_Z,
@@ -413,18 +469,11 @@ function createCabin(): Loft {
     stations: CABIN_STATIONS,
     segments: CABIN_SEGMENTS,
     centreY: CABIN_CENTRE_Y,
-    halfWidth: {
-      max: CABIN_HALF_WIDTH,
-      front: { start: CABIN_START_Z, full: -3, power: 2, exponent: 0.4 },
-      rear: { start: 3, end: CABIN_END_Z, min: 0.05 },
-    },
-    top: {
-      max: CABIN_TOP,
-      front: { start: CABIN_START_Z, full: -2.5, power: 2, exponent: 0.5 },
-      rear: { start: 3, end: CABIN_END_Z, min: 0.2 },
-    },
+    halfWidth: CABIN_WIDTH,
+    top: CABIN_TOP_PROFILE,
     bottom: { max: CABIN_BOTTOM },
     topExponent: 3,
+    topExponentAt: cabinTopExponent,
     bottomExponent: 2,
     colour: cabinColour,
     cut: cabinCut,
@@ -436,7 +485,8 @@ function createCabin(): Loft {
  * each side window's pane and under the roof hatch, so the pilot in his chair can be seen from outside.
  */
 function cabinCut(x: number, y: number, z: number): boolean {
-  if (y > 2.9 && Math.hypot(x, z) < SEAT_HATCH.radius - 0.03) return true;
+  // Phase 4 (D3): the hole under Troy's hatch, inside its coaming (the roof there is above the window band).
+  if (y > WINDOW_BAND_TOP && Math.hypot(x - SEAT_HATCH.x, z - SEAT_HATCH.z) < SEAT_HATCH.radius - 0.04) return true;
   if (Math.abs(x) < 0.6 || Math.abs(y - WINDOW_Y) > WINDOW_HEIGHT / 2) return false;
   return WINDOW_SPANS.some(([z0, z1]) => z > z0 && z < z1);
 }
@@ -610,37 +660,120 @@ function addWindows(group: THREE.Group, cabin: Loft, f: Finishes): void {
   }
 }
 
+/** A ring of `segments` + 1 points round (cx, cz) at radius r, model-local. */
+function around(cx: number, cz: number, r: number, segments: number): Array<{ x: number; z: number }> {
+  const out: Array<{ x: number; z: number }> = [];
+  for (let j = 0; j <= segments; j++) {
+    const a = (j / segments) * Math.PI * 2;
+    out.push({ x: cx + Math.cos(a) * r, z: cz + Math.sin(a) * r });
+  }
+  return out;
+}
+
+/** A band between two rings of points (same count), each point's y given; faces both ways (drawn double-sided). */
+function bandBetween(lower: ReadonlyArray<THREE.Vector3>, upper: ReadonlyArray<THREE.Vector3>): THREE.BufferGeometry {
+  const positions: number[] = [];
+  const indices: number[] = [];
+  for (const p of [...lower, ...upper]) positions.push(p.x, p.y, p.z);
+  const n = lower.length;
+  for (let j = 0; j < n - 1; j++) indices.push(j, j + 1, n + j, j + 1, n + j + 1, n + j);
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  g.setIndex(indices);
+  g.computeVertexNormals();
+  return g;
+}
+
 /**
- * Phase 3 (M1, T7): the round hatch over the pilot's seat — a shallow light-blue lid on a metal bezel, hinged at its
- * rear edge. The lid's pivot is returned: rotation.x = openAngle × open swings its front edge up and back.
+ * Phase 4 (D3): Troy's hatch over his seat — a metal coaming whose foot follows the roof and whose top is level, a
+ * bezel on it, and a light-blue flattened-dome lid hinged at its forward edge. Plus Phones's dummy: a shut disc on the
+ * roof over his seat, in a bezel, both laid on the roof's curve. The lid's pivot is returned: rotation.x = −openAngle
+ * × open swings its rear edge up and forward.
  */
 function addSeatHatch(group: THREE.Group, f: Finishes): THREE.Object3D {
-  const { radius: a, baseY, rise: h } = SEAT_HATCH;
-  const sphere = (a * a + h * h) / (2 * h);
-  const theta = Math.asin(a / sphere);
-  const bezel = new THREE.Mesh(new THREE.TorusGeometry(a, 0.055, 6, 36), f.metal);
+  const { x: cx, z: cz, radius: a, coamingY, rise: h, power } = SEAT_HATCH;
+  const SEG = 40;
+  const rim = around(cx, cz, a, SEG);
+  const coaming = new THREE.Mesh(
+    bandBetween(
+      rim.map((p) => new THREE.Vector3(p.x, cabinRoofY(p.x, p.z) - 0.04, p.z)),
+      rim.map((p) => new THREE.Vector3(p.x, coamingY, p.z)),
+    ),
+    standard(METAL, { roughness: 0.3, metalness: 0.55, side: THREE.DoubleSide }),
+  );
+  coaming.name = 'seat-hatch-coaming';
+  group.add(coaming);
+  const bezel = new THREE.Mesh(new THREE.TorusGeometry(a, 0.045, 6, SEG), f.metal);
+  bezel.name = 'seat-hatch-bezel';
   bezel.rotation.x = Math.PI / 2;
-  bezel.position.set(0, baseY + 0.02, 0);
+  bezel.position.set(cx, coamingY, cz);
   group.add(bezel);
-  // The hinge on the lid's rear edge (+z): the pivot sits there, the lid hangs forward of it.
+  // The hinge on the lid's forward edge (−z): the pivot sits there, the lid lies aft of it.
   const pivot = new THREE.Object3D();
   pivot.name = 'seat-hatch';
-  pivot.position.set(0, baseY, a);
-  const lid = new THREE.Mesh(new THREE.SphereGeometry(sphere, 28, 6, 0, Math.PI * 2, 0, theta), standard(DOME_BLUE, { roughness: 0.3, side: THREE.DoubleSide }));
-  lid.position.set(0, h - sphere, -a);
+  pivot.position.set(cx, coamingY, cz - a);
+  const profile: THREE.Vector2[] = [];
+  const STEPS = 12;
+  for (let k = 0; k <= STEPS; k++) {
+    const d = (a + 0.01) * (1 - k / STEPS);
+    profile.push(new THREE.Vector2(d, h * Math.pow(Math.max(0, 1 - Math.pow(d / (a + 0.01), power)), 1 / power)));
+  }
+  const lid = new THREE.Mesh(new THREE.LatheGeometry(profile, 28), standard(DOME_BLUE, { roughness: 0.3, side: THREE.DoubleSide }));
+  lid.name = 'seat-hatch-lid';
+  lid.position.set(0, 0, a);
   pivot.add(lid);
-  const hinge = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.5, 10).rotateZ(Math.PI / 2), f.darkMetal);
+  const hinge = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.4, 10).rotateZ(Math.PI / 2), f.darkMetal);
   pivot.add(hinge);
   group.add(pivot);
+
+  // Phones's dummy, shut: a disc and its bezel laid on the roof's curve.
+  const d = DUMMY_HATCH;
+  const onRoof = (g: THREE.BufferGeometry, lift: number): THREE.BufferGeometry => {
+    const pos = g.getAttribute('position') as THREE.BufferAttribute;
+    for (let i = 0; i < pos.count; i++) pos.setY(i, cabinRoofY(pos.getX(i), pos.getZ(i)) + lift + pos.getY(i));
+    g.computeVertexNormals();
+    return g;
+  };
+  const disc = new THREE.Mesh(onRoof(new THREE.CircleGeometry(d.radius, 28).rotateX(-Math.PI / 2).translate(d.x, 0, d.z), 0.025), standard(DOME_BLUE, { roughness: 0.3 }));
+  disc.name = 'dummy-hatch';
+  group.add(disc);
+  const ring = new THREE.Mesh(onRoof(new THREE.TorusGeometry(d.radius, 0.04, 6, 32).rotateX(Math.PI / 2).translate(d.x, 0, d.z), 0.02), f.metal);
+  ring.name = 'dummy-hatch-bezel';
+  group.add(ring);
   return pivot;
+}
+
+/**
+ * Phase 4 (D3: "the chair's base lands on a floor pillar as the series' does — a short pedestal drawn in the cabin at
+ * each seat", cockpit-floor-clamps-chair-bases.png): a chrome pillar from a bolted floor collar on the hull's deck up
+ * to just under the chair's lowest point, with a clamp collar at its top — under each seat point.
+ */
+export const PEDESTAL = Object.freeze({ floorY: 1.72, radius: 0.07, topY: SEATS_LOCAL.troy.y + CHAIR_LOWEST_Y - 0.005 });
+
+function addSeatPedestals(group: THREE.Group, f: Finishes): void {
+  const { floorY, radius, topY } = PEDESTAL;
+  for (const [seat, name] of [[SEATS_LOCAL.troy, 'seat-pedestal-troy'], [SEATS_LOCAL.phones, 'seat-pedestal-phones']] as const) {
+    const pillar = new THREE.Group();
+    pillar.name = name;
+    const post = new THREE.Mesh(new THREE.CylinderGeometry(radius, radius, topY - floorY, 12), f.metal);
+    post.position.y = (topY + floorY) / 2;
+    const foot = new THREE.Mesh(new THREE.CylinderGeometry(0.17, 0.2, 0.06, 16), f.metal);
+    foot.position.y = floorY + 0.03;
+    const clamp = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 0.07, 14), f.darkMetal);
+    clamp.position.y = topY - 0.035;
+    pillar.add(post, foot, clamp);
+    pillar.position.set(seat.x, 0, seat.z);
+    group.add(pillar);
+  }
 }
 
 /** The light-blue hatch dome behind the windscreen, its bezel, and the periscope rising from it. */
 function addDomeAndPeriscope(group: THREE.Group, f: Finishes): void {
   const roofY = CABIN_CENTRE_Y + CABIN_TOP;
   const dome = new THREE.Mesh(new THREE.SphereGeometry(1, 28, 12, 0, Math.PI * 2, 0, Math.PI / 2), standard(DOME_BLUE, { roughness: 0.3 }));
-  dome.scale.set(1.1, 0.8, DOME_LENGTH);
+  dome.scale.set(DOME_HALF_WIDTH, 0.8, DOME_LENGTH);
   dome.position.set(0, roofY - 0.15, DOME_Z);
+  dome.name = 'dome';
   group.add(dome);
   const bezel = new THREE.Mesh(new THREE.TorusGeometry(1, 0.06, 6, 40), f.metal);
   bezel.rotation.x = Math.PI / 2;
@@ -662,11 +795,13 @@ function addDomeAndPeriscope(group: THREE.Group, f: Finishes): void {
     f.lightBlue,
   );
   collar.position.set(0, baseY - 0.05, PERISCOPE_Z);
+  collar.name = 'periscope-collar';
   group.add(collar);
 
   const mastLength = PERISCOPE_TOP_Y - baseY;
   const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.15, mastLength, 12), f.metal);
   mast.position.set(0, baseY + mastLength / 2, PERISCOPE_Z);
+  mast.name = 'periscope';
   group.add(mast);
   const bandGeometry = new THREE.CylinderGeometry(0.18, 0.18, 0.12, 12);
   for (const y of [baseY + 1.0, baseY + 2.2]) {
@@ -1033,6 +1168,7 @@ export function createStingray(): StingrayModel {
   addWindows(group, cabin, finishes);
   addDomeAndPeriscope(group, finishes);
   const hatch = addSeatHatch(group, finishes);
+  addSeatPedestals(group, finishes);
   addFins(group, finishes);
   addLettering(group, hull);
   addEyePods(group, hull, finishes);
@@ -1050,7 +1186,7 @@ export function createStingray(): StingrayModel {
       drive.rotation.z = angleRadians;
     },
     setHatch(open) {
-      hatch.rotation.x = SEAT_HATCH.openAngle * Math.min(1, Math.max(0, open));
+      hatch.rotation.x = -SEAT_HATCH.openAngle * Math.min(1, Math.max(0, open));
     },
   };
 }

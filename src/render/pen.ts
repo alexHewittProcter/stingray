@@ -2,9 +2,11 @@ import * as THREE from 'three';
 import { Reflector } from 'three/examples/jsm/objects/Reflector.js';
 import type { LaunchState } from '../sim/launch';
 import type { Interior } from '../sim/world';
+import { ROOMS } from '../sim/rooms';
 import { type Cradle, createCradle } from './cradle';
 import { cameraIndoors, indoorAmount, makeInteriorMaterial } from './indoors';
 import { Parts, bar, box, place, rod } from './parts';
+import { portsOf } from './shaft';
 import {
   WALL_TILE_M, ceilingTexture, clockTexture, doorTexture, floorTexture, grilleTexture, hazardTexture, stencilTexture,
   wallTexture,
@@ -147,9 +149,20 @@ function buildShell(interior: Interior): THREE.Group {
 
   const ceilingMap = ceilingTexture();
   if (ceilingMap) ceilingMap.repeat.set(width / 6, length / 6);
-  const ceiling = new THREE.PlaneGeometry(width, length);
+  // Phase 4 (D3): the ceiling is open at Troy's port (render/shaft.ts draws the port, its collar and flange over the
+  // cut, and the tube's annulus above it) — the chair passes through it. A shape in world x/z with the hole, laid flat
+  // facing down, its UVs as the plane's were (u along x, v along z, 0…1 over the hall).
+  const troysPort = portsOf(ROOMS, interior).troy;
+  const outline = new THREE.Shape([
+    new THREE.Vector2(min.x, min.z), new THREE.Vector2(max.x, min.z), new THREE.Vector2(max.x, max.z), new THREE.Vector2(min.x, max.z),
+  ]);
+  outline.holes.push(new THREE.Path().absarc(troysPort.x, troysPort.z, troysPort.radius + 0.04, 0, Math.PI * 2, true));
+  const ceiling = new THREE.ShapeGeometry(outline, 32);
   ceiling.rotateX(Math.PI / 2);
-  ceiling.translate(0, max.y, midZ);
+  ceiling.translate(0, max.y, 0);
+  const ceilingPos = ceiling.getAttribute('position') as THREE.BufferAttribute;
+  const ceilingUv = ceiling.getAttribute('uv') as THREE.BufferAttribute;
+  for (let i = 0; i < ceilingPos.count; i++) ceilingUv.setXY(i, (ceilingPos.getX(i) - min.x) / width, (ceilingPos.getZ(i) - min.z) / length);
   wallParts.add(lambert(ceilingMap ? 0xffffff : 0x3d3f3f, 'pen-ceiling', { map: ceilingMap }), ceiling);
 
   // A short collar of bore behind the opening, square to the wall; the tunnel (T4) carries on from it.
@@ -376,10 +389,8 @@ function buildDressing(interior: Interior, m: Mats): { group: THREE.Group; lampS
   lampFaces.push(place(new THREE.CircleGeometry(0.6, 16), at(west, armRoot, 2.45, 16.3), { y: facing(west) }));
   parts.add(m.steel, place(new THREE.CylinderGeometry(0.72, 0.72, 0.6, 16), at(west, armRoot, 2.1, 16.3), { x: Math.PI / 2, y: facing(west) }));
 
-  // A hanging rod from a ceiling fixture down toward the cradle (the copper pole in the elevated shot).
-  parts.add(m.copper, rod({ x: -9, y: max.y - 1.0, z: -1391 }, { x: -9, y: 11.5, z: -1391 }, 0.12, 0.12, 8));
-  parts.add(m.cabinet, box(0.7, 0.9, 0.5, { x: -9, y: 11.2, z: -1391 }));
-  for (const dz of [-1.6, 1.6]) parts.add(m.steel, rod({ x: -9, y: max.y, z: -1391 + dz }, { x: -9, y: max.y - 1.3, z: -1391 + dz }, 1.0, 1.0, 16));
+  // Phase 4 (D3): phase 2's hanging copper rod and its two ceiling drums (its guess at the series' pole) are gone — the
+  // real pole and its two ports are render/shaft.ts's, over the seat.
 
   // ---- The north wall: a service bay behind the walkway, pipes, a clock ----
   const north = W.north;

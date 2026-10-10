@@ -291,3 +291,39 @@ describe('phase 3: the way back up heard (M6b — "the same reversed up")', () =
     expect(soundscape(g).shaft.level).toBe(0);
   });
 });
+
+describe('phase 4 (D3, D4): the port lid and the pole heard', () => {
+  const session = (g: GameState, p: Press | null = null) => stepSession(g, NO_INPUT, STAND_STILL, p, DT, W, ROOMS);
+
+  it('the cradle setting off retracts the pole (one hiss); docking again extends it (one)', () => {
+    const down = run(standby(W), T.cradleTravel + 1, NO_INPUT, ['cradle']);
+    expect(down.events.filter((e) => e.kind === 'pole')).toEqual([{ kind: 'pole', extend: false }]);
+    expect(down.kinds.indexOf('pole')).toBeGreaterThan(down.kinds.indexOf('klaxon'));
+    const up = run(down.g, T.cradleTravel + 1, NO_INPUT, ['cradle']);
+    expect(up.events.filter((e) => e.kind === 'pole')).toEqual([{ kind: 'pole', extend: true }]);
+    expect(count(up.kinds, 'portLid')).toBe(0); // aboard the lid's servo is the pole's own (machinery.pole)
+  });
+
+  it('riding down the lid opens once as the chair nears the port; riding up it shuts once as the chair leaves it', () => {
+    const c = ROOMS.chair;
+    const atChair = (): GameState => ({ ...controlRoom(W, ROOMS), troy: onFoot({ pos: { x: c.pos.x, y: c.pos.y, z: c.pos.z + 1.5 }, yaw: c.yaw }) });
+    let g = session(atChair(), 'use');
+    expect(g.troy.where).toBe('riding');
+    const down: SoundEvent[] = [];
+    while (g.troy.where === 'riding') {
+      const next = session(g);
+      down.push(...stepEvents(g, next));
+      g = next;
+    }
+    expect(down.filter((e) => e.kind === 'portLid')).toEqual([{ kind: 'portLid', open: true }]);
+    expect(count(down.map((e) => e.kind), 'pole')).toBe(0);
+    let h = session(g, 'leave');
+    const up: SoundEvent[] = [...stepEvents(g, h)];
+    while (h.troy.where === 'riding') {
+      const next = session(h);
+      up.push(...stepEvents(h, next));
+      h = next;
+    }
+    expect(up.filter((e) => e.kind === 'portLid')).toEqual([{ kind: 'portLid', open: false }]);
+  });
+});

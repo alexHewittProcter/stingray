@@ -110,12 +110,13 @@ describe('the rooms\' ?view= presets (M10; phase 4, W)', () => {
     expect(n[4]!).toBeLessThan(n[1]! - 10);
   });
 
-  it('?view=port is in the pen hall, looking up at the ceiling over the seat', () => {
+  it('?view=port is in the pen hall, looking across at the pole over the seat, between the port and the roof (T3)', () => {
     const n = viewParam('port')!;
     expect(cameraIndoors(v(n[0]!, n[1]!, n[2]!))).toBe(true);
-    expect(n[1]!).toBeLessThan(n[4]!);
-    expect(Math.hypot(n[3]! - SEAT.x, n[5]! - SEAT.z)).toBeLessThan(1e-9);
-    expect(Math.abs(n[4]! - I.pen.max.y)).toBeLessThan(0.5);
+    expect(n[1]!).toBeLessThan(I.pen.max.y - 2);
+    expect(Math.hypot(n[3]! - SEAT.x, n[5]! - SEAT.z)).toBeLessThan(1);
+    expect(n[4]!).toBeLessThan(I.pen.max.y);
+    expect(n[4]!).toBeGreaterThan(SEAT.y + 1.2); // above the cabin roof
   });
 
   it('?view=hatch is in the pen hall, close over the standby sub\'s cabin roof at the seat', () => {

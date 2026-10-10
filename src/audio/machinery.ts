@@ -14,8 +14,14 @@
 //   Refusal: two quick 98 + 104 Hz square buzzes, low-passed — a dull "bzz-bzz", not a beep.
 //   Injector chair (phase 3): letting go — a latch clack at 420 Hz, a short 80 → 50 Hz drop and a pneumatic hiss;
 //     locking in — a heavy 60 → 32 Hz clunk, two struck-steel rings (230, 300 Hz) a beat apart and a short hiss.
+//   Port lid (phase 4): a short servo — two detuned sawtooths through a band-pass, gliding up (opening, 260 → 390 Hz)
+//     or down (shutting) over the lid's 0.6 s, a faint gear buzz on it, and a small latch click at the end.
+//   Pole (phase 4): a hydraulic hiss over the pole's 1.5 s travel — band-passed noise swelling and fading, a low
+//     40 Hz pump under it and a soft thud as it seats; extending, the lid's servo runs first and the hiss follows it;
+//     retracting, the hiss runs first and the lid's servo shuts behind it (render/boarding.ts's order).
 
 import type { Soundscape } from './cues';
+import { LID_SECONDS, POLE_SECONDS } from '../render/boarding';
 import { LEVELS as L } from './levels';
 import type { Mixer } from './mixer';
 import { burst, filter, lfo, loopGain, metal, noise, osc, rasp, startNoise, thump, tone } from './synth';
@@ -32,6 +38,10 @@ export interface Machinery {
   refusal(): void;
   /** Phase 3 (M6): the chair setting off (lock false) or locking into the cabin (lock true). */
   chair(lock: boolean): void;
+  /** Phase 4 (D3, D4): the port's lid servo, opening or shutting. */
+  portLid(open: boolean): void;
+  /** Phase 4 (D3, D4): the pole extending (the lid opens first) or retracting (the lid shuts after). */
+  pole(extend: boolean): void;
 }
 
 export function createMachinery(m: Mixer): Machinery {
@@ -72,6 +82,24 @@ export function createMachinery(m: Mixer): Machinery {
   for (const n of [fluid, rumble, grind]) startNoise(n, ctx.currentTime);
 
   const soon = () => ctx.currentTime + 0.01;
+
+  const servo = (t: number, open: boolean) => {
+    const [from, to] = open ? [260, 390] : [390, 260];
+    const oscs = tone(m, fx, t, {
+      types: ['sawtooth', 'sawtooth'], freqs: [from, from * 1.012], filter: ['bandpass', 900, 2.5], peak: L.portServo, attack: 0.04, hold: LID_SECONDS - 0.12, decay: 0.08,
+    });
+    for (const o of oscs) {
+      o.frequency.setValueAtTime(o.frequency.value, t);
+      o.frequency.linearRampToValueAtTime((o.frequency.value * to) / from, t + LID_SECONDS);
+    }
+    burst(m, fx, t, { peak: L.portServo * 0.25, type: 'bandpass', freq: 2400, q: 3, attack: 0.03, decay: LID_SECONDS });
+    metal(m, fx, t + LID_SECONDS, L.portServo * 0.6, 520, 0.18);
+  };
+  const hiss = (t: number, extend: boolean) => {
+    burst(m, fx, t, { peak: L.poleHiss, type: 'bandpass', freq: extend ? 2600 : 3200, q: 0.8, attack: 0.25, decay: POLE_SECONDS });
+    tone(m, fx, t, { types: ['sine'], freqs: [40], filter: ['lowpass', 200, 0.7], peak: L.poleHiss * 0.6, attack: 0.2, hold: POLE_SECONDS - 0.4, decay: 0.3 });
+    thump(m, fx, t + POLE_SECONDS, L.poleHiss * 0.7, 70, 45, 0.25);
+  };
 
   return {
     update(s) {
@@ -163,6 +191,21 @@ export function createMachinery(m: Mixer): Machinery {
         metal(m, fx, t, L.chair * 0.35, 420, 0.25);
         thump(m, fx, t + 0.04, L.chair * 0.5, 80, 50, 0.3);
         burst(m, fx, t + 0.06, { peak: L.chair * 0.35, type: 'highpass', freq: 2200, attack: 0.02, decay: 0.5 });
+      }
+    },
+
+    portLid(open) {
+      servo(soon(), open);
+    },
+
+    pole(extend) {
+      const t = soon();
+      if (extend) {
+        servo(t, true);
+        hiss(t + LID_SECONDS, true);
+      } else {
+        hiss(t, false);
+        servo(t + POLE_SECONDS, false);
       }
     },
 

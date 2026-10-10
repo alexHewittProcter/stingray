@@ -10,7 +10,9 @@
 
 import type { GameMode } from '../game/mode';
 import { sessionMode } from '../game/mode';
+import { chairNearPort } from '../render/boarding';
 import type { GameState } from '../sim/launch';
+import { docked } from '../sim/session';
 import { rideSpeedAt, rideTimeAt } from '../sim/ride';
 import { speedOf } from '../sim/sub';
 import { TUNING as T } from '../sim/tuning';
@@ -39,7 +41,9 @@ export type SoundEvent =
   | { kind: 'chairStart' } // phase 3 (M6): Troy sits and the injector chair's carriage lets go
   | { kind: 'lockIn' } // and it locks into Stingray's cabin as the pilot's seat
   | { kind: 'chairUnlock' } // M6b: the way back up — the seat unlocks from the cabin with the lock-in's clunk
-  | { kind: 'chairHome' }; // and it latches home at the station, where Troy stands up
+  | { kind: 'chairHome' } // and it latches home at the station, where Troy stands up
+  | { kind: 'portLid'; open: boolean } // phase 4 (D3, D4): the port's lid servo, as the riding chair nears / leaves the port
+  | { kind: 'pole'; extend: boolean }; // and the pole's hydraulic hiss: retracting as the cradle sets off, extending on dock
 
 export interface Soundscape {
   /** 0 off … 1 running (follows the 2 s start); speed and boost in 0…1. */
@@ -99,6 +103,21 @@ export function stepEvents(prev: GameState, cur: GameState, jumped = false): Sou
     out.push({ kind: 'cradleStart', dir: b.cradleDir });
   }
   if (a.cradleDir !== 0 && b.cradleDir === 0) out.push({ kind: 'cradleStop' });
+
+  // Phase 4 (D3, D4 "Sound"): the port and the pole, from the same transitions render/boarding.ts draws them by —
+  // riding, the lid opens as the chair comes within LID_LEAD of the port and shuts once it has gone back up past it;
+  // aboard, the pole retracts as the sub stops being docked (the cradle sets off; the machinery then shuts the lid
+  // behind it) and extends once it is docked again (the lid opening first).
+  if (prev.troy.where === 'riding' && cur.troy.where === 'riding') {
+    const was = chairNearPort(prev.troy.pos.y);
+    const is = chairNearPort(cur.troy.pos.y);
+    if (was !== is) out.push({ kind: 'portLid', open: is });
+  }
+  if (prev.troy.where === 'aboard' && cur.troy.where === 'aboard') {
+    const was = docked(a);
+    const is = docked(b);
+    if (was !== is) out.push({ kind: 'pole', extend: is });
+  }
 
   // Engines
   if (a.engines === 'off' && b.engines === 'starting') out.push({ kind: 'engineStart' });
