@@ -133,7 +133,7 @@ function play(a: Running, e: SoundEvent, underwater: boolean): void {
     case 'refusal': return a.machinery.refusal();
     case 'chairStart': return a.machinery.chair(false);
     case 'lockIn': return a.machinery.chair(true);
-    // M6b, reversed: the unlock is the lock-in's clunk; home in the lounge, the setting-off latch and hiss.
+    // M6b, reversed: the unlock is the lock-in's clunk; home at the station, the setting-off latch and hiss.
     case 'chairUnlock': return a.machinery.chair(true);
     case 'chairHome': return a.machinery.chair(false);
   }

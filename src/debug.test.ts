@@ -122,8 +122,9 @@ describe('walk=x:z (phase 3, M10)', () => {
       walkTo: (x: number, z: number) => walks.push([x, z]),
       advance: (s: number) => seconds.push(s),
     } as unknown as DebugHandle;
-    runScript('walk=5.2:-1262,2,walk=-3:-1275,walk=1,walk=a:2,walk=1:2:3', handle);
-    expect(walks).toEqual([[5.2, -1262], [-3, -1275]]);
+    // Phase 4: the walk to the front of Troy's chair at the station, and one across the room.
+    runScript('walk=0.6:-1390.6,2,walk=-3:-1388,walk=1,walk=a:2,walk=1:2:3', handle);
+    expect(walks).toEqual([[0.6, -1390.6], [-3, -1388]]);
     expect(seconds).toEqual([2]);
   });
 });
