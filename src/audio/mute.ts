@@ -21,15 +21,16 @@ export function writeMuted(store: Store | undefined, muted: boolean): void {
   }
 }
 
-// Phase 4 (S4): the menu's Music switch — on/off, remembered as the mute is, default on. ?music=0 starts a page with
-// the music off without touching what is stored (a witnessing run).
+// Phase 4 (S4): the menu's Music switch — on/off, remembered as the mute is. Default OFF since 2026-10-10: the founder
+// found the synthesised score "far too electronic"; the cue engine stays for sampled clips (phase 4 T8). ?music=0
+// starts a page with the music off without touching what is stored (a witnessing run).
 export const MUSIC_KEY = 'stingray.music';
 
 export function readMusic(store: Store | undefined): boolean {
   try {
-    return store?.getItem(MUSIC_KEY) !== '0';
+    return store?.getItem(MUSIC_KEY) === '1';
   } catch {
-    return true;
+    return false;
   }
 }
 
