@@ -28,6 +28,18 @@ export function northOfFace(p: Vec3): boolean {
 }
 
 /**
+ * Phase 4 D6: the forward speed cap at a hull centre — a ramp by distance to the pen. The full cruise/boost cap
+ * (boostSpeed) more than capRamp south of the pen's south wall (the tunnel proper and the sea), falling linearly to
+ * interiorSpeedCap at the wall, and interiorSpeedCap inside the pen box. Boost is allowed wherever it exceeds
+ * cruiseSpeed (launch.ts drive).
+ */
+export function capAt(pos: Vec3, interior: Interior): number {
+  const south = pos.z - interior.pen.max.z; // metres south of the pen's south wall (≤ 0: in the pen)
+  const k = clamp(south / T.capRamp, 0, 1);
+  return T.interiorSpeedCap + (T.boostSpeed - T.interiorSpeedCap) * k;
+}
+
+/**
  * Confinement for the hull centre: within tunnelHullReach of the centreline, or in the pen box shrunk by the
  * hull radius. South of the face it does nothing (the sea and the slab are stepSub's business). The correction
  * is the distance to the volume and no more.

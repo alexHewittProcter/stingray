@@ -34,8 +34,12 @@ export interface Interior {
   pen: { min: Vec3; max: Vec3; waterY: 0 };
   /** Hull-centre heights; yawOut faces the tunnel. */
   cradle: { pos: Vec3; raisedY: number; loweredY: number; yawOut: number };
-  /** centre = tunnelMouth; range = how close the sub must be to request the door. */
-  door: { centre: Vec3; range: number };
+  /**
+   * centre = tunnelMouth. Phase 4 D6 splits phase 2's one range: requestRange = how close the hull centre must be to
+   * request the door (a boosting sub can ask from the pen and pass without stopping); closeRange = beyond it the tower
+   * shuts an open door (less than the docked sub's distance, so docking still shuts it).
+   */
+  door: { centre: Vec3; requestRange: number; closeRange: number };
 }
 
 export interface Spawn {
@@ -93,35 +97,23 @@ export const CLIFF_TOP = 25; // m above the surface
 
 const TUNNEL_MOUTH: Vec3 = Object.freeze({ x: 0, y: -40, z: COAST_Z });
 
-// ---- The interior (L1): door chamber, S-bend, Pen 3 ----
+// ---- The interior (L1, straightened by phase 4 D6): door chamber, one incline, Pen 3 ----
 
-// A level door chamber runs straight in from the mouth, then the S-bend swings east and back west
-// while it climbs to the pen's south wall. The bends hide the pen from the door and the door from the pen.
+// A level door chamber runs straight in from the mouth (the ocean door's ring, the slab and the cliff plug are built
+// level along −Z), then one straight incline climbs to the pen's south wall, level with the lowered cradle: 26 m over
+// 170 m (≈ 8.7°). No bend: from the pen's south wall the ocean door is in sight down the bore (phase 4 D6).
 const DOOR_CHAMBER = 70; // m of level, straight bore behind the door
-const BEND_RUN = 170; // m along z from the chamber's end to the pen's south wall
-const BEND_SWING = 13; // m: the S-bend's furthest reach either side of the axis
-const BEND_POINTS = 24; // polyline points along the bend (≈ 7 m apart)
 const TUNNEL_RADIUS = 13; // the drawn bore
 const PEN = { halfWidth: 32, southZ: -1340, northZ: -1450, floorY: -28, ceilingY: 20 };
 const CRADLE = { z: -1395, raisedY: 7, loweredY: -14 };
-const DOOR_RANGE = 120;
-
-// The S's shape, 0 at both ends with level tangents there: ½(cos πu − cos 3πu) peaks at ±0.77 near u ≈ 0.3, 0.7.
-const S_PEAK = 0.7698;
-const sShape = (u: number) => (Math.cos(Math.PI * u) - Math.cos(3 * Math.PI * u)) / 2 / S_PEAK;
-const ease = (u: number) => u * u * (3 - 2 * u);
-const cm = (n: number) => Math.round(n * 100) / 100 + 0; // + 0 turns -0 into 0
 
 function tunnelCentreline(): Vec3[] {
   const m = TUNNEL_MOUTH;
-  const bendStart = m.z - DOOR_CHAMBER;
-  const rise = CRADLE.loweredY - m.y; // the pen end is level with the lowered cradle
-  const points: Vec3[] = [{ ...m }];
-  for (let k = 0; k <= BEND_POINTS; k++) {
-    const u = k / BEND_POINTS;
-    points.push({ x: cm(m.x + BEND_SWING * sShape(u)), y: cm(m.y + rise * ease(u)), z: cm(bendStart - BEND_RUN * u) });
-  }
-  return points;
+  return [
+    { ...m },
+    { x: m.x, y: m.y, z: m.z - DOOR_CHAMBER },
+    { x: m.x, y: CRADLE.loweredY, z: PEN.southZ },
+  ];
 }
 
 const INTERIOR: Interior = {
@@ -132,7 +124,7 @@ const INTERIOR: Interior = {
     waterY: 0,
   },
   cradle: { pos: { x: 0, y: CRADLE.loweredY, z: CRADLE.z }, raisedY: CRADLE.raisedY, loweredY: CRADLE.loweredY, yawOut: Math.PI },
-  door: { centre: TUNNEL_MOUTH, range: DOOR_RANGE },
+  door: { centre: TUNNEL_MOUTH, requestRange: T.doorRequestRange, closeRange: T.doorCloseRange },
 };
 
 // Phase 2 builds inward from this anchor and must not move it.

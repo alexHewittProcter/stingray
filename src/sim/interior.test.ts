@@ -76,22 +76,21 @@ describe('interior geometry (L1)', () => {
     expect(LINE[1]!.z).toBeLessThanOrEqual(m.z - 70);
     expect(LINE[1]!.y).toBe(m.y);
 
-    // About 250 m long, ending on the pen's south wall level with the lowered cradle.
-    let length = 0;
-    for (let k = 1; k < LINE.length; k++) length += dist(LINE[k]!, LINE[k - 1]!);
-    expect(length).toBeGreaterThan(230);
-    expect(length).toBeLessThan(270);
-    const end = LINE[LINE.length - 1]!;
+    // Phase 4 D6: three points, no swing — the mouth, the end of the level 70 m door chamber, the pen end on the
+    // pen's south wall level with the lowered cradle: one straight incline of 26 m over 170 m (≈ 8.7°).
+    expect(LINE).toHaveLength(3);
+    expect(LINE[1]).toEqual({ x: m.x, y: m.y, z: m.z - 70 });
+    const end = LINE[2]!;
     expect(end).toEqual({ x: 0, y: I.cradle.loweredY, z: I.pen.max.z });
-
-    // Gentle bends: no corner sharper than 15°, and an S-bend of about ±13 m.
-    for (let k = 1; k < LINE.length - 1; k++) {
-      const a = unit(sub(LINE[k]!, LINE[k - 1]!));
-      const b = unit(sub(LINE[k + 1]!, LINE[k]!));
-      expect(Math.acos(Math.min(dot(a, b), 1)), `corner ${k}`).toBeLessThan((15 * Math.PI) / 180);
-    }
-    expect(Math.max(...LINE.map((p) => p.x))).toBeCloseTo(13, 0);
-    expect(Math.min(...LINE.map((p) => p.x))).toBeCloseTo(-13, 0);
+    for (const p of LINE) expect(p.x).toBe(m.x); // no swing
+    const incline = sub(end, LINE[1]!);
+    expect(incline.z).toBe(-170);
+    expect(incline.y).toBe(26);
+    expect(Math.atan2(incline.y, -incline.z) * (180 / Math.PI)).toBeCloseTo(8.7, 1);
+    // One gentle corner, where the level chamber meets the incline.
+    const a = unit(sub(LINE[1]!, LINE[0]!));
+    const b = unit(incline);
+    expect(Math.acos(Math.min(dot(a, b), 1))).toBeLessThan((15 * Math.PI) / 180);
 
     // North of the face (the bore starts at the face itself), inside the bounds, under the clifftop.
     const half = w.bounds.halfSize;
@@ -113,12 +112,12 @@ describe('interior geometry (L1)', () => {
     expect(I.cradle).toEqual({ pos: { x: 0, y: -14, z: -1395 }, raisedY: 7, loweredY: -14, yawOut: Math.PI });
     expect(inInterior({ ...I.cradle.pos, y: I.cradle.raisedY }, I)).toBe(true);
     expect(inInterior(cradleLowered(), I)).toBe(true);
-    expect(I.door).toEqual({ centre: m, range: 120 });
+    expect(I.door).toEqual({ centre: m, requestRange: 340, closeRange: 280 });
 
     // Plain frozen data.
     expect(Object.isFrozen(I)).toBe(true);
     expect(Object.isFrozen(LINE)).toBe(true);
-    expect(Object.isFrozen(LINE[5])).toBe(true);
+    expect(Object.isFrozen(LINE[2])).toBe(true);
     expect(Object.isFrozen(I.pen.min)).toBe(true);
   });
 
@@ -192,11 +191,14 @@ describe('confine (L1)', () => {
     return add(scale(side, Math.cos(angle)), scale(up, Math.sin(angle)));
   }
   const mid = (k: number) => scale(add(LINE[k - 1]!, LINE[k]!), 0.5);
+  /** Points along segment k (phase 4 D6: two long straight segments, so each is sampled at several places). */
+  const ON = [0.1, 0.3, 0.5, 0.7, 0.9];
+  const at = (k: number, u: number) => add(LINE[k - 1]!, scale(sub(LINE[k]!, LINE[k - 1]!), u));
 
   it('leaves a point already inside unmoved, and anything south of the face alone', () => {
     for (let k = 1; k < LINE.length; k++) {
-      for (let a = 0; a < 8; a++) {
-        const p = add(mid(k), scale(across(k, (a * Math.PI) / 4), REACH - 0.01));
+      for (const [u, a] of ON.flatMap((u) => [0, 1, 2, 3, 4, 5, 6, 7].map((a) => [u, a] as const))) {
+        const p = add(at(k, u), scale(across(k, (a * Math.PI) / 4), REACH - 0.01));
         if (!northOfFace(p)) continue;
         expect(confine(p, I)).toEqual({ pos: p, normal: null });
         expect(inInterior(p, I)).toBe(true);
@@ -216,10 +218,10 @@ describe('confine (L1)', () => {
   it('4. holds the hull centre within 5 m of the centreline against the tunnel wall, correcting by the overlap only', () => {
     let checked = 0;
     for (let k = 1; k < LINE.length; k++) {
-      for (let a = 0; a < 12; a++) {
+      for (const [u, a] of ON.flatMap((u) => [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11].map((a) => [u, a] as const))) {
         const out = across(k, (a * Math.PI) / 6);
         for (const r of [5.5, 8, 13]) {
-          const p = add(mid(k), scale(out, r));
+          const p = add(at(k, u), scale(out, r));
           if (!northOfFace(p)) continue;
           const overlap = toVolume(p);
           const c = confine(p, I);
@@ -239,7 +241,7 @@ describe('confine (L1)', () => {
         }
       }
     }
-    expect(checked).toBeGreaterThan(500);
+    expect(checked).toBeGreaterThan(300);
   });
 
   it('4. holds the hull centre 4 m inside the pen walls, the pool floor and the ceiling', () => {
@@ -272,7 +274,7 @@ describe('confine (L1)', () => {
   });
 
   it('the camera is held inside the drawn walls less 1 m, not the hull margins', () => {
-    const k = 3;
+    const k = 2;
     const out = across(k, 0.7);
     const p = add(mid(k), scale(out, 12.5));
     expect(toCentreline(confineCamera(p, I).pos)).toBeCloseTo(I.tunnel.radius - T.cameraWallInset, 9);

@@ -42,12 +42,18 @@ export const TUNING = {
   // periscope clear the wall when the craft points along the tunnel. The mouth through the slab is sized to match.
   tunnelHullReach: 5, // m
   cameraWallInset: 1, // m the camera is held inside the drawn walls (bore and pen)
-  interiorSpeedCap: 15, // m/s forward while the hull centre is north of the cliff face (boost off there)
+  interiorSpeedCap: 15, // m/s forward in the pen and at its south wall (boost off there) — phase 4 D6
+  capRamp: 60, // m south of the pen's south wall over which the cap falls from cruise/boost to interiorSpeedCap (D6)
 
   // Launch machinery (phase 2, L2 and L3)
   cradleTravel: 8, // s to lower, and again to raise
   engineStart: 2, // s from 'starting' to 'on'
   doorTravel: 5, // s to open, and again to close
+  // Phase 4 D6: phase 2's one door range (120 m) splits. Request ≥ boostSpeed × doorTravel + 30, so a boosting sub
+  // asks from the pen's mouth and passes without stopping (the cradle is 296 m from the door); close < 296, so
+  // docking still shuts the door, and out at sea it shuts beyond this as before.
+  doorRequestRange: 340, // m from the door's centre: a request is accepted within this
+  doorCloseRange: 280, // m from the door's centre: an open door closes once the hull centre is beyond this
   doorReopenDistance: 20, // m from the door's centre: a closing door reverses rather than close on the hull
   carrySpeed: 6, // m/s the clamped sub is carried toward the cradle's pose
   carryYawRate: 30 * DEG, // rad/s of heading while carried
