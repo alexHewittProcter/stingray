@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { describe, expect, it } from 'vitest';
 import { Game } from '../game/game';
-import { ROOMS, inRoomBox } from '../sim/rooms';
+import { ROOMS, TOWER_AXIS, inRoomBox } from '../sim/rooms';
 import { controlRoom } from '../sim/session';
 import { nearestWalkable, onFoot, walkable } from '../sim/troy';
 import { TUNING as T } from '../sim/tuning';
@@ -17,6 +17,10 @@ const camera = () => new THREE.PerspectiveCamera(58, 16 / 9, 0.5, 8000);
 const still = (x: number, y: number, z: number, yaw: number) => ({ pos: { x, y, z }, yaw, speed: 0 });
 const forward = (c: THREE.Camera) => new THREE.Vector3(0, 0, -1).applyQuaternion(c.quaternion);
 const orbit = (yaw: number, pitch = 0, zoom = 1): OrbitView => ({ yaw, pitch, zoom, k: 1 });
+/** A point on the control room's floor relative to the tower's axis (phase 4, D1: the rooms are re-based on it). */
+const room = (dx: number, dz: number) => ({ x: TOWER_AXIS.x + dx, z: TOWER_AXIS.z + dz });
+/** Open floor east of the station, with a whole boom's room on every side. */
+const OPEN = room(4, 2.5);
 
 /** Every walkable point of a 1 m grid over the rooms (M4's test). */
 function walkableGrid(): { x: number; y: number; z: number }[] {
@@ -56,14 +60,15 @@ describe('the follow camera (M4)', () => {
   it.each([0, Math.PI / 2, Math.PI, -Math.PI / 2])('the un-orbited view looks the way he faces (yaw %s)', (yaw) => {
     const c = camera();
     const follow = createFollowCamera(c, ROOMS);
-    follow.snap(still(0, ROOMS.start.pos.y, -1247.5, yaw));
-    expect(yawOfView(forward(c))).toBeCloseTo(wrap(yaw), 6);
+    follow.snap(still(OPEN.x, ROOMS.start.pos.y, OPEN.z, yaw));
+    // Compared round the circle: π and −π are the same heading.
+    expect(Math.abs(wrap(yawOfView(forward(c)) - yaw))).toBeLessThan(1e-6);
   });
 
   it('turns with him only while he walks, with a lag; standing still the heading holds', () => {
     const c = camera();
     const follow = createFollowCamera(c, ROOMS);
-    const t = still(0, ROOMS.start.pos.y, -1247.5, 0);
+    const t = still(OPEN.x, ROOMS.start.pos.y, OPEN.z, 0);
     follow.snap(t);
     // He turns on the spot (speed 0): the camera does not follow.
     t.yaw = 1;
@@ -80,7 +85,7 @@ describe('the follow camera (M4)', () => {
 
   it('from every walkable 1 m grid point and 8 orbit yaws, the camera is inside the room he is in, ≥ 0.3 m in', () => {
     const points = walkableGrid();
-    expect(points.length).toBeGreaterThan(300);
+    expect(points.length).toBeGreaterThan(150); // phase 4: the control room alone (phase 3's three rooms had > 300)
     const c = camera();
     const follow = createFollowCamera(c, ROOMS);
     let shortened = 0;
@@ -117,14 +122,15 @@ describe('the follow camera (M4)', () => {
   it('a boom the walls shortened lengthens again gradually, never in one jump', () => {
     const c = camera();
     const follow = createFollowCamera(c, ROOMS);
-    // In the corridor's first leg, facing north: behind him the boom runs back toward the control room's door.
-    const corridor = nearestWalkable(5.2, -1262, ROOMS);
-    const t = { pos: corridor, yaw: Math.PI / 2, speed: 0 }; // facing west: the boom points east into the wall
+    // By the control room's east wall, facing west: behind him the boom runs into the wall.
+    const aisle = room(7.2, 2.5);
+    const at = nearestWalkable(aisle.x, aisle.z, ROOMS);
+    const t = { pos: at, yaw: Math.PI / 2, speed: 0 }; // facing west: the boom points east into the wall
     follow.snap(t);
-    const pivot = new THREE.Vector3(corridor.x, corridor.y + 1.5, corridor.z);
+    const pivot = new THREE.Vector3(at.x, at.y + 1.5, at.z);
     const short = c.position.distanceTo(pivot);
     expect(short).toBeLessThan(2);
-    t.yaw = 0; // now the boom points south down the corridor, with room for all of it
+    t.yaw = 0; // now the boom points south along the aisle, with room for all of it
     t.speed = 1;
     follow.update(t, DT);
     expect(c.position.distanceTo(pivot)).toBeLessThan(short + 0.1);
@@ -144,7 +150,8 @@ describe('walking with the follow camera (M3 + M4, as main.ts wires them)', () =
   it('W held for 2 s walks him away from the camera, and the camera turns with him', () => {
     const world = createWorld(1964);
     // In the control room's east aisle, facing west; the camera behind him looks west too.
-    const start = nearestWalkable(6, -1243, ROOMS);
+    const east = room(6, 7);
+    const start = nearestWalkable(east.x, east.z, ROOMS);
     const game = new Game(world, { ...controlRoom(world, ROOMS), troy: onFoot({ pos: start, yaw: Math.PI / 2 }) });
     const c = camera();
     const follow = createFollowCamera(c, ROOMS);
@@ -171,7 +178,8 @@ describe('walking with the follow camera (M3 + M4, as main.ts wires them)', () =
 
   it('turning on the spot with D (camera fixed while he stands) and then walking: the heading follows his facing', () => {
     const world = createWorld(1964);
-    const start = nearestWalkable(0, -1246.5, ROOMS);
+    const mid = room(0, 3.5);
+    const start = nearestWalkable(mid.x, mid.z, ROOMS);
     const game = new Game(world, { ...controlRoom(world, ROOMS), troy: onFoot({ pos: start, yaw: 0 }) });
     const c = camera();
     const follow = createFollowCamera(c, ROOMS);

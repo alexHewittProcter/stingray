@@ -1,24 +1,21 @@
 import * as THREE from 'three';
 import {
-  CONTROL_ROOM_PROPS, CORRIDOR_PROPS, LOUNGE_PROPS, SHAFT_OPEN_TOP, SHAFT_RADIUS, TOWER_AXIS, type Box, type Room, type Rooms,
+  CONTROL_ROOM_PROPS, SHAFT_OPEN_TOP, SHAFT_RADIUS, STATION_CHAIRS, TOWER_AXIS, type Box, type Room, type Rooms,
 } from '../sim/rooms';
 import { controlFloorTexture, decalAtlas, decalUV, meshWallTexture, type DecalName } from './control-room-textures';
 import { inRooms } from './indoors';
 import { type InjectorChairMaterials, addInjectorChair, createInjectorChair } from './injector-chair';
-import {
-  type LoungeDecal, corridorPanelTexture, hazardTexture, loungeDecalAtlas, loungeDecalUV, oliveWallTexture, quiltTexture,
-  terrazzoTexture,
-} from './lounge-textures';
-import { Parts, box as boxAt, rod } from './parts';
-import { mulberry32 } from './random';
+import { Parts, box as boxAt } from './parts';
+import { STATION_MAROON, hazardTexture } from './station-textures';
 
-// Troy's rooms (phase 3). M1 art: T4 dresses the control room after 02_MARINEVILLE_CONTROL_ROOM/ and 05_ART_DIRECTION
-// "Marineville / WASP" — bright graphic 1960s miniature futurism: angular grey consoles with chunky red, yellow, green
-// and blue switches, blue knob fields, visible labels; cream walls, the big wall map with its tracking line, the World
-// Videophone's sunburst on a perforated grey wall, the locator compass on a green wall, Commander Shore's desk and
-// hover chair, and the window band over Marineville and the sea. T5 dresses the corridor as a WASP connector and the
-// Standby Lounge after 03_STANDBY_INJECTOR/ — the injector bay with the three chairs (M8, render/injector-chair.ts),
-// the open bore under Troy's (M1's shaft, its first SHAFT_OPEN_TOP metres), and the lounge proper.
+// Troy's rooms (phase 3; phase 4 D2: the control room alone, the injector station at its centre). M1 art: T4 dresses
+// the control room after 02_MARINEVILLE_CONTROL_ROOM/ and 05_ART_DIRECTION "Marineville / WASP" — bright graphic 1960s
+// miniature futurism: angular grey consoles with chunky red, yellow, green and blue switches, blue knob fields,
+// visible labels; cream walls, the big wall map with its tracking line, the World Videophone's sunburst on a perforated
+// grey wall, the locator compass on a green wall, Commander Shore's desk and hover chair, and the window band over
+// Marineville and the sea. Phase 4 (T1): the corridor and the Standby Lounge are gone; the station — a dais, three
+// injector chairs (M8, render/injector-chair.ts), the maroon back panel, and the open bore under Troy's chair (the
+// shaft's first SHAFT_OPEN_TOP metres) — stands at the room's centre, greyboxed here and dressed by T2.
 //
 // M1 "art respects colliders" (Global constraints): every rooms mesh is tagged — `roomShell` (walls, windows,
 // floor, ceiling: drawn on or outside the room boxes) or `roomProp` (furniture: drawn inside a sim/rooms.ts props box)
@@ -28,19 +25,14 @@ import { mulberry32 } from './random';
 // and every flat painted thing is in one decal atlas — about 30 calls for the dressed room.
 //
 // Global constraints (indoors switches): the group is outside main.ts's oceanSide root and drawn only while the camera
-// is in the rooms (indoors.ts inRooms), so the tower, the grounds and the sea stay in view through the windows (the
-// gallery's glazing is single-sided — opaque from the sea, open from inside). The one lamp lives outside the group and
-// only dims, so the scene's light count — and with it every compiled program — never changes. The tower's exterior
-// volumes for the rooms (marineville.ts, ROOMS_EXTERIOR_NAME) are hidden while the camera is in the rooms, so none of
-// their faces can stand in a doorway.
+// is in the rooms (indoors.ts inRooms) or down the shaft, so the tower, the grounds and the sea stay in view through the
+// windows (the gallery's glazing is single-sided — opaque from the sea, open from inside). The one lamp lives outside
+// the group and only dims, so the scene's light count — and with it every compiled program — never changes.
 
 const WALL = 0.2; // m — walls, floors and ceilings are this thick, drawn outside the room boxes
 const SILL_DEFAULT = 1.0; // m — the control room's windows run from here …
 const HEAD_DEFAULT = 3.6; // … to here above the floor
 const LAMP_INTENSITY = 60;
-
-/** The tower's exterior volumes for the rooms (marineville.ts) — hidden while the camera is inside them. */
-export const ROOMS_EXTERIOR_NAME = 'rooms-exterior';
 
 export interface RoomsView {
   /** The rooms' meshes; visible only while the camera is in the rooms. */
@@ -49,7 +41,7 @@ export interface RoomsView {
   readonly lamp: THREE.PointLight;
   /**
    * Once per drawn frame. `shaft` (T7): the camera is down the injector shaft's bore or tube — the rooms stay drawn
-   * (the bore's throat and the lounge above it are theirs) and the lamp stays in the lounge.
+   * (the bore's throat and the room above it are theirs) and the lamp stays in the room.
    */
   update(camera: THREE.Camera, shaft?: boolean): void;
 }
@@ -60,16 +52,14 @@ export function createRooms(rooms: Rooms): RoomsView {
   const glass = new THREE.MeshBasicMaterial({ color: 0x9fc4dc, transparent: true, opacity: 0.12, depthWrite: false });
   const mats = controlMaterials(glass);
 
-  // The control room, dressed (T4); the corridor and the Standby Lounge (T5).
+  // The control room, dressed (T4), and the injector station at its centre (phase 4, D2 — greybox, T1).
   const control = rooms.rooms.find((r) => r.id === 'controlRoom');
-  if (control) group.add(controlRoom(control, rooms.rooms, mats));
-  group.add(corridor(rooms, mats), lounge(rooms, mats));
+  if (control) group.add(controlRoom(control, rooms, mats));
+  group.add(station(rooms, mats));
 
-  const loungeRoom = rooms.rooms.find((r) => r.id === 'lounge') ?? rooms.rooms[0]!;
   const lamp = new THREE.PointLight(0xfff3df, 0, 30, 2);
   lamp.name = 'rooms-lamp';
   const room = new THREE.Vector3();
-  let exterior: THREE.Object3D | null | undefined;
 
   return {
     group,
@@ -78,12 +68,9 @@ export function createRooms(rooms: Rooms): RoomsView {
       const inside = inRooms(camera.position) || shaft;
       group.visible = inside;
       lamp.intensity = inside ? LAMP_INTENSITY : 0;
-      // The tower's rooms exterior (marineville.ts), looked up once the group is in the scene.
-      if (exterior === undefined && group.parent) exterior = group.parent.getObjectByName(ROOMS_EXTERIOR_NAME) ?? null;
-      if (exterior) exterior.visible = !inside;
       if (!inside) return;
-      // The lamp hangs under the ceiling of whichever room the camera is in.
-      const r = roomAt(camera.position, rooms.rooms) ?? (shaft ? loungeRoom : rooms.rooms[0]!);
+      // The lamp hangs under the ceiling of whichever room the camera is in (the control room, from the shaft).
+      const r = roomAt(camera.position, rooms.rooms) ?? rooms.rooms[0]!;
       room.set((r.min.x + r.max.x) / 2, r.max.y - 0.4, (r.min.z + r.max.z) / 2);
       lamp.position.copy(room);
     },
@@ -265,9 +252,9 @@ function controlMaterials(glass: THREE.Material) {
 }
 
 /** The dressed control room: its shell (walls, windows, floor, ceiling) and its furniture, merged per material. */
-function controlRoom(room: Room, all: readonly Room[], mats: ControlMaterials): THREE.Group {
+function controlRoom(room: Room, rooms: Rooms, mats: ControlMaterials): THREE.Group {
   const kit = newKit(mats);
-  controlShell(kit, room, all);
+  controlShell(kit, room, rooms.chair.pos);
   furniture(kit, room.min.y);
 
   const group = new THREE.Group();
@@ -290,7 +277,7 @@ function controlRoom(room: Room, all: readonly Room[], mats: ControlMaterials): 
 
 // ---- The shell ----
 
-function controlShell(kit: Kit, room: Room, all: readonly Room[]): void {
+function controlShell(kit: Kit, room: Room, bore: V3): void {
   const { shell, mats } = kit;
   const { min, max } = room;
   const F = min.y;
@@ -298,30 +285,27 @@ function controlShell(kit: Kit, room: Room, all: readonly Room[]): void {
   const top = C + WALL;
   const ax = (min.x + max.x) / 2;
   const az = (min.z + max.z) / 2;
-  const doorway = all.find((o) => o.id === 'corridor' && o.min.z < min.z && o.max.z > min.z)!;
-  const doorTop = Math.min(doorway.max.y, C);
 
-  // The floor: one plane over the room (and under the walls), its painted tiles spanning the room.
-  const floor = new THREE.PlaneGeometry(max.x - min.x + 2 * WALL, max.z - min.z + 2 * WALL);
-  floor.rotateX(-Math.PI / 2);
-  floor.translate(ax, F, az);
-  shell.add(mats.floor, floor);
+  // The floor: one plane over the room (and under the walls), its painted tiles spanning the room, with the bore's
+  // round opening under Troy's chair (phase 4, D1 — the station's dais stands over it, render: station()).
+  {
+    const x0 = min.x - WALL;
+    const x1 = max.x + WALL;
+    const z0 = min.z - WALL;
+    const z1 = max.z + WALL;
+    const shape = new THREE.Shape();
+    shape.moveTo(x0, -z1).lineTo(x1, -z1).lineTo(x1, -z0).lineTo(x0, -z0).closePath(); // shape y = −z
+    shape.holes.push(new THREE.Path().absarc(bore.x, -bore.z, BORE_RADIUS, 0, Math.PI * 2, true));
+    const floor = new THREE.ShapeGeometry(shape, 32).rotateX(-Math.PI / 2).translate(0, F, 0);
+    // UVs 0…1 across the room, as the plane's were, so the painted tiles span it.
+    const pos = floor.attributes.position as THREE.BufferAttribute;
+    const uv = floor.attributes.uv as THREE.BufferAttribute;
+    for (let k = 0; k < uv.count; k++) uv.setXY(k, (pos.getX(k) - x0) / (x1 - x0), (z1 - pos.getZ(k)) / (z1 - z0));
+    shell.add(mats.floor, floor);
+  }
 
-  // North wall (−z): cream and solid, the corridor's doorway framed in red, its sign on the lintel.
-  const nz0 = min.z - WALL;
-  const nz1 = min.z;
-  const jamb = 0.3;
-  shell.add(mats.wall,
-    slab({ x: min.x - WALL, y: F, z: nz0 }, { x: doorway.min.x - jamb, y: top, z: nz1 }),
-    slab({ x: doorway.max.x + jamb, y: F, z: nz0 }, { x: max.x + WALL, y: top, z: nz1 }));
-  shell.add(mats.trim,
-    slab({ x: doorway.min.x - jamb, y: F, z: nz0 }, { x: doorway.min.x, y: top, z: nz1 }),
-    slab({ x: doorway.max.x, y: F, z: nz0 }, { x: doorway.max.x + jamb, y: top, z: nz1 }),
-    slab({ x: doorway.min.x, y: doorTop, z: nz0 }, { x: doorway.max.x, y: top, z: nz1 }));
-  const dw = doorway.max.x - doorway.min.x;
-  shell.add(mats.decals, decal('loungeSign', dw * 0.9, dw * 0.9 * (96 / 512), {
-    x: (doorway.min.x + doorway.max.x) / 2, y: (doorTop + C) / 2, z: nz1 + 0.0005,
-  }, 'z+'));
+  // North wall (−z): cream and solid (phase 4: the corridor's doorway is gone).
+  shell.add(mats.wall, slab({ x: min.x - WALL, y: F, z: min.z - WALL }, { x: max.x + WALL, y: top, z: min.z }));
 
   // West wall (−x): the perforated grey panel behind the Videophone, then windows toward the south-west.
   const westSolidTo = CONTROL_ROOM_PROPS.bankWest.min.z - 0.4;
@@ -358,15 +342,11 @@ function controlShell(kit: Kit, room: Room, all: readonly Room[]): void {
   shell.add(mats.ceiling, slab({ x: x0, y: C, z: at }, { x: x1, y: C + coffer, z: z1 }));
 
   // From inside, the gallery's single-sided glazing vanishes: draw its mullions so the view out is still framed by the
-  // tower — a ring of white posts at the glazing's radius, clear of the corridor's bridge.
-  const others = all.filter((o) => o.id !== 'controlRoom');
+  // tower — a ring of white posts at the glazing's radius.
   const radius = 13.3;
   for (let k = 0; k < 40; k++) {
     const a = (k / 40) * Math.PI * 2;
-    const px = ax + Math.cos(a) * radius;
-    const pz = az + Math.sin(a) * radius;
-    if (others.some((o) => px > o.min.x - 0.6 && px < o.max.x + 0.6 && pz > o.min.z - 0.6 && pz < o.max.z + 0.6)) continue;
-    shell.add(mats.frame, boxAt(0.18, 4.4, 0.18, { x: px, y: F + 2.1, z: pz }, -a));
+    shell.add(mats.frame, boxAt(0.18, 4.4, 0.18, { x: ax + Math.cos(a) * radius, y: F + 2.1, z: az + Math.sin(a) * radius }, -a));
   }
 }
 
@@ -520,7 +500,7 @@ function furniture(kit: Kit, F: number): void {
     kit.knobs.push({ m: new THREE.Matrix4().compose(new THREE.Vector3(x, y, z), q, new THREE.Vector3(r, len, r)), colour });
   };
 
-  // The main console bank across the room, its panels facing south (toward the start and Shore's desk).
+  // The main console bank at the back of the room (phase 4, D2: behind the station), its panels facing south.
   {
     const b = P.consoles;
     consoleBank(kit, {
@@ -550,7 +530,8 @@ function furniture(kit: Kit, F: number): void {
   {
     const b = P.map;
     const wz = b.min.z; // the wall's face
-    const cx = -3.0;
+    const AX = TOWER_AXIS.x;
+    const cx = AX - 3.0; // sim/interactables.ts's wallMap stands under this
     const mapW = 6.6;
     const mapH = mapW * (384 / 1024);
     const my = F + 1.15 + mapH / 2;
@@ -563,15 +544,15 @@ function furniture(kit: Kit, F: number): void {
       fields: ['switches', 'lamps', 'knobs', 'switches'],
     });
     // The Action Area: a silver-rimmed round screen with its label, and the red call panel beside it.
-    const sx = 1.75;
+    const sx = AX + 1.75;
     const sy = F + 2.5;
     props.add(mats.frame, new THREE.CylinderGeometry(0.62, 0.62, 0.08, 40).rotateX(Math.PI / 2).translate(sx, sy, wz + 0.04));
     props.add(mats.decals, decal('actionScreen', 1.1, 1.1, { x: sx, y: sy, z: wz + 0.081 }, 'z+', true));
     props.add(mats.decals, decal('actionSign', 1.3, 1.3 * (96 / 512), { x: sx, y: sy + 0.9, z: wz + 0.01 }, 'z+'));
-    props.add(mats.trim, slab({ x: 0.55, y: F + 2.0, z: wz }, { x: 0.9, y: F + 3.0, z: wz + 0.05 }));
-    for (const [y, c] of [[2.8, 0xf2efe6], [2.6, 0xf2efe6], [2.35, 0xf2c23a], [2.15, 0xf2efe6]] as const) knob(0.725, F + y, wz + 0.07, 'z', 0.05, 0.04, c);
+    props.add(mats.trim, slab({ x: AX + 0.55, y: F + 2.0, z: wz }, { x: AX + 0.9, y: F + 3.0, z: wz + 0.05 }));
+    for (const [y, c] of [[2.8, 0xf2efe6], [2.6, 0xf2efe6], [2.35, 0xf2c23a], [2.15, 0xf2efe6]] as const) knob(AX + 0.725, F + y, wz + 0.07, 'z', 0.05, 0.04, c);
     // The extinguisher on its bracket, and the FIRE sign over it.
-    const ex = -7.05;
+    const ex = AX - 7.05;
     const ez = wz + 0.2;
     props.add(mats.trim, rodY(ex, ez, F + 0.95, F + 1.55, 0.12));
     props.add(mats.bodyDark, rodY(ex, ez, F + 1.55, F + 1.68, 0.05), slab({ x: ex - 0.05, y: F + 1.2, z: wz }, { x: ex + 0.05, y: F + 1.3, z: ez - 0.1 }));
@@ -620,7 +601,7 @@ function furniture(kit: Kit, F: number): void {
     }
   }
 
-  // Commander Shore's desk by the south windows, facing north into the room, and his green hover chair (ref 1).
+  // Commander Shore's desk on the room's west side, facing north into the room, and his green hover chair (ref 1).
   {
     const b = P.shoreDesk;
     const front = b.min.z + 0.02;
@@ -655,450 +636,123 @@ function furniture(kit: Kit, F: number): void {
   }
 }
 
-// ---- The corridor (T5, M1 art) ----
+// ---- The injector station (phase 4, D2; T1 greybox — T2 dresses it) ----
 
-/** A box from min/max, for the dressed shells (an alias that reads better in the corridor and lounge code). */
+/** A box from min/max, for the station's greybox. */
 const block = slab;
 
-/** A flat decal from the lounge atlas, w × h, centred at c, facing a direction (or up, for the floor). */
-function loungeDecal(name: LoungeDecal, w: number, h: number, c: V3, facing: Facing | 'up'): THREE.BufferGeometry {
-  const [u0, v0, u1, v1] = loungeDecalUV(name);
-  const g = new THREE.PlaneGeometry(w, h);
-  const uv = g.attributes.uv as THREE.BufferAttribute;
-  for (let k = 0; k < uv.count; k++) uv.setXY(k, u0 + uv.getX(k) * (u1 - u0), v0 + uv.getY(k) * (v1 - v0));
-  if (facing === 'up') g.rotateX(-Math.PI / 2);
-  else g.rotateY(FACING_YAW[facing]);
-  g.translate(c.x, c.y, c.z);
-  return g;
-}
+/**
+ * The bore's radius at the control room's floor (D1: 1.2 m, shared with the ride camera's wall radius,
+ * render/ride-camera.ts radiusAt). The station's dais (sim/rooms.ts DAIS_FRONT_Z) is sized so the bore stays inside it.
+ */
+export const BORE_RADIUS = 1.2;
+/** How far down the drawn bore runs before it opens into the shaft's tube (sim/rooms.ts SHAFT_OPEN_TOP). */
+const BORE_DEPTH = SHAFT_OPEN_TOP;
+/** The bore's flare from BORE_RADIUS out to the tube's SHAFT_RADIUS, below its throat. */
+export const BORE_FLARE = 1.2;
+/** The drawn top of the shaft's tube: SHAFT_RADIUS wide, from the bore's flare down this far; render/shaft.ts (T7)
+ * continues it from there (TUBE_TOP_Y). */
+export const TUBE_STUB = 2;
 
-/** A down-facing panel flush with a ceiling at y (a light fitting), x0…x1 × z0…z1. */
-function ceilingPanel(x0: number, x1: number, z0: number, z1: number, y: number): THREE.BufferGeometry {
-  return new THREE.PlaneGeometry(x1 - x0, z1 - z0).rotateX(Math.PI / 2).translate((x0 + x1) / 2, y, (z0 + z1) / 2);
-}
-
-function loungeMaterials(mats: ControlMaterials) {
+function stationMaterials(mats: ControlMaterials) {
   const lambert = (color: number, extra: THREE.MeshLambertMaterialParameters = {}) => new THREE.MeshLambertMaterial({ color, ...extra });
-  const tiled = (map: THREE.Texture | null, fallback: number, extra: THREE.MeshLambertMaterialParameters = {}) =>
-    lambert(map ? 0xffffff : fallback, { map, ...extra });
-  const atlas = loungeDecalAtlas();
+  const hazard = hazardTexture();
   return {
-    // The corridor: a WASP connector's pale panelling, a blue-grey floor.
-    panel: tiled(corridorPanelTexture(), 0xc9ccc9),
-    corridorFloor: lambert(0x6c7680),
-    // The lounge (ref, lounge): olive ribbed walls, a pale green wall, grey terrazzo; the bay (ref, bay): maroon below
-    // a gold rail, T4's perforated grey above.
-    olive: tiled(oliveWallTexture(), 0x9a9a55),
-    paleGreen: lambert(0xb4cf96),
-    maroon: lambert(0x7b3b35),
-    terrazzo: tiled(terrazzoTexture(), 0x9b9a97),
-    quilt: tiled(quiltTexture(), 0xb3242a),
-    hazard: tiled(hazardTexture(), 0xe9b52c),
-    plinth: lambert(0x5d646b),
+    dais: lambert(0x5d646b),
+    maroon: lambert(STATION_MAROON),
+    hazard: lambert(hazard ? 0xffffff : 0xe9b52c, { map: hazard }),
     bore: lambert(0x5d666e, { emissive: 0x14171a }),
     boreDark: lambert(0x1c2024),
     boreLight: new THREE.MeshBasicMaterial({ color: 0xf6f0d8 }),
-    lampRed: new THREE.MeshBasicMaterial({ color: 0xff4a36 }),
-    white: lambert(0xf0ede4),
-    leaf: lambert(0x3f7d3a, { side: THREE.DoubleSide }),
-    soil: lambert(0x3b2c22),
-    amber: lambert(0xb8792a, { emissive: 0x2a1404 }),
-    bottle: new THREE.MeshLambertMaterial({ color: 0xdfeef2, transparent: true, opacity: 0.55, depthWrite: false }),
-    tableTop: lambert(0xb3242a),
-    conduits: [lambert(0x2f6fd0), lambert(0xd8322a), lambert(0xf2c23a)] as const,
-    decals: new THREE.MeshLambertMaterial({
-      color: atlas ? 0xffffff : 0xc9c2b0, map: atlas, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -4,
-    }),
     chair: {
       upholstery: lambert(0x5b6f8f), frame: mats.frame, pad: mats.trim, dark: mats.bodyDark, body: mats.body,
     } satisfies InjectorChairMaterials,
   };
 }
-type LoungeMaterials = ReturnType<typeof loungeMaterials>;
+type StationMaterials = ReturnType<typeof stationMaterials>;
 
-let loungeMats: { control: ControlMaterials; lounge: LoungeMaterials } | null = null;
-/** One set of lounge materials per control-materials set (the corridor and the lounge share it). */
-function loungeMaterialsFor(mats: ControlMaterials): LoungeMaterials {
-  if (loungeMats?.control !== mats) loungeMats = { control: mats, lounge: loungeMaterials(mats) };
-  return loungeMats.lounge;
+let stationMats: { control: ControlMaterials; station: StationMaterials } | null = null;
+/** One set of station materials per control-materials set. */
+function stationMaterialsFor(mats: ControlMaterials): StationMaterials {
+  if (stationMats?.control !== mats) stationMats = { control: mats, station: stationMaterials(mats) };
+  return stationMats.station;
 }
 
-/** Corridor walls: panelled where solid, a window band where the bridge is outside the gallery's glazing. */
-const BRIDGE_Z = TOWER_AXIS.z - 13.2; // north of this the corridor is out in the open, on the bridge
-
 /**
- * The corridor (M1 art), a WASP connector: pale panelled walls with a blue band, a bridge section with a window band
- * on both sides once it leaves the gallery, conduits along the east wall above the windows, a chevroned floor stripe
- * round the turn, light panels in the ceiling, signs at the turn, and a red-jambed doorway into the lounge.
+ * The injector station (D2), greybox: the dais (CONTROL_ROOM_PROPS.station) with the bore through it under Troy's chair,
+ * a hazard band along its front; the three chairs on it facing the windows (south) — Troy's its own object (M8), the
+ * one that carries him, Phones's and Marina's merged with the room; the maroon back panel behind the row; and the open
+ * bore (D1: "a visible bore in the floor", the shaft's first SHAFT_OPEN_TOP metres) — a lit throat flaring at its foot
+ * into the top of the shaft's SHAFT_RADIUS tube, which render/shaft.ts continues.
  */
-function corridor(rooms: Rooms, mats: ControlMaterials): THREE.Group {
+function station(rooms: Rooms, mats: ControlMaterials): THREE.Group {
   const kit = newKit(mats);
-  const L = loungeMaterialsFor(mats);
+  const S = stationMaterialsFor(mats);
   const { shell, props } = kit;
-  const legs = rooms.rooms.filter((r) => r.id === 'corridor');
-  const control = rooms.rooms.find((r) => r.id === 'controlRoom')!;
-  const loungeRoom = rooms.rooms.find((r) => r.id === 'lounge')!;
-  // The leg out of the control room (long along z) and the leg into the lounge (long along x).
-  const north = legs.reduce((a, b) => (b.max.z - b.min.z > a.max.z - a.min.z ? b : a));
-  const west = legs.find((r) => r !== north)!;
-  const F = north.min.y;
-  const C = north.max.y;
-  const top = C + WALL;
-
-  // Floor and ceiling: each leg's own footprint, clipped off the control room, the lounge and each other, run under
-  // the walls (WALL) where there are walls.
-  const nFoot = { x0: north.min.x - WALL, x1: north.max.x + WALL, z0: north.min.z - WALL, z1: control.min.z };
-  const wFoot = { x0: loungeRoom.max.x + WALL, x1: north.min.x - WALL, z0: west.min.z - WALL, z1: west.max.z + WALL };
-  for (const f of [nFoot, wFoot]) {
-    shell.add(L.corridorFloor, block({ x: f.x0, y: F - WALL, z: f.z0 }, { x: f.x1, y: F, z: f.z1 }));
-    shell.add(mats.ceiling, block({ x: f.x0, y: C, z: f.z0 }, { x: f.x1, y: top, z: f.z1 }));
-  }
-  // Light panels down the north leg and one at the turn, each in a silver rim.
-  const cx = (north.min.x + north.max.x) / 2;
-  for (let z = control.min.z - 1.6; z > north.min.z + 0.5; z -= 2.6) {
-    shell.add(mats.light, ceilingPanel(cx - 0.5, cx + 0.5, z - 0.35, z + 0.35, C - 0.0005));
-    shell.add(mats.frame, ceilingPanel(cx - 0.58, cx + 0.58, z - 0.43, z + 0.43, C - 0.0002));
-  }
-  const wz = (west.min.z + west.max.z) / 2;
-  shell.add(mats.light, ceilingPanel(2.6, 3.4, wz - 0.35, wz + 0.35, C - 0.0005));
-  shell.add(mats.frame, ceilingPanel(2.52, 3.48, wz - 0.43, wz + 0.43, C - 0.0002));
-  // The floor stripe: chevrons pointing the way to the lounge — north up the leg, then west.
-  const stripe = 0.22;
-  const nz0 = west.min.z + (west.max.z - west.min.z) / 2;
-  {
-    // Turned so the chevrons (+u) point north (−z): the strip's u runs along −z.
-    const g = loungeDecal('floorStripe', control.min.z - nz0 - stripe / 2, stripe, { x: 0, y: 0, z: 0 }, 'up');
-    g.rotateY(Math.PI / 2).translate(cx, F, (control.min.z + nz0) / 2 - stripe / 4);
-    shell.add(L.decals, g);
-  }
-  {
-    const len = cx - stripe / 2 - (loungeRoom.max.x + WALL);
-    const g = loungeDecal('floorStripe', len, stripe, { x: 0, y: 0, z: 0 }, 'up');
-    g.rotateY(Math.PI).translate(loungeRoom.max.x + WALL + len / 2, F, nz0);
-    shell.add(L.decals, g);
-  }
-
-  // The walls (T1's walls(), less the pieces one leg shares with the other).
-  const pieces = legs.flatMap((leg) => walls(leg, rooms.rooms));
-  const contains = (a: Box, b: Box) => a !== b && b.min.x >= a.min.x - 1e-6 && b.max.x <= a.max.x + 1e-6
-    && b.min.z >= a.min.z - 1e-6 && b.max.z <= a.max.z + 1e-6 && b.min.y >= a.min.y - 1e-6 && b.max.y <= a.max.y + 1e-6;
-  const own = pieces.filter((p, i) => !pieces.some((q, j) => (contains(q, p) && !contains(p, q)) || (j < i && contains(q, p) && contains(p, q))));
-  const jamb = 0.3;
-  for (const w of own) {
-    const alongZ = w.max.z - w.min.z > w.max.x - w.min.x; // a wall running north–south (its thickness along x)
-    const [a0, a1] = alongZ ? [w.min.z, w.max.z] : [w.min.x, w.max.x];
-    const [t0, t1] = alongZ ? [w.min.x, w.max.x] : [w.min.z, w.max.z];
-    const solid = (from: number, to: number, material: THREE.Material = L.panel) => {
-      if (to - from <= 1e-6) return;
-      const g = alongZ ? block({ x: t0, y: w.min.y, z: from }, { x: t1, y: w.max.y, z: to }) : block({ x: from, y: w.min.y, z: t0 }, { x: to, y: w.max.y, z: t1 });
-      shell.add(material, scaleUV(g, (to - from) / 1.2, 1));
-    };
-    // The lounge doorway's jambs: the last 0.3 m of a wall that ends at the lounge's east wall, in red.
-    let lo = a0;
-    if (!alongZ && Math.abs(a0 - loungeRoom.max.x) < 1e-6) {
-      solid(a0, a0 + jamb, mats.trim);
-      lo = a0 + jamb;
-    }
-    // The bridge's window band: on the north leg's two long walls, north of the gallery's glazing (BRIDGE_Z), and
-    // clear of the corner where the conduits end and the sign hangs.
-    if (alongZ && lo < BRIDGE_Z) {
-      const w0 = Math.max(lo, west.max.z);
-      const w1 = Math.min(a1, BRIDGE_Z);
-      solid(lo, w0);
-      if (w1 > w0) windowRun(kit, 'x', t0, t1, w0, w1, F, w.max.y, { sill: 1.0, head: 2.3, wall: L.panel });
-      solid(Math.max(w0, w1), a1);
-    } else {
-      solid(lo, a1);
-    }
-  }
-
-  // The doorway's lintel side: a red band across the ceiling's edge at the lounge.
-  shell.add(mats.trim, block({ x: loungeRoom.max.x + WALL, y: C, z: west.min.z - WALL }, { x: loungeRoom.max.x + WALL + jamb, y: top, z: west.max.z + WALL }));
-
-  // Signs at the turn: to the lounge on the end wall (seen walking north), to the control room on the east wall (seen
-  // walking back east from the lounge).
-  shell.add(L.decals, loungeDecal('toLounge', 1.8, 1.8 * (96 / 512), { x: cx, y: F + 2.05, z: north.min.z + 0.0005 }, 'z+'));
-  shell.add(L.decals, loungeDecal('toControl', 1.6, 1.6 * (96 / 512), { x: north.max.x - 0.0005, y: F + 2.05, z: wz }, 'x-'));
-  shell.add(L.decals, loungeDecal('crest', 0.7, 0.7, { x: north.max.x - 0.0005, y: F + 1.7, z: control.min.z - 1.0 }, 'x-'));
-
-  // The conduits (CORRIDOR_PROPS.conduits): three coloured pipes along the east wall above the windows, on brackets,
-  // with a riser to the floor at each end.
-  {
-    const b = CORRIDOR_PROPS.conduits;
-    const x = b.max.x;
-    const z0 = b.min.z + 0.06;
-    const z1 = b.max.z - 0.06;
-    [2.5, 2.64, 2.78].forEach((y, k) => {
-      props.add(L.conduits[k]!, rod({ x: x - 0.07, y: F + y, z: z0 }, { x: x - 0.07, y: F + y, z: z1 }, 0.045, 0.045, 10));
-    });
-    for (let z = z0 + 0.3; z < z1; z += 1.6) props.add(mats.frame, block({ x: x - 0.13, y: F + 2.42, z: z - 0.03 }, { x, y: F + 2.86, z: z + 0.03 }));
-    for (const z of [z0 + 0.06, z1 - 0.06]) {
-      props.add(mats.bodyDark, rod({ x: x - 0.07, y: F, z }, { x: x - 0.07, y: F + 2.5, z }, 0.05, 0.05, 10));
-      props.add(mats.bodyDark, block({ x: x - 0.13, y: F + 1.2, z: z - 0.1 }, { x, y: F + 1.5, z: z + 0.1 }));
-    }
-  }
-
-  return buildKit(kit, 'corridor');
-}
-
-// ---- The Standby Lounge (T5, M1 art, M8's chairs) ----
-
-/** The bore's radius at the lounge floor (the injector chair's guide shoes reach CHAIR_GUIDE_REACH, just inside it). */
-export const BORE_RADIUS = 0.95;
-/** How far down the drawn bore runs before it opens into the shaft's tube (sim/rooms.ts SHAFT_OPEN_TOP). */
-const BORE_DEPTH = SHAFT_OPEN_TOP;
-/** The drawn top of the shaft's tube: SHAFT_RADIUS wide, from the bore's flare down this far; render/shaft.ts (T7)
- * continues it from there (TUBE_TOP_Y). */
-const TUBE_STUB = 2;
-/** The bay plinth's height (the chairs' carriages sit flush in it). */
-const PLINTH = 0.08;
-
-/**
- * The Standby Lounge (M1 art) after 03_STANDBY_INJECTOR/: the injector bay along the north wall — the plinth with the
- * three chairs on it (M8), the open bore under Troy's (the shaft's first 10 m and its tube's top, M1), the INJECTOR
- * BAY plate and its three red lamps on the perforated wall over a maroon dado and a gold rail — and the lounge proper:
- * olive ribbed walls, a pale green wall with the side console and the standby board, red quilted loungers under the
- * south window band, the low red table with a siphon and a bottle, a plant.
- */
-function lounge(rooms: Rooms, mats: ControlMaterials): THREE.Group {
-  const kit = newKit(mats);
-  const L = loungeMaterialsFor(mats);
-  const { shell, props } = kit;
-  const room = rooms.rooms.find((r) => r.id === 'lounge')!;
-  const { min, max } = room;
-  const F = min.y;
-  const C = max.y;
-  const top = C + WALL;
+  const P = CONTROL_ROOM_PROPS;
   const chair = rooms.chair;
-  const P = LOUNGE_PROPS;
+  const F = chair.pos.y;
 
-  // The floor: terrazzo under the room and its walls, with the bore's round opening at the chair.
+  // The dais: a grey slab with the bore's round hole under Troy's chair, a hazard band along its front edge.
   {
+    const b = P.station;
     const shape = new THREE.Shape();
-    const x0 = min.x - WALL;
-    const x1 = max.x + WALL;
-    const y0 = -(max.z + WALL); // shape y = −z (rotateX(−90°) takes the shape's +y to −z)
-    const y1 = -(min.z - WALL);
-    shape.moveTo(x0, y0).lineTo(x1, y0).lineTo(x1, y1).lineTo(x0, y1).closePath();
-    const hole = new THREE.Path().absarc(chair.pos.x, -chair.pos.z, BORE_RADIUS, 0, Math.PI * 2, true);
-    shape.holes.push(hole);
-    const g = new THREE.ShapeGeometry(shape, 32).rotateX(-Math.PI / 2).translate(0, F, 0);
-    shell.add(L.terrazzo, scaleUV(g, 0.5, 0.5));
-    // Its underside, so the bore's rim has a floor slab's thickness.
-    shell.add(L.boreDark, new THREE.CylinderGeometry(BORE_RADIUS, BORE_RADIUS, WALL, 32, 1, true).translate(chair.pos.x, F - WALL / 2, chair.pos.z));
+    shape.moveTo(b.min.x, -b.max.z).lineTo(b.max.x, -b.max.z).lineTo(b.max.x, -b.min.z).lineTo(b.min.x, -b.min.z).closePath();
+    shape.holes.push(new THREE.Path().absarc(chair.pos.x, -chair.pos.z, BORE_RADIUS, 0, Math.PI * 2, true));
+    const h = b.max.y - b.min.y - 0.002;
+    props.add(S.dais, new THREE.ExtrudeGeometry(shape, { depth: h, bevelEnabled: false, curveSegments: 40 }).rotateX(-Math.PI / 2).translate(0, F, 0));
+    const band = new THREE.PlaneGeometry(b.max.x - b.min.x - 0.02, 0.12).rotateX(-Math.PI / 2)
+      .translate((b.min.x + b.max.x) / 2, F + h + 0.001, b.max.z - 0.36);
+    const uv = band.attributes.uv as THREE.BufferAttribute;
+    for (let k = 0; k < uv.count; k++) uv.setXY(k, uv.getX(k) * (b.max.x - b.min.x) / 0.4, uv.getY(k) * 0.3);
+    props.add(S.hazard, band);
   }
 
-  // The ceiling: a slab, a light trough over the chairs, two round lights over the lounge.
-  shell.add(mats.ceiling, block({ x: min.x - WALL, y: C, z: min.z - WALL }, { x: max.x + WALL, y: top, z: max.z + WALL }));
-  shell.add(mats.light, ceilingPanel(-6.6, 1.2, chair.pos.z - 0.3, chair.pos.z + 0.3, C - 0.0005));
-  shell.add(mats.frame, ceilingPanel(-6.7, 1.3, chair.pos.z - 0.4, chair.pos.z + 0.4, C - 0.0002));
-  for (const x of [-5.2, -1.6]) {
-    shell.add(mats.frame, new THREE.CircleGeometry(0.72, 32).rotateX(Math.PI / 2).translate(x, C - 0.0002, -1270.6));
-    shell.add(mats.light, new THREE.CircleGeometry(0.6, 32).rotateX(Math.PI / 2).translate(x, C - 0.0005, -1270.6));
-  }
+  // The back panel behind the row: maroon (T2 adds the mesh grille and the plate).
+  props.add(S.maroon, block(
+    { x: P.stationPanel.min.x + 0.01, y: F, z: P.stationPanel.min.z + 0.01 },
+    { x: P.stationPanel.max.x - 0.01, y: P.stationPanel.max.y - 0.01, z: P.stationPanel.max.z - 0.01 },
+  ));
 
-  // The walls (T1's walls()): dressed per side.
-  const jamb = 0.3;
-  for (const w of walls(room, rooms.rooms)) {
-    const alongZ = w.max.z - w.min.z > w.max.x - w.min.x;
-    const isLintel = w.min.y > F + 1e-6;
-    if (!alongZ && w.max.z <= min.z + 1e-6) {
-      // North: the injector bay wall — maroon dado, T4's perforated grey above the gold rail.
-      const rail = F + 2.4;
-      shell.add(L.maroon, block({ x: w.min.x, y: F, z: w.min.z }, { x: w.max.x, y: rail, z: w.max.z }));
-      shell.add(mats.meshWall, scaleUV(block({ x: w.min.x, y: rail, z: w.min.z }, { x: w.max.x, y: w.max.y, z: w.max.z }), w.max.x - w.min.x, w.max.y - rail));
-    } else if (!alongZ) {
-      // South: olive, the window band over the loungers.
-      windowRun(kit, 'z', w.min.z, w.max.z, w.min.x, w.max.x, F, w.max.y, { sill: 1.3, head: 3.4, wall: L.olive });
-    } else if (w.max.x <= min.x + 1e-6) {
-      // West: pale green.
-      shell.add(L.paleGreen, block(w.min, w.max));
-    } else if (isLintel) {
-      // East, over the doorway: the red lintel, signed to the control room.
-      shell.add(mats.trim, block(w.min, w.max));
-    } else {
-      // East: olive, red jambs where it meets the doorway.
-      const doorAt = (z: number) => rooms.rooms.some((o) => o.id === 'corridor' && Math.abs(o.min.z - z) < 1e-6 || o.id === 'corridor' && Math.abs(o.max.z - z) < 1e-6);
-      let z0 = w.min.z;
-      let z1 = w.max.z;
-      if (doorAt(z1)) { shell.add(mats.trim, block({ x: w.min.x, y: w.min.y, z: z1 - jamb }, w.max)); z1 -= jamb; }
-      if (doorAt(z0)) { shell.add(mats.trim, block(w.min, { x: w.max.x, y: w.max.y, z: z0 + jamb })); z0 += jamb; }
-      shell.add(L.olive, scaleUV(block({ x: w.min.x, y: w.min.y, z: z0 }, { x: w.max.x, y: w.max.y, z: z1 }), z1 - z0, w.max.y - w.min.y));
-    }
-  }
-  // The lintel's sign, and the WASP crest on the east wall.
-  const door = rooms.rooms.find((o) => o.id === 'corridor' && o.min.x < max.x && o.max.x > max.x)!;
-  shell.add(L.decals, loungeDecal('toControl', 1.6, 1.6 * (96 / 512), { x: max.x - 0.0005, y: (door.max.y + C) / 2, z: (door.min.z + door.max.z) / 2 }, 'x-'));
-  shell.add(L.decals, loungeDecal('crest', 0.9, 0.9, { x: max.x - 0.0005, y: F + 2.3, z: -1275.4 }, 'x-'));
-  // The west wall: the standby board over the side console.
-  {
-    const b = P.sideConsole;
-    shell.add(L.decals, loungeDecal('standbyBoard', 1.7, 0.64, { x: min.x + 0.0005, y: F + 2.15, z: (b.min.z + b.max.z) / 2 }, 'x+'));
-  }
-
-  // The bore (M1: "a visible bore in the floor", the shaft's first SHAFT_OPEN_TOP metres): a lit throat with four
-  // guide rails, flaring at its foot into the top of the shaft's SHAFT_RADIUS tube, which render/shaft.ts continues (T7).
+  // The bore (D1): the lit throat through the floor slab, a guide rail at each quarter, the flare and the tube's stub.
   {
     const { x, z } = chair.pos;
     const inside = (g: THREE.BufferGeometry) => backFaces(g);
-    shell.add(L.bore, inside(new THREE.CylinderGeometry(BORE_RADIUS, BORE_RADIUS, BORE_DEPTH, 32, 1, true).translate(x, F - BORE_DEPTH / 2, z)));
-    for (let d = 1.5; d < BORE_DEPTH; d += 2) {
-      shell.add(L.boreLight, inside(new THREE.CylinderGeometry(BORE_RADIUS - 0.012, BORE_RADIUS - 0.012, 0.09, 32, 1, true).translate(x, F - d, z)));
+    shell.add(S.bore, inside(new THREE.CylinderGeometry(BORE_RADIUS, BORE_RADIUS, BORE_DEPTH, 40, 1, true).translate(x, F - BORE_DEPTH / 2, z)));
+    // The lit ring just under the rim, then one every 2 m down the throat.
+    for (let d = 0.12; d < BORE_DEPTH; d += 2) {
+      shell.add(S.boreLight, inside(new THREE.CylinderGeometry(BORE_RADIUS - 0.012, BORE_RADIUS - 0.012, 0.09, 40, 1, true).translate(x, F - d, z)));
     }
     for (let k = 0; k < 4; k++) {
       const a = Math.PI / 4 + (k * Math.PI) / 2;
       const r = BORE_RADIUS - 0.03;
-      shell.add(L.boreDark, boxAt(0.08, BORE_DEPTH, 0.06, { x: x + Math.cos(a) * r, y: F - BORE_DEPTH / 2, z: z + Math.sin(a) * r }, -a));
+      shell.add(S.boreDark, boxAt(0.08, BORE_DEPTH, 0.06, { x: x + Math.cos(a) * r, y: F - BORE_DEPTH / 2, z: z + Math.sin(a) * r }, -a));
     }
-    const flare = 1.2;
-    shell.add(L.bore, inside(new THREE.CylinderGeometry(BORE_RADIUS, SHAFT_RADIUS, flare, 32, 1, true).translate(x, F - BORE_DEPTH - flare / 2, z)));
-    const tubeTop = F - BORE_DEPTH - flare;
-    shell.add(L.bore, inside(new THREE.CylinderGeometry(SHAFT_RADIUS, SHAFT_RADIUS, TUBE_STUB, 32, 1, true).translate(x, tubeTop - TUBE_STUB / 2, z)));
-    shell.add(L.boreLight, inside(new THREE.CylinderGeometry(SHAFT_RADIUS - 0.012, SHAFT_RADIUS - 0.012, 0.12, 32, 1, true).translate(x, tubeTop - 0.6, z)));
+    shell.add(S.bore, inside(new THREE.CylinderGeometry(BORE_RADIUS, SHAFT_RADIUS, BORE_FLARE, 40, 1, true).translate(x, F - BORE_DEPTH - BORE_FLARE / 2, z)));
+    const tubeTop = F - BORE_DEPTH - BORE_FLARE;
+    shell.add(S.bore, inside(new THREE.CylinderGeometry(SHAFT_RADIUS, SHAFT_RADIUS, TUBE_STUB, 40, 1, true).translate(x, tubeTop - TUBE_STUB / 2, z)));
+    shell.add(S.boreLight, inside(new THREE.CylinderGeometry(SHAFT_RADIUS - 0.012, SHAFT_RADIUS - 0.012, 0.12, 40, 1, true).translate(x, tubeTop - 0.6, z)));
   }
 
-  // The injector bay plinth (LOUNGE_PROPS.injectorBay): grey, the bore through it, a hazard band along its front, a
-  // hazard ring round the bore and round each closed hatch, the hatches themselves.
-  const seats = [chair.pos.x, chair.pos.x - 2.6, chair.pos.x - 5.2];
-  {
-    const b = P.injectorBay;
-    const shape = new THREE.Shape();
-    shape.moveTo(b.min.x, -b.max.z).lineTo(b.max.x, -b.max.z).lineTo(b.max.x, -b.min.z).lineTo(b.min.x, -b.min.z).closePath();
-    shape.holes.push(new THREE.Path().absarc(chair.pos.x, -chair.pos.z, BORE_RADIUS, 0, Math.PI * 2, true));
-    props.add(L.plinth, new THREE.ExtrudeGeometry(shape, { depth: PLINTH, bevelEnabled: false, curveSegments: 32 }).rotateX(-Math.PI / 2).translate(0, F, 0));
-    const y = F + PLINTH + 0.001;
-    const band = new THREE.PlaneGeometry(b.max.x - b.min.x, 0.14).rotateX(-Math.PI / 2).translate((b.min.x + b.max.x) / 2, y, b.max.z - 0.07);
-    props.add(L.hazard, scaleUV(band, (b.max.x - b.min.x) / 0.4, 0.35));
-    seats.forEach((sx, k) => {
-      const ring = new THREE.RingGeometry(BORE_RADIUS, BORE_RADIUS + 0.12, 40, 1).rotateX(-Math.PI / 2).translate(sx, y, chair.pos.z);
-      props.add(L.hazard, scaleUV(ring, 6, 6));
-      if (k > 0) props.add(L.decals, loungeDecal('hatch', BORE_RADIUS * 2.05, BORE_RADIUS * 2.05, { x: sx, y, z: chair.pos.z }, 'up'));
-    });
-  }
-
-  // The chairs (M8): Troy's is its own object — the one that carries him (T7) — tagged for M5's prompt and glow;
-  // Phones's and Marina's, identical, merge with the room.
+  // The chairs (M8), facing the windows: Troy's is its own object — the one that carries him (T7) — tagged for M5's
+  // prompt and glow; Phones's and Marina's, identical, merge with the room. (Phase 3's chair, on its short column, until
+  // T2 hangs them on their poles.)
   const yaw = chair.yaw + Math.PI; // the seat faces away from the way Troy walks up to it
   const turn = new THREE.Quaternion().setFromAxisAngle(UP, yaw);
-  for (const sx of seats.slice(1)) {
-    addInjectorChair(props, L.chair, new THREE.Matrix4().compose(new THREE.Vector3(sx, F, chair.pos.z), turn, new THREE.Vector3(1, 1, 1)));
+  for (const c of [STATION_CHAIRS.phones, STATION_CHAIRS.marina]) {
+    addInjectorChair(props, S.chair, new THREE.Matrix4().compose(new THREE.Vector3(c.x, F, c.z), turn, new THREE.Vector3(1, 1, 1)));
   }
-  const troysChair = createInjectorChair(L.chair);
+  const troysChair = createInjectorChair(S.chair);
   troysChair.name = INJECTOR_CHAIR_NAME;
   troysChair.position.set(chair.pos.x, chair.pos.y, chair.pos.z);
   troysChair.rotation.y = yaw;
   troysChair.userData.interactable = 'chair';
   troysChair.traverse((o) => { if (o instanceof THREE.Mesh) o.userData.roomProp = true; });
 
-  // The INJECTOR BAY wall (LOUNGE_PROPS.bayWall): the gold rail, the yellow plate on its red lamp bar with a lamp over
-  // each chair (ref, bay), the speaker grille above.
-  {
-    const b = P.bayWall;
-    const wz = b.min.z;
-    props.add(mats.gold, block({ x: b.min.x, y: F + 2.38, z: wz }, { x: b.max.x, y: F + 2.46, z: wz + 0.06 }));
-    const x0 = seats[2]! - 0.7;
-    const x1 = seats[0]! + 0.7;
-    const mid = (x0 + x1) / 2;
-    props.add(mats.trim, block({ x: x0, y: F + 2.62, z: wz }, { x: x1, y: F + 3.12, z: wz + 0.1 }));
-    props.add(mats.bodyDark, block({ x: x0 + 0.3, y: F + 3.12, z: wz }, { x: x1 - 0.3, y: F + 3.5, z: wz + 0.04 }));
-    props.add(L.decals, loungeDecal('injectorBay', x1 - x0 - 0.7, 0.34, { x: mid, y: F + 3.31, z: wz + 0.041 }, 'z+'));
-    for (const sx of seats) {
-      props.add(mats.gold, new THREE.CylinderGeometry(0.2, 0.2, 0.05, 24).rotateX(Math.PI / 2).translate(sx, F + 2.87, wz + 0.125));
-      props.add(L.lampRed, new THREE.SphereGeometry(0.1, 18, 10, 0, Math.PI * 2, 0, Math.PI / 2).rotateX(Math.PI / 2).translate(sx, F + 2.87, wz + 0.13));
-    }
-    props.add(L.decals, loungeDecal('grille', 0.6, 0.6, { x: mid, y: F + 3.62, z: wz + 0.01 }, 'z+'));
-  }
-
-  // The side console on the west wall (LOUNGE_PROPS.sideConsole): T4's console bank, facing into the room.
-  {
-    const b = P.sideConsole;
-    consoleBank(kit, {
-      length: b.max.z - b.min.z - 0.04, depth: b.max.x - b.min.x - 0.04, height: b.max.y - F - 0.12, front: 0.78,
-      at: { x: (b.min.x + b.max.x) / 2, y: F, z: (b.min.z + b.max.z) / 2 }, yaw: Math.PI / 2,
-      fields: ['lamps', 'switches', 'knobs', 'switches'],
-    });
-  }
-
-  // The loungers (ref, lounge): red quilted seat and back in a gold frame, against the south wall, facing north.
-  for (const b of [P.loungerWest, P.loungerEast]) lounger(props, L, mats, b);
-
-  // The table (ref, lounge): white foot, chrome stem, a red top in a gold rim; a soda siphon and a bottle on it.
-  {
-    const b = P.table;
-    const tx = (b.min.x + b.max.x) / 2;
-    const tz = (b.min.z + b.max.z) / 2;
-    const r = Math.min(b.max.x - b.min.x, b.max.z - b.min.z) / 2 - 0.02;
-    props.add(L.white, new THREE.CylinderGeometry(0.28, 0.36, 0.08, 24).translate(tx, F + 0.04, tz));
-    props.add(mats.frame, rodY(tx, tz, F + 0.08, F + 0.5, 0.045));
-    props.add(mats.gold, new THREE.CylinderGeometry(r, r - 0.02, 0.05, 36).translate(tx, F + 0.53, tz));
-    props.add(L.tableTop, new THREE.CylinderGeometry(r - 0.04, r - 0.04, 0.02, 36).translate(tx, F + 0.56, tz));
-    props.add(L.bottle, new THREE.CylinderGeometry(0.05, 0.05, 0.26, 16).translate(tx - 0.2, F + 0.7, tz + 0.1));
-    props.add(mats.frame, new THREE.CylinderGeometry(0.03, 0.05, 0.08, 12).translate(tx - 0.2, F + 0.87, tz + 0.1));
-    props.add(L.amber, block({ x: tx + 0.05, y: F + 0.57, z: tz - 0.15 }, { x: tx + 0.19, y: F + 0.79, z: tz - 0.05 }));
-    props.add(L.amber, new THREE.CylinderGeometry(0.02, 0.03, 0.08, 10).translate(tx + 0.12, F + 0.83, tz - 0.1));
-  }
-
-  // The plant (ref, lounge): a white tub and broad leaves on long stems.
-  {
-    const b = P.plant;
-    const px = (b.min.x + b.max.x) / 2;
-    const pz = (b.min.z + b.max.z) / 2;
-    const reachX = (b.max.x - b.min.x) / 2 - 0.04;
-    const reachZ = (b.max.z - b.min.z) / 2 - 0.04;
-    props.add(L.white, new THREE.CylinderGeometry(0.34, 0.28, 0.5, 24).translate(px, F + 0.25, pz));
-    props.add(L.soil, new THREE.CylinderGeometry(0.31, 0.31, 0.02, 24).translate(px, F + 0.48, pz));
-    const rand = mulberry32(0x91a7);
-    for (let k = 0; k < 11; k++) {
-      const a = (k / 11) * Math.PI * 2 + rand() * 0.4;
-      const reach = 0.55 + rand() * 0.35; // of the box's half-extent
-      const tip = { x: px + Math.cos(a) * reachX * reach, y: F + 1.3 + rand() * 0.8, z: pz + Math.sin(a) * reachZ * reach };
-      const base = { x: px + (tip.x - px) * 0.35, y: tip.y - 0.55, z: pz + (tip.z - pz) * 0.35 };
-      props.add(L.leaf, rod({ x: px, y: F + 0.48, z: pz }, base, 0.012, 0.01, 5));
-      // The leaf: a flattened ellipsoid from base to tip.
-      const len = Math.hypot(tip.x - base.x, tip.y - base.y, tip.z - base.z);
-      const leaf = new THREE.SphereGeometry(0.5, 10, 6).scale(0.16, len, 0.02).translate(0, len / 2, 0);
-      const q = new THREE.Quaternion().setFromUnitVectors(UP, new THREE.Vector3(tip.x - base.x, tip.y - base.y, tip.z - base.z).normalize());
-      const twist = new THREE.Quaternion().setFromAxisAngle(UP, a);
-      leaf.applyQuaternion(twist).applyQuaternion(q).translate(base.x, base.y, base.z);
-      props.add(L.leaf, leaf);
-    }
-  }
-
-  const group = buildKit(kit, 'lounge');
+  const group = buildKit(kit, 'station');
   group.add(troysChair);
   return group;
 }
 
 /** The name of Troy's injector chair object in the rooms group (T7 finds it by this name to re-parent it). */
 export const INJECTOR_CHAIR_NAME = 'injector-chair';
-
-/** A quilted lounger in its props box, its back to the box's +z side (the south wall), facing −z. */
-function lounger(props: Parts, L: LoungeMaterials, mats: ControlMaterials, b: Box): void {
-  const F = b.min.y;
-  const cx = (b.min.x + b.max.x) / 2;
-  const cz = (b.min.z + b.max.z) / 2;
-  const half = (b.max.x - b.min.x) / 2;
-  const d = (b.max.z - b.min.z) / 2; // local z −d (front) … +d (back)
-  const at = (g: THREE.BufferGeometry) => g.translate(cx, F, cz);
-  // The gold side frames: a seat line sweeping up into the back, on a curved runner.
-  const frame = new THREE.Shape();
-  frame.moveTo(-d + 0.02, 0.02);
-  frame.quadraticCurveTo(-d + 0.1, 0.45, -d + 0.2, 0.46);
-  frame.lineTo(d - 0.35, 0.42);
-  frame.quadraticCurveTo(d - 0.12, 0.5, d - 0.04, 1.04);
-  frame.lineTo(d - 0.01, 1.04);
-  frame.quadraticCurveTo(d - 0.06, 0.4, d - 0.02, 0.02);
-  frame.closePath();
-  for (const side of [-1, 1]) {
-    // Shape (u, v) → (z = u, y = v), turned −90° about Y; 0.06 thick along −x.
-    const g = new THREE.ExtrudeGeometry(frame, { depth: 0.06, bevelEnabled: false, curveSegments: 10 }).rotateY(-Math.PI / 2);
-    props.add(mats.gold, at(g.translate(side > 0 ? half - 0.01 : -half + 0.07, 0, 0)));
-  }
-  // The cushion, the tilted back, a gold runner along the floor.
-  const w = 2 * half - 0.16;
-  props.add(L.quilt, at(scaleUV(boxAt(w, 0.16, 2 * d - 0.5, { x: 0, y: 0.38, z: -0.06 }), w / 0.24, 1)));
-  const back = boxAt(w, 0.68, 0.14, { x: 0, y: 0.34, z: 0 });
-  back.rotateX(-0.32).translate(0, 0.42, d - 0.24);
-  props.add(L.quilt, at(scaleUV(back, w / 0.24, 0.68 / 0.24)));
-  props.add(mats.gold, at(boxAt(2 * half - 0.04, 0.04, 0.08, { x: 0, y: 0.02, z: -d + 0.12 })), at(boxAt(2 * half - 0.04, 0.04, 0.08, { x: 0, y: 0.02, z: d - 0.1 })));
-}

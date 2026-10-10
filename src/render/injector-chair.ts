@@ -4,13 +4,13 @@ import { Parts, bar, box, rod } from './parts';
 // The injector chair (phase 3, M8): "a bucket seat on a short column with a headrest and side rails, in the lounge's
 // colours" — after 03_STANDBY_INJECTOR/ (TV_injector_bay_clean_01: tall tapered blue-grey backs in silver frames, red
 // armrest pads on silver rails; TV_injector_chair_descent_01: the dark footplate under the boots, the grey arched cheeks
-// beneath the seat, the slim column). Three stand in the lounge (render/rooms.ts); M8: **one chair object** carries
-// Troy — this one, created with the lounge, re-parented by T7 to the shaft path while riding and to the sub's model
+// beneath the seat, the slim column). Three stand at the control room's injector station (phase 4, render/rooms.ts); M8:
+// **one chair object** carries Troy — this one, created with the station, re-parented by T7 to the shaft path while riding and to the sub's model
 // aboard. Never two chairs.
 //
 // Frame (as Troy's and the sub's models): +Y up, forward −Z (the sitter faces −Z), metres. The origin is on the floor
 // under the seat's centre — ROOMS.chair.pos, "seat centre on the floor" (M1). Under the origin hangs the carriage that
-// rides the shaft: a hub and four spokes out to guide shoes at CHAIR_GUIDE_REACH, which in the lounge rest on the bore's
+// rides the shaft: a hub and four spokes out to guide shoes at CHAIR_GUIDE_REACH, which in phase 3's lounge rested on the bore's
 // rim (the bore is open between them).
 //
 // Troy seated (T7): parent his group to the chair and set troy.group.position = CHAIR_SEAT − TROY_SEAT (render/troy.ts),
@@ -20,7 +20,7 @@ import { Parts, bar, box, rod } from './parts';
 export const CHAIR_SEAT: Readonly<{ x: number; y: number; z: number }> = Object.freeze({ x: 0, y: 0.5, z: 0.04 });
 /** The footplate's top, in the chair's frame (Troy's soles rest here: CHAIR_SEAT.y − TROY_SEAT.y). */
 export const CHAIR_FOOTPLATE_Y = 0.13;
-/** How far the carriage's guide shoes reach from the column (m) — inside the lounge bore's radius (render/rooms.ts). */
+/** How far the carriage's guide shoes reach from the column (m) — inside the bore's radius (render/rooms.ts). */
 export const CHAIR_GUIDE_REACH = 0.9;
 /** The chair's overall height above its origin (the headrest's top). */
 export const CHAIR_HEIGHT = 1.62;

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { FLOOR_Y, ROOMS, type Rooms } from './rooms';
+import { FLOOR_Y, ROOMS, type Rooms, SEAT } from './rooms';
 import { type TroyInput, type TroyState, STAND_STILL, aboard, onFoot, stepTroy, walkable } from './troy';
 import { TUNING as T } from './tuning';
 import type { Vec3 } from './vec3';
@@ -126,19 +126,21 @@ describe('Troy on foot (M2)', () => {
   });
 
   it('is unchanged when riding or aboard', () => {
-    const riding: TroyState = { ...at(0, -1270), where: 'riding', ride: 0.3 };
-    const seated = aboard({ x: 0, y: 9, z: -1395 });
+    const riding: TroyState = { ...at(R.chair.pos.x, R.chair.pos.z), where: 'riding', ride: 0.3 };
+    const seated = aboard(SEAT);
     for (const t of [riding, seated]) {
       expect(stepTroy(t, NORTH, DT, R)).toBe(t);
       expect(run(t, go(1, 1), 2)).toBe(t);
     }
   });
 
-  it.each(['controlRoom', 'corridor', 'lounge'] as const)(
+  // Phase 4 (D2): the control room is the only room; it runs three times the seeds the three rooms shared, so the walks
+  // still find the station's dais and chairs and the re-laid furniture.
+  it.each(['controlRoom'] as const)(
     'cannot leave the rooms or enter a prop from the %s under 10 s of seeded random input',
     (id) => {
       const rooms = R.rooms.filter((r) => r.id === id);
-      for (let seed = 1; seed <= 6; seed++) {
+      for (let seed = 1; seed <= 18; seed++) {
         const rand = lcg(seed * 7919 + id.length);
         const room = rooms[Math.floor(rand() * rooms.length)]!;
         let t: TroyState | null = null;

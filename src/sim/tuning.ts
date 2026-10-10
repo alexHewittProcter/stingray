@@ -95,12 +95,12 @@ export const TUNING = {
   followNear: 0.2, // m — the near plane on foot, so its corners stay inside followWallInset of a wall
 
   // The ride down the injector shaft (phase 3, M6) — sim/ride.ts
-  rideSeconds: 10, // s — RIDE_SECONDS: the chair covers the whole shaft in this
-  rideEaseIn: 1.5, // s — the first time slice, smoothstep up to the cruising speed
+  rideSeconds: 6, // s — RIDE_SECONDS: the chair covers the whole shaft in this (phase 4 D4: ≈ 14 m/s over 83.7 m)
+  rideEaseIn: 1, // s — the first time slice, smoothstep up to the cruising speed (phase 4 D4: was 1.5)
   rideEaseOut: 1, // s — the last, smoothstep down to rest at the seat
 
   // The ride camera (phase 3, M4 "Transitions") — presentation numbers (render/ride-camera.ts)
-  rideHold: 1.5, // s — the camera stays in the lounge this long after Troy sits
+  rideHold: 1.5, // s — the camera stays in the room this long after Troy sits (phase 4 D4 → 0.8 at T4)
   rideCatchUp: 1.5, // s — then eases from above the bore onto the chair's boom
   rideBoom: 3, // m behind the chair along the shaft, before the tube's wall shortens it
   rideRise: 1.75, // m off the shaft's axis, behind-and-above the chair (held inside the tube's wall)

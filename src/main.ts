@@ -42,8 +42,8 @@ import { createTunnel } from './render/tunnel';
 import { updateScenery } from './render/sway';
 import { targetsLeft } from './sim/combat';
 import { INTERACTABLES } from './sim/interactables';
-import { legsOf, rideTimeAt, standPoint } from './sim/ride';
-import { ROOMS, SEAT_RISE, SHAFT_RUN_Y, shaftLength } from './sim/rooms';
+import { rideTimeAt, standPoint } from './sim/ride';
+import { ROOMS, SEATS_LOCAL } from './sim/rooms';
 import { TUNING } from './sim/tuning';
 import { forwardOf, speedOf } from './sim/sub';
 import { FIXED_DT, createWorld } from './sim/world';
@@ -105,9 +105,10 @@ const rooms = createRooms(ROOMS);
 scene.add(rooms.group, rooms.lamp);
 const troy = createTroy();
 scene.add(troy.group);
-// The ride (phase 3, M6/M4, T7): the injector shaft's tube and its housing in the pen hall; the ride camera; the one
-// chair object (M8) — found in the lounge, re-parented to the shaft path while riding and into the sub's model aboard,
-// Troy seated in it; and the sub's roof hatch, open while the chair is on the shaft's last leg.
+// The ride (phase 3, M6/M4, T7; phase 4, D1): the injector shaft's tube, straight down from the control room to the pen
+// hall's ceiling; the ride camera; the one chair object (M8) — found at the station, re-parented to the shaft path while
+// riding and into the sub's model aboard, Troy seated in it; and the sub's roof hatch, open while the chair is in the
+// hall (phase 4 T1's interim — T3 drives it from D3's predicate).
 const shaft = createShaft(ROOMS, world.marineville.interior);
 scene.add(shaft.group);
 const rideCamera = createRideCamera(camera, ROOMS, world.marineville.interior, shaft.line);
@@ -115,12 +116,11 @@ const chair = rooms.group.getObjectByName(INJECTOR_CHAIR_NAME)!;
 const chairHome = chair.parent!;
 pen.reflect(chair);
 pen.reflect(troy.group);
-const shaftLegs = legsOf(ROOMS.shaft);
-/** M1: the hatch is open while the chair is on the last leg — from this many seconds into the ride. */
-const LAST_LEG_TIME = rideTimeAt(shaftLegs[shaftLegs.length - 1]!.start / shaftLength(ROOMS.shaft));
+/** Phase 4 (T1, interim until T3's D3 predicate): the hatch is open while the riding chair is below the hall's ceiling. */
+const HALL_CEILING_Y = world.marineville.interior.pen.max.y;
 const HATCH_SECONDS = 0.4; // the lid's swing, either way
 let hatch = 0;
-/** The camera as last drawn, for the ride's hold (M4: "the camera stays in the lounge for the chair's first 1.5 s"). */
+/** The camera as last drawn, for the ride's hold (M4: "the camera stays in the room for the chair's first rideHold s"). */
 const drawnPose: CameraPose = { pos: new THREE.Vector3(), quat: new THREE.Quaternion(), fov: camera.fov };
 let wasRiding = false;
 /** M6b: the ride just ended was the way back up — Troy stands up in front of the chair. */
@@ -148,7 +148,7 @@ function standUpView(): CameraPose {
   return standUpPose;
 }
 // Witnessing (debug): ?view=x,y,z,lookX,lookY,lookZ fixes the camera there, ignoring the rig; ?view=control,
-// corridor, lounge, shaft or hatch are the presets (debug.ts VIEW_PRESETS, M10; docs/witnessing.md).
+// station, shaft, port or hatch are the presets (debug.ts VIEW_PRESETS, M10, phase 4 W; docs/witnessing.md).
 const viewNumbers = viewParam(params.get('view'));
 const viewFrom = viewNumbers
   ? [new THREE.Vector3(viewNumbers[0], viewNumbers[1], viewNumbers[2]), new THREE.Vector3(viewNumbers[3], viewNumbers[4], viewNumbers[5])] as const
@@ -362,19 +362,19 @@ function draw(alpha: number, frameSeconds: number): void {
   }
   // M3: the drawn camera's yaw, for the next steps' on-foot mapping (W = away from the camera).
   game.cameraYaw = yawOfView(camera.getWorldDirection(lookDir), game.cameraYaw);
-  // The shaft (T7): down the bore or the tube's first leg the rooms stay drawn; the tube is drawn from the rooms, in
-  // the shaft and in the pen hall; at sea it is not.
+  // The shaft (T7; phase 4 D1): down the bore or the tube the rooms stay drawn (the bore's throat is theirs); the tube
+  // is drawn from the rooms, in the shaft and in the pen hall; at sea it is not.
   const camInShaft = inShaft(camera.position, shaft.line);
   const camIndoors = cameraIndoors(camera.position);
-  rooms.update(camera, camInShaft && camera.position.y > SHAFT_RUN_Y + 3);
+  rooms.update(camera, camInShaft);
   shaft.group.visible = camInShaft || camIndoors || inRooms(camera.position);
   // M8: the one chair, and Troy in it once he has sat. Troy animates on the frame's wall time (the sit blend, the
   // breath) and, on foot, fades when the camera is on top of him.
   seatChairAndTroy(g.troy.where, troyNow);
   troy.pose(g.troy, alpha, game.lastState.troy, { dt: frameSeconds, camera, snap: jumped, place: g.troy.where === 'onFoot' });
-  // M1: the roof hatch, open while the chair is on the last leg — on the way down its last stretch, on the way up (M6b)
-  // its first (rideTime is the descent's clock either way).
-  const hatchWant = riding && rideTime >= LAST_LEG_TIME ? 1 : 0;
+  // M1: the roof hatch, open while the chair is in the hall — on the way down its last stretch, on the way up (M6b)
+  // its first (phase 4 T1's interim; T3: D3's predicate).
+  const hatchWant = riding && troyNow.pos.y < HALL_CEILING_Y ? 1 : 0;
   hatch = jumped ? hatchWant : hatch + Math.sign(hatchWant - hatch) * Math.min(Math.abs(hatchWant - hatch), frameSeconds / HATCH_SECONDS);
   craft.setHatch(hatch * hatch * (3 - 2 * hatch));
   pen.update(camera, penView, frameSeconds, elapsed);
@@ -442,9 +442,9 @@ function rideTimeNow(alpha: number): number {
 }
 
 /**
- * M8: one chair object carries Troy. On foot it stands in the lounge (its home in the rooms group) and Troy walks; riding
- * it is on the shaft path at Troy's seat point, facing his yaw; aboard it is a child of the sub's model at the cabin's
- * seat point (model-local (0, SEAT_RISE, 0), facing forward). Riding and aboard Troy sits in it (render/troy.ts
+ * M8: one chair object carries Troy. On foot it stands at the station (its home in the rooms group) and Troy walks;
+ * riding it is on the shaft path at Troy's seat point, facing his yaw; aboard it is a child of the sub's model at his
+ * seat point (phase 4 D3: model-local SEATS_LOCAL.troy, the cabin roof's forward third, port side; facing forward). Riding and aboard Troy sits in it (render/troy.ts
  * place: false — his cushion point on the chair's).
  */
 function seatChairAndTroy(where: 'onFoot' | 'riding' | 'aboard', at: { pos: { x: number; y: number; z: number }; yaw: number }): void {
@@ -457,7 +457,7 @@ function seatChairAndTroy(where: 'onFoot' | 'riding' | 'aboard', at: { pos: { x:
     chair.position.set(at.pos.x, at.pos.y, at.pos.z);
     chair.rotation.set(0, at.yaw, 0);
   } else {
-    chair.position.set(0, SEAT_RISE, 0);
+    chair.position.set(SEATS_LOCAL.troy.x, SEATS_LOCAL.troy.y, SEATS_LOCAL.troy.z);
     chair.rotation.set(0, 0, 0);
   }
   const seated = where !== 'onFoot';
