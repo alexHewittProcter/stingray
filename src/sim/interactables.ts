@@ -1,11 +1,12 @@
-// Interactables (phase 3, M5): the things Troy can use on foot — the injector chair in the lounge, and a few props in
-// the control room that answer with a line of flavour. Plain data, never callbacks: the sim holds no function, and
+// Interactables (phase 3, M5): the things Troy can use on foot — the injector chair at the control room's station
+// (phase 4, D2), and a few props in the control room that answer with a line of flavour. Plain data, never callbacks: the sim holds no function, and
 // session.ts applies a Use when the 'use' press is consumed. Pure like the rest of src/sim.
 //
 // Positions: each say prop's pos is on the usable face of its dressed collider (sim/rooms.ts CONTROL_ROOM_PROPS, T4),
-// where Troy stands in front of it.
+// where Troy stands in front of it — expressed from the colliders and the tower's axis (phase 4, D1), never as a
+// literal world z.
 
-import { CONTROL_ROOM_PROPS, FLOOR_Y, ROOMS } from './rooms';
+import { CONTROL_ROOM_PROPS, FLOOR_Y, ROOMS, TOWER_AXIS } from './rooms';
 import type { HudLines } from './launch';
 import { type TroyState, wrapAngle } from './troy';
 import type { Vec3 } from './vec3';
@@ -32,6 +33,9 @@ export const USE_CONE = Math.PI / 3;
 export const LINE_SECONDS = 4;
 
 const at = (x: number, z: number): Vec3 => ({ x, y: FLOOR_Y, z });
+const P = CONTROL_ROOM_PROPS;
+const midX = (b: { min: Vec3; max: Vec3 }) => (b.min.x + b.max.x) / 2;
+const midZ = (b: { min: Vec3; max: Vec3 }) => (b.min.z + b.max.z) / 2;
 
 export const INTERACTABLES: readonly Interactable[] = deepFreeze<Interactable[]>([
   {
@@ -44,17 +48,19 @@ export const INTERACTABLES: readonly Interactable[] = deepFreeze<Interactable[]>
     use: { kind: 'ride' },
   },
   {
-    // The wall map on the control room's north wall (CONTROL_ROOM_PROPS.map, its face at z −1258.2), at its middle.
+    // The wall map on the control room's north wall (CONTROL_ROOM_PROPS.map), on its face, under the map's middle
+    // (3 m west of the axis — render/rooms.ts draws it there).
     id: 'wallMap',
-    pos: at(-3, CONTROL_ROOM_PROPS.map.max.z),
+    pos: at(TOWER_AXIS.x - 3, P.map.max.z),
     radius: USE_RADIUS,
     prompt: 'Look — the wall map',
     use: { kind: 'say', line: 'The whole Pacific on one wall — and somewhere out there, Titan is watching it too.' },
   },
   {
-    // The World Videophone on the west wall (CONTROL_ROOM_PROPS.videophone, its face at x −8.3), at its panel.
+    // The World Videophone on the west wall (CONTROL_ROOM_PROPS.videophone, its face at x −8.3), at its panel (drawn
+    // 0.3 m north of the collider's middle).
     id: 'videophone',
-    pos: at(CONTROL_ROOM_PROPS.videophone.max.x, -1251.8),
+    pos: at(P.videophone.max.x, midZ(P.videophone) - 0.3),
     radius: USE_RADIUS,
     prompt: 'Call — World Videophone',
     use: { kind: 'say', line: 'Marineville Control to WASP Headquarters: Stingray in Pen 3, standing by.' },
@@ -62,15 +68,15 @@ export const INTERACTABLES: readonly Interactable[] = deepFreeze<Interactable[]>
   {
     // The locator compass on the east wall and its lamp unit (CONTROL_ROOM_PROPS.locator, its face at x 7.3).
     id: 'locator',
-    pos: at(CONTROL_ROOM_PROPS.locator.min.x, -1255.9),
+    pos: at(P.locator.min.x, midZ(P.locator)),
     radius: USE_RADIUS,
     prompt: 'Check — the locator',
     use: { kind: 'say', line: 'Hydrophones are quiet — nothing on the locator but the ocean, and the ocean never stays quiet for long.' },
   },
   {
-    // Commander Shore's desk by the windows (CONTROL_ROOM_PROPS.shoreDesk), its north face, toward the room.
+    // Commander Shore's desk on the room's west side (CONTROL_ROOM_PROPS.shoreDesk), its north face, toward the room.
     id: 'shoresDesk',
-    pos: at(0, CONTROL_ROOM_PROPS.shoreDesk.min.z),
+    pos: at(midX(P.shoreDesk), P.shoreDesk.min.z),
     radius: USE_RADIUS,
     prompt: "Read — Commander Shore's orders",
     use: { kind: 'say', line: 'Orders from Commander Shore: Stingray stands by in Pen 3 — and anything can happen in the next half hour.' },

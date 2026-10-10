@@ -101,7 +101,7 @@ export const LEGEND_KEYS: Rows = [
   ['J L I K', 'look round'],
   ['Esc', 'menu'],
   ['C', 'recentre'],
-  ['5', 'leave seat'], // phase 3 (M3, M6b): docked and raised, back up to the lounge
+  ['5', 'leave seat'], // phase 3 (M3, M6b): docked and raised, back up to the control room
 ];
 
 /** A situation's keys as HTML rows (`<div><b>key</b> action</div>`), for either drawing (aboard by default). */

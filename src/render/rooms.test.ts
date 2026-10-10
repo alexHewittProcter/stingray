@@ -1,9 +1,8 @@
 import * as THREE from 'three';
 import { describe, expect, it } from 'vitest';
-import { CONTROL_ROOM_PROPS, CORRIDOR_PROPS, LOUNGE_PROPS, ROOMS, SHAFT_OPEN_TOP, SHAFT_RADIUS, type Box } from '../sim/rooms';
+import { CONTROL_ROOM_PROPS, ROOMS, SHAFT_OPEN_TOP, SHAFT_RADIUS, STATION_CHAIRS, type Box } from '../sim/rooms';
 import { CHAIR_FOOTPLATE_Y, CHAIR_SEAT, createInjectorChair } from './injector-chair';
-import { createMarineville } from './marineville';
-import { BORE_RADIUS, INJECTOR_CHAIR_NAME, ROOMS_EXTERIOR_NAME, createRooms } from './rooms';
+import { BORE_RADIUS, INJECTOR_CHAIR_NAME, createRooms } from './rooms';
 import { TROY_SEAT } from './troy';
 
 // What you see is what you hit, in the control room (M1 art, Global constraints "art respects colliders"): the drawn
@@ -110,68 +109,23 @@ describe('the rooms group (Global constraints)', () => {
     room.traverse((o) => { if (o instanceof THREE.Mesh) meshes++; });
     expect(meshes).toBeLessThanOrEqual(40);
   });
-
-  it("hides the tower's rooms exterior while the camera is in the rooms, and shows it from outside", () => {
-    const scene = new THREE.Scene();
-    const marineville = createMarineville();
-    const rooms = createRooms(ROOMS);
-    scene.add(marineville, rooms.group, rooms.lamp);
-    const exterior = scene.getObjectByName(ROOMS_EXTERIOR_NAME)!;
-    expect(exterior).toBeDefined();
-    const camera = new THREE.PerspectiveCamera();
-    camera.position.set(ROOMS.start.pos.x, ROOMS.start.pos.y + 1.6, ROOMS.start.pos.z);
-    rooms.update(camera);
-    expect(exterior.visible).toBe(false);
-    camera.position.set(0, 6, -880); // out at sea, looking at the tower
-    rooms.update(camera);
-    expect(exterior.visible).toBe(true);
-  });
-
-  it("keeps the tower's rooms exterior out of the control room's box", () => {
-    const marineville = createMarineville();
-    marineville.updateMatrixWorld(true);
-    const exterior = marineville.getObjectByName(ROOMS_EXTERIOR_NAME)!;
-    const box = new THREE.Box3();
-    exterior.traverse((o) => {
-      if (!(o instanceof THREE.Mesh)) return;
-      box.setFromObject(o);
-      const overlaps = box.min.x < control.max.x && box.max.x > control.min.x && box.min.y < control.max.y && box.max.y > control.min.y
-        && box.min.z < control.max.z && box.max.z > control.min.z;
-      expect(overlaps).toBe(false);
-    });
-  });
 });
 
-// T5 (M1 art, M8's chair): the corridor and the Standby Lounge. The two checks above already run over every tagged
-// mesh in the group — the lounge's and the corridor's included — so these add what is particular to them.
+// Phase 4 (D2, T1 greybox): the injector station at the room's centre. The two checks above already run over every
+// tagged mesh in the group — the station's included — so these add what is particular to it.
 
-describe('the corridor and the lounge (M1 art)', () => {
+describe('the injector station (phase 4, D2 — greybox)', () => {
   const shell = samples('roomShell');
-  const props = samples('roomProp');
-  const lounge = ROOMS.rooms.find((r) => r.id === 'lounge')!;
-  const legs = ROOMS.rooms.filter((r) => r.id === 'corridor');
   const on = (v: number, face: number) => Math.abs(v - face) < EPSILON;
-  const over = (b: Box, p: THREE.Vector3) => p.x > b.min.x + 0.3 && p.x < b.max.x - 0.3 && p.z > b.min.z + 0.3 && p.z < b.max.z - 0.3;
 
-  it('gives the lounge a floor, a ceiling and a wall on every side', () => {
-    const { min, max } = lounge;
-    const near = shell.filter((p) => p.x >= min.x - 0.3 && p.x <= max.x + 0.3 && p.z >= min.z - 0.3 && p.z <= max.z + 0.3);
-    for (const [axis, face] of [['y', min.y], ['y', max.y], ['x', min.x], ['x', max.x], ['z', min.z], ['z', max.z]] as const) {
-      expect(near.some((p) => on(p[axis], face)), `${axis} ${face}`).toBe(true);
-    }
-  });
-
-  it('gives each corridor leg a floor and a ceiling over it', () => {
-    for (const leg of legs) {
-      expect(shell.some((p) => over(leg, p) && on(p.y, leg.min.y))).toBe(true);
-      expect(shell.some((p) => over(leg, p) && on(p.y, leg.max.y))).toBe(true);
-    }
-  });
-
-  it('draws something in every named lounge and corridor collider — none is an invisible wall', () => {
-    for (const [name, b] of Object.entries({ ...LOUNGE_PROPS, ...CORRIDOR_PROPS })) {
-      expect(props.some((p) => strictlyInside(p, b)), name).toBe(true);
-    }
+  it('stands the bore inside the dais: no walkable floor is cut by it', () => {
+    const c = ROOMS.chair.pos;
+    const d = CONTROL_ROOM_PROPS.station;
+    expect(c.x - BORE_RADIUS).toBeGreaterThanOrEqual(d.min.x - 1e-9);
+    expect(c.x + BORE_RADIUS).toBeLessThanOrEqual(d.max.x + 1e-9);
+    expect(c.z - BORE_RADIUS).toBeGreaterThanOrEqual(d.min.z - 1e-9);
+    expect(c.z + BORE_RADIUS).toBeLessThanOrEqual(d.max.z + 1e-9);
+    expect(BORE_RADIUS).toBe(1.2); // D1
   });
 
   it("leaves the bore open: no floor drawn across it, and its throat runs SHAFT_OPEN_TOP down into the tube — no cap (T7)", () => {
@@ -180,17 +134,22 @@ describe('the corridor and the lounge (M1 art)', () => {
     expect(across.slice(0, 3)).toEqual([]);
     const throat = shell.filter((p) => on(Math.hypot(p.x - c.x, p.z - c.z), BORE_RADIUS) && p.y < c.y - 0.5);
     expect(Math.min(...throat.map((p) => p.y))).toBeCloseTo(c.y - SHAFT_OPEN_TOP, 3);
-    // T7 drew the rest of the shaft (render/shaft.ts) and removed the stub's dark cap: nothing closes the tube.
+    // render/shaft.ts draws the rest of the shaft: nothing closes the tube.
     const closing = shell.filter((p) => Math.hypot(p.x - c.x, p.z - c.z) < SHAFT_RADIUS - 0.1 && p.y < c.y - SHAFT_OPEN_TOP - 1.3); // below the flare
     expect(closing.slice(0, 3)).toEqual([]);
   });
 
-  it('keeps each to a modest number of draw calls', () => {
-    for (const [name, cap] of [['corridor', 20], ['lounge', 45]] as const) {
-      let meshes = 0;
-      view.group.getObjectByName(name)!.traverse((o) => { if (o instanceof THREE.Mesh) meshes++; });
-      expect(meshes, name).toBeLessThanOrEqual(cap);
+  it("draws Phones's and Marina's chairs at their places on the dais", () => {
+    const props = samples('roomProp');
+    for (const [name, c] of Object.entries(STATION_CHAIRS)) {
+      expect(props.some((p) => Math.hypot(p.x - c.x, p.z - c.z) < 0.1 && p.y > c.y + 0.3 && p.y < c.y + 0.6), name).toBe(true);
     }
+  });
+
+  it('keeps the station to a modest number of draw calls', () => {
+    let meshes = 0;
+    view.group.getObjectByName('station')!.traverse((o) => { if (o instanceof THREE.Mesh) meshes++; });
+    expect(meshes).toBeLessThanOrEqual(20);
   });
 });
 

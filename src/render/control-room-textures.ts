@@ -91,7 +91,6 @@ export const DECALS = Object.freeze({
   chart: [1024, 384, 512, 256] as Rect,
   banner: [0, 400, 1024, 64] as Rect,
   locatorSign: [0, 480, 512, 96] as Rect,
-  loungeSign: [512, 480, 512, 96] as Rect,
   actionSign: [1536, 256, 512, 96] as Rect,
   fireSign: [1536, 352, 256, 96] as Rect,
   shorePlate: [0, 592, 512, 96] as Rect,
@@ -400,7 +399,6 @@ export function decalAtlas(): THREE.CanvasTexture | null {
     paintLampPanel(ctx, DECALS.lampPanel);
     label(ctx, DECALS.banner, 'WORLD AQUANAUT SECURITY PATROL', '#c0362a', '#f4ead2', 40);
     label(ctx, DECALS.locatorSign, 'LOCATOR COMPASS', '#e6dcc0', '#2b2b2b', 46);
-    label(ctx, DECALS.loungeSign, 'STANDBY LOUNGE', '#c0362a', '#f4ead2', 46);
     label(ctx, DECALS.actionSign, 'ACTION AREA', '#d9cdb0', '#2b2b2b', 50);
     label(ctx, DECALS.fireSign, 'FIRE', '#c0362a', '#ffffff', 52);
     label(ctx, DECALS.shorePlate, 'COMMANDER', '#2b2f33', '#e9c24a', 48);

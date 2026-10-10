@@ -14,14 +14,14 @@ pnpm build && pnpm preview
 
 ## Controls
 
-The game opens on a title menu over the Marineville control room, with Troy Tempest standing by (Enter to start there, or skip to Pen 3 or the open ocean). On foot, walk him (`W A S D`, relative to the camera) through the corridor to the Standby Lounge and press `E` at his injector chair: it drops him down the shaft into Stingray's cabin in Pen 3. Aboard, launch her with the panel at the bottom of the screen — keys `1`–`4` or click the levers, in order: lower the cradle, start the engines, release the clamps, then drive down the tunnel and request the ocean door. A lamp shows each control's state: dark (not now), amber (ready, or moving), green (in launch position), red (refused — the reason shows on the panel). Home again — docked, the cradle raised — the fifth control, `5` · LEAVE SEAT, lights amber: press it and the chair carries Troy back up the shaft to the lounge, where he stands up and walks again.
+The game opens on a title menu over the Marineville control room, with Troy Tempest standing by (Enter to start there, or skip to Pen 3 or the open ocean). On foot, walk him (`W A S D`, relative to the camera) across the room to the injector station at its centre and press `E` at his injector chair: it drops him straight down the shaft into Stingray's cabin in Pen 3. Aboard, launch her with the panel at the bottom of the screen — keys `1`–`4` or click the levers, in order: lower the cradle, start the engines, release the clamps, then drive down the tunnel and request the ocean door. A lamp shows each control's state: dark (not now), amber (ready, or moving), green (in launch position), red (refused — the reason shows on the panel). Home again — docked, the cradle raised — the fifth control, `5` · LEAVE SEAT, lights amber: press it and the chair carries Troy back up the shaft to the control room, where he stands up and walks again.
 
 | Key | Action |
 |---|---|
 | `W` `A` `S` `D` (on foot) | walk, relative to the camera |
 | `E` (on foot) | use — the chair, and the things you are near |
 | `1` `2` `3` `4` | cradle · engines · clamps · ocean door |
-| `5` (aboard, docked) | leave the seat — ride back up to the lounge |
+| `5` (aboard, docked) | leave the seat — ride back up to the control room |
 | `W` / `S` | throttle forward / reverse |
 | `A` / `D` | turn left / right |
 | `↓` or `E` | climb (nose up) |

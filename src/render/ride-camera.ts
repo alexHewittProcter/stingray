@@ -11,7 +11,7 @@ import { distanceToLine } from './shaft';
 
 // The ride camera (phase 3, M4 "Transitions", T7): the view while Troy rides the injector chair down the shaft.
 //
-//   - The hold: for the chair's first rideHold (1.5 s) the camera stays in the lounge — it eases from where the follow
+//   - The hold: for the chair's first rideHold (1.5 s) the camera stays in the room — it eases from where the follow
 //     camera left it (the pose `begin` was given) to a point above the bore, rideBoom over the seat, turning from
 //     Troy toward the shaft — so the player watches the chair drop away into the floor.
 //   - The ride: then it follows the chair down the shaft — "behind and above it, boom 3 m shortened by the tube's
@@ -32,7 +32,7 @@ import { distanceToLine } from './shaft';
 // in reverse: it sets off on the rig's output (the pen camera, where the arrival blend ends), comes off it over the
 // first rideBlend, follows the chair up the shaft from above it (the descent's boom side — ahead of the chair as it
 // rises, looking back down at Troy coming up), and over the last rideHold eases into the pose `begin` was given — for
-// the ascent the follow camera's stand-up pose in the lounge (main.ts standUpView), which then takes over without a cut.
+// the ascent the follow camera's stand-up pose in the control room (main.ts standUpView), which then takes over without a cut.
 
 export interface CameraPose {
   pos: THREE.Vector3;
@@ -43,7 +43,7 @@ export interface CameraPose {
 export interface RideCamera {
   /**
    * The ride has begun (Troy sat): hold from this pose — the camera as last drawn — or, after a jump, from above the
-   * bore. Going up (M6b): the pose to arrive on in the lounge.
+   * bore. Going up (M6b): the pose to arrive on in the control room.
    */
   begin(from: CameraPose | null): void;
   /**
