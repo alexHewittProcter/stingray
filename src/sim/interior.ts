@@ -40,6 +40,52 @@ export function capAt(pos: Vec3, interior: Interior): number {
 }
 
 /**
+ * Phase 4 D6, the bore's pitch assist: the pitch (radians, + nose up) of the tunnel's bore along heading `yaw` at a
+ * hull centre inside the bore (within the drawn radius of the centreline, north of the face, south of the pen's south
+ * wall), else 0. The slope comes from the centreline segment at the hull's arc position, blended over boreTrimBlend
+ * metres across each join (centred on the corner), and down to level over the last boreTrimBlend before the pen's
+ * wall; taken along the heading, so facing in up the incline it is ≈ +8.7°, facing out ≈ −8.7°, broadside 0.
+ */
+export function boreSlopeAt(pos: Vec3, yaw: number, interior: Interior): number {
+  if (!northOfFace(pos) || pos.z <= interior.pen.max.z) return 0;
+  const line = interior.tunnel.centreline;
+  // The hull's arc position and its distance from the axis; each segment's horizontal gradient (rise per metre run).
+  let best = Infinity;
+  let at = 0;
+  let s0 = 0;
+  const grads: Array<{ s: number; gx: number; gz: number }> = [];
+  for (let k = 1; k < line.length; k++) {
+    const a = line[k - 1]!;
+    const b = line[k]!;
+    const ab = sub(b, a);
+    const length = Math.hypot(ab.x, ab.y, ab.z);
+    const run = Math.hypot(ab.x, ab.z);
+    grads.push({ s: s0, gx: run > 0 ? (ab.x / run) * (ab.y / run) : 0, gz: run > 0 ? (ab.z / run) * (ab.y / run) : 0 });
+    const t = clamp(dot(sub(pos, a), ab) / dot(ab, ab), 0, 1);
+    const d = distance(pos, add(a, scale(ab, t)));
+    if (d < best) [best, at] = [d, s0 + t * length];
+    s0 += length;
+  }
+  if (best > interior.tunnel.radius) return 0;
+  const W = T.boreTrimBlend;
+  const step = (s: number, centre: number) => {
+    const u = clamp((s - centre) / W + 0.5, 0, 1);
+    return u * u * (3 - 2 * u);
+  };
+  let gx = grads[0]!.gx;
+  let gz = grads[0]!.gz;
+  for (let k = 1; k < grads.length; k++) {
+    const w = step(at, grads[k]!.s);
+    gx += (grads[k]!.gx - grads[k - 1]!.gx) * w;
+    gz += (grads[k]!.gz - grads[k - 1]!.gz) * w;
+  }
+  // Level at the pen's wall: the last segment's slope fades out over the bore's last W metres.
+  const fade = 1 - step(at, s0 - W / 2);
+  const along = (-Math.sin(yaw) * gx - Math.cos(yaw) * gz) * fade;
+  return Math.atan(along);
+}
+
+/**
  * Confinement for the hull centre: within tunnelHullReach of the centreline, or in the pen box shrunk by the
  * hull radius. South of the face it does nothing (the sea and the slab are stepSub's business). The correction
  * is the distance to the volume and no more.

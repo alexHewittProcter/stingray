@@ -43,6 +43,9 @@ export const TUNING = {
   tunnelHullReach: 5, // m
   cameraWallInset: 1, // m the camera is held inside the drawn walls (bore and pen)
   interiorSpeedCap: 15, // m/s forward in the pen and at its south wall (boost off there) — phase 4 D6
+  // Phase 4 D6, the bore's pitch assist: in the tunnel the nose with no pitch input returns (at levelRate) to the
+  // bore's slope along the heading, not to level — so a sub held on the throttle follows the straight incline at speed.
+  boreTrimBlend: 20, // m of arc over which the assist blends from one segment's slope to the next (and to level at the pen)
   capRamp: 60, // m south of the pen's south wall over which the cap falls from cruise/boost to interiorSpeedCap (D6)
 
   // Launch machinery (phase 2, L2 and L3)
