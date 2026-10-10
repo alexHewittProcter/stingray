@@ -20,7 +20,7 @@ import { type OrbitView, orbitPosition } from './orbit';
 //   - Walls (M4): the boom walk (boom.ts, phase 2's keepInside generalised) against the rooms — the boom is
 //     shortened to the first room wall or prop it meets, and the camera is held T.followWallInset (≥ 0.3 m) inside
 //     the room's box and clear of the props. "The room" is every box sharing an id with a box his feet are in (the
-//     corridor is two boxes; in a doorway he is in two rooms), so it never leaves the room he is in. A boom the walls
+//     rooms may be several boxes; in a doorway he is in two), so it never leaves the room he is in. A boom the walls
 //     shortened lengthens again at T.followBoomOutRate; shortening is instant, so it never sees through a wall.
 //   - Phase 2's keepInside against the Interior never runs here (Global constraints, indoors switches).
 

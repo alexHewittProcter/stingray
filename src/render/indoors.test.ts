@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { describe, expect, it } from 'vitest';
-import { ROOMS, SHAFT_RUN_Y } from '../sim/rooms';
+import { ROOMS, SEAT } from '../sim/rooms';
 import { COAST_Z, MARINEVILLE } from '../sim/world';
 import { cameraIndoors, inRooms, indoorAmount, oceanInView } from './indoors';
 import { VIEW_PRESETS, viewParam } from '../debug';
@@ -40,7 +40,9 @@ describe('the indoors switches (phase 3, Global constraints)', () => {
   });
 
   it('counts the open sea, the air over the grounds and the shaft\'s closed tube as neither', () => {
-    for (const p of [v(0, -40, -800), v(0, 60, -1200), v(0, 30, -1300), v(0, SHAFT_RUN_Y, -1300), v(0, SHAFT_RUN_Y, -1290)]) {
+    // Phase 4 (D1): the tube runs straight down the tower's stalk and the rock to the pen hall's ceiling (y 20).
+    const tube = [50, 30, 23].map((y) => v(SEAT.x, y, SEAT.z));
+    for (const p of [v(0, -40, -800), v(0, 60, -1200), v(0, 30, -1300), ...tube]) {
       expect(cameraIndoors(p)).toBe(false);
       expect(inRooms(p)).toBe(false);
     }
@@ -81,32 +83,47 @@ describe('the greybox rooms (T1)', () => {
   });
 });
 
-describe('the rooms\' ?view= presets (M10)', () => {
-  it('has one preset per room, plus the shaft and its hatch (M10)', () => {
-    expect(Object.keys(VIEW_PRESETS).sort()).toEqual(['control', 'corridor', 'hatch', 'lounge', 'shaft']);
+describe('the rooms\' ?view= presets (M10; phase 4, W)', () => {
+  it('has the control room, the station, the shaft, and the port and hatch at its foot (W)', () => {
+    expect(Object.keys(VIEW_PRESETS).sort()).toEqual(['control', 'hatch', 'port', 'shaft', 'station']);
   });
 
-  it.each(['control', 'corridor', 'lounge'])('puts the camera for ?view=%s inside the rooms, looking at a point inside them', (name) => {
+  it.each(['control', 'station'])('puts the camera for ?view=%s inside the rooms, looking at a point inside them or the bore', (name) => {
     const n = viewParam(name)!;
     expect(n.length).toBe(6);
     expect(inRooms(v(n[0]!, n[1]!, n[2]!))).toBe(true);
-    expect(inRooms(v(n[3]!, n[4]!, n[5]!))).toBe(true);
+    const look = v(n[3]!, n[4]!, n[5]!);
+    expect(inRooms(look) || inShaft(look, shaftLine(ROOMS, MARINEVILLE.interior))).toBe(true);
   });
 
-  it('?view=shaft is inside the drawn shaft, looking along its level run', () => {
+  it('?view=station looks at the chairs from behind (north of them, looking south)', () => {
+    const n = viewParam('station')!;
+    expect(n[2]!).toBeLessThan(ROOMS.chair.pos.z - 2);
+    expect(n[5]!).toBeGreaterThan(n[2]!);
+  });
+
+  it('?view=shaft is inside the drawn shaft, looking down it', () => {
     const n = viewParam('shaft')!;
     const line = shaftLine(ROOMS, MARINEVILLE.interior);
     expect(inShaft(v(n[0]!, n[1]!, n[2]!), line)).toBe(true);
     expect(inShaft(v(n[3]!, n[4]!, n[5]!), line)).toBe(true);
-    expect(Math.abs(n[1]! - SHAFT_RUN_Y)).toBeLessThan(1);
+    expect(n[4]!).toBeLessThan(n[1]! - 10);
   });
 
-  it('?view=hatch is in the pen hall, looking up at the housing above the cradle', () => {
-    const n = viewParam('hatch')!;
-    const c = MARINEVILLE.interior.cradle;
+  it('?view=port is in the pen hall, looking up at the ceiling over the seat', () => {
+    const n = viewParam('port')!;
     expect(cameraIndoors(v(n[0]!, n[1]!, n[2]!))).toBe(true);
     expect(n[1]!).toBeLessThan(n[4]!);
-    expect(Math.hypot(n[3]! - c.pos.x, n[5]! - c.pos.z)).toBeLessThan(1e-9);
+    expect(Math.hypot(n[3]! - SEAT.x, n[5]! - SEAT.z)).toBeLessThan(1e-9);
+    expect(Math.abs(n[4]! - I.pen.max.y)).toBeLessThan(0.5);
+  });
+
+  it('?view=hatch is in the pen hall, close over the standby sub\'s cabin roof at the seat', () => {
+    const n = viewParam('hatch')!;
+    expect(cameraIndoors(v(n[0]!, n[1]!, n[2]!))).toBe(true);
+    expect(n[1]!).toBeGreaterThan(n[4]!);
+    expect(Math.hypot(n[3]! - SEAT.x, n[5]! - SEAT.z)).toBeLessThan(0.5);
+    expect(Math.hypot(n[0]! - n[3]!, n[1]! - n[4]!, n[2]! - n[5]!)).toBeLessThan(6);
   });
 
   it('still reads the six-number form, and ignores anything else', () => {
