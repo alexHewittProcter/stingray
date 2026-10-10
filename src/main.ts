@@ -220,12 +220,16 @@ function menuEvent(e: MenuEvent): void {
   else if (action === 'standby') game.toStandby();
   else if (action === 'ocean') game.toOcean();
   else if (action === 'toggleSound') audio.toggleMute();
+  else if (action === 'music') audio.setMusic(!audio.music);
   showMenu();
 }
 function showMenu(): void {
   audio.setPaused(menu.kind === 'pause');
+  // Phase 4 (S3): the music hears a menu change (and a menu's jump) the moment it happens — the title's fade on
+  // Start — not a step later.
+  audio.frame(game.state, { menu: menu.kind });
   // M9: the Controls page shows the current mode's card.
-  menuView.update(menu, audio.muted, legendSituation(game.mode, game.state.launch.clamps));
+  menuView.update(menu, { muted: audio.muted, music: audio.music }, legendSituation(game.mode, game.state.launch.clamps));
 }
 window.addEventListener('keydown', (e) => {
   if (swallow.down(e.code)) {
@@ -551,6 +555,7 @@ installDebugHandle({
   },
   camera: () => ({ x: camera.position.x, y: camera.position.y, z: camera.position.z }),
   menu: () => menu.kind,
+  music: audio.score,
   closeMenu: () => {
     menu = CLOSED;
     showMenu();
@@ -615,7 +620,7 @@ renderer.setAnimationLoop((now) => {
   const alpha = hold ? 1 : stepper.advance(time.sim);
   if (stats || fps) renderer.info.reset();
   draw(alpha, time.effects);
-  audio.frame(game.state);
+  audio.frame(game.state, { menu: menu.kind });
   if (fps) fps.frame(wallMs, renderer.info.render.calls, renderer.info.render.triangles);
   if (stats) {
     const { calls, triangles } = renderer.info.render;

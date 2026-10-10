@@ -1,3 +1,4 @@
+import type { SectionId } from './audio/score';
 import type { GameMode } from './game/mode';
 import type { CombatState } from './sim/combat';
 import type { LaunchControl, LaunchState, Press } from './sim/launch';
@@ -27,6 +28,12 @@ export interface DebugHandle {
   camera(): Vec3;
   /** T9: which menu is up, if any. advance() steps the sim whether or not one is (it is a debug tool). */
   menu(): 'title' | 'pause' | null;
+  /**
+   * Phase 4 (S4): the score — play a section on its own from its top (`'FANFARE'`, `'MARCH'`, `'BRIDGE'`, `'ROLL'`,
+   * `'STING_HOME'`, `'STING_END'`, `'ALERT'`), stop it (a 1 s fade), or ask what is playing. Starts sound if no gesture
+   * has (click the page first: a browser may hold a context made without one). Headless Chrome has no audio.
+   */
+  music: { play(id: SectionId): void; stop(): void; playing(): SectionId | null };
   /** T9: close whichever menu is up and play on as things stand (as Resume does; M9's title items all jump instead). */
   closeMenu(): void;
   /** Phase 3 (M10): Troy's state. */
