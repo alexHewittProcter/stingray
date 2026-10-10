@@ -232,6 +232,23 @@ describe('refusals on the panel (L3, L6)', () => {
 });
 
 describe('the panel at sea (L6)', () => {
+  it('phase 4 D6: just launched, heading away between the close and request ranges, the door is not asked for again', () => {
+    const s = new Session(standby(W));
+    s.press('cradle'); s.run(8);
+    s.press('engines'); s.run(2);
+    s.press('clamps');
+    // Out past the mouth heading away (south), 300 m from the door: beyond 280 the tower shuts it; within 340 it could be asked.
+    s.place({ x: 0, y: -40, z: COAST_Z + 300 }, Math.PI);
+    s.run(DT);
+    expect(s.memory).toMatchObject({ trip: 'home', launched: true });
+    expect(s.view.prompt).toBeNull();
+    expect(nextOf(s.view)).toBeNull();
+    // Turned for home at the same place: the request is the step.
+    s.place({ x: 0, y: -40, z: COAST_Z + 300 }, 0);
+    expect(nextOf(s.view)).toBe('door');
+    expect(s.view.prompt).toBe('Press 4 — request the ocean door');
+  });
+
   it('shows only the door control, and only within door range', () => {
     const s = new Session(oceanStart(W));
     s.place({ x: 0, y: -40, z: COAST_Z + 60 }, 0);

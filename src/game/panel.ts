@@ -253,9 +253,12 @@ function carrying(g: GameState, interior: Interior): boolean {
 
 export function nextControl(g: GameState, m: PanelMemory, interior: Interior): LaunchControl | null {
   const l = g.launch;
-  // Phase 4 D6: the request range reaches the pen, but coming home the door is behind the sub once it is in the pool.
+  // Phase 4 D6: the request range (340 m) reaches past the close range (280 m) at both ends, so on the way home the
+  // door is a step only for a sub at sea facing the mouth (one just launched, heading away as the tower shuts it, is
+  // not asked to open it again) — and never once she is in the pool, with the door behind her.
+  const homeAndAway = m.trip === 'home' && (inPen(g.sub.pos, interior) || (m.shown !== 'launch' && !facingMouth(g, interior)));
   const doorWanted = l.clamps === 'released' && l.door < 1 && l.doorDir !== 1 && refusalFor('door', l, g.sub, interior) === null
-    && !(m.trip === 'home' && inPen(g.sub.pos, interior));
+    && !homeAndAway;
   if (l.clamps === 'locked') {
     if (l.cradleDir !== 0 || l.engines === 'starting') return null;
     if (m.trip === 'out') {
@@ -309,9 +312,7 @@ function homePrompt(g: GameState, m: PanelMemory, interior: Interior, next: Laun
     // At sea: only within door range, where the door control shows.
     if (refusalFor('door', l, g.sub, interior) !== null) return null;
     // Opening or open: words only for a sub facing the mouth (one just launched is heading away from it).
-    const to = interior.door.centre;
-    const facing = -Math.sin(g.sub.yaw) * (to.x - g.sub.pos.x) - Math.cos(g.sub.yaw) * (to.z - g.sub.pos.z);
-    if (facing <= 0.5 * Math.hypot(to.x - g.sub.pos.x, to.z - g.sub.pos.z)) return null;
+    if (!facingMouth(g, interior)) return null;
     if (l.doorDir === 1) return 'The ocean door is opening — wait for it, then drive in';
     if (l.door >= 1) return 'Door open — drive in through the mouth';
     return null;
@@ -367,6 +368,13 @@ export function alongTunnelToPen(p: Vec3, interior: Interior): number {
     arc += len;
   }
   return arc - bestArc;
+}
+
+/** The sub's nose points at the ocean door: within 60° of the line to its centre, seen from above. */
+function facingMouth(g: GameState, interior: Interior): boolean {
+  const to = interior.door.centre;
+  const facing = -Math.sin(g.sub.yaw) * (to.x - g.sub.pos.x) - Math.cos(g.sub.yaw) * (to.z - g.sub.pos.z);
+  return facing > 0.5 * Math.hypot(to.x - g.sub.pos.x, to.z - g.sub.pos.z);
 }
 
 function inPen(p: Vec3, interior: Interior): boolean {
