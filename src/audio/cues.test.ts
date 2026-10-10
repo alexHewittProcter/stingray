@@ -286,7 +286,7 @@ describe('phase 3: the way back up heard (M6b — "the same reversed up")', () =
     expect(Math.max(...rush)).toBe(1);
     expect(rush.at(-1)!).toBeLessThan(0.01);
     for (let k = rush.length - 60; k < rush.length; k++) expect(rush[k]!).toBeLessThanOrEqual(rush[k - 1]!);
-    // Standing in the lounge: the rooms' hum, no rush, no hall.
+    // Standing in the control room: the rooms' hum, no rush, no hall.
     expect(soundscape(g).ambience).toMatchObject({ rooms: 1, hall: 0 });
     expect(soundscape(g).shaft.level).toBe(0);
   });

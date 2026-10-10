@@ -310,9 +310,13 @@ describe('the session owner (phase 3, M3, M7)', () => {
 describe('walkTo with a facing (T9 — the face= witness word)', () => {
   it('keeps his facing when none is given, and takes the given one otherwise; a jump either way', () => {
     const game = new Game(W, controlRoom(W, ROOMS));
-    game.walkTo(0, -1275.5);
+    // In front of Troy's chair (phase 4: the station at the room's centre, 1.6 m south of the chair).
+    const front = { x: ROOMS.chair.pos.x, z: ROOMS.chair.pos.z + 1.6 };
+    game.walkTo(front.x, front.z);
     expect(game.state.troy.yaw).toBe(ROOMS.start.yaw);
-    game.walkTo(0, -1275.5, Math.PI);
+    expect(game.state.troy.pos.x).toBeCloseTo(front.x, 9);
+    expect(game.state.troy.pos.z).toBeCloseTo(front.z, 9);
+    game.walkTo(front.x, front.z, Math.PI);
     expect(game.state.troy).toMatchObject({ where: 'onFoot', yaw: Math.PI });
     expect(game.jumped).toBe(true);
   });

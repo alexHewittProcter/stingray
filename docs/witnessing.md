@@ -2,7 +2,8 @@
 
 How to see the game's behaviour without anyone at the keys: URL parameters, scripts, camera presets and the debug
 handle. Phase 3's M10 asks for every room to have a `?view=` preset listed here, so each can be screenshotted
-headless. Every URL below is relative to `pnpm preview --port 4188 --strictPort` (`http://localhost:4188/`).
+headless; phase 4 (W) renamed them for the straight drop (the corridor and the Standby Lounge are gone — the injector
+chairs stand in the control room, D2). Every URL below is relative to `pnpm preview --port 4188 --strictPort` (`http://localhost:4188/`).
 
 ## Headless Chrome
 
@@ -41,11 +42,15 @@ room's shot and Stingray is on standby in the pen's.
 
 | Preset | URL | What it shows |
 |---|---|---|
-| `control` | `?view=control` | the control room from its south-east corner, over Troy toward the console bank and the corridor door |
-| `corridor` | `?view=corridor` | down the corridor's first leg from the control room's doorway, toward the turn |
-| `lounge` | `?view=lounge` | the Standby Lounge from its doorway, toward Troy's chair and the bore beside it |
-| `shaft` | `?view=shaft` | inside the injector shaft's level run (y 22.4, under the grounds), looking north along it toward the pen |
-| `hatch` | `?view=hatch` | the pen hall, up at the shaft's housing in the ceiling above the cradle, over the standby sub's roof |
+| `control` | `?view=control` | the control room from the south windows, over Troy at the start, across the room to the injector station |
+| `station` | `?view=station` | the station from behind (north, over its back panel): the three chairs' backs, the dais, the bore under Troy's |
+| `shaft` | `?view=shaft` | inside the injector shaft's tube, high in the tower's stalk (y 60), looking straight down it toward the pen |
+| `port` | `?view=port` | the pen hall, up at the ceiling over Troy's hatch — where the port goes (T3) — over the standby sub's roof |
+| `hatch` | `?view=hatch` | the standby sub's cabin roof close, over Troy's seat (the forward roof, port side) — where his hatch goes (T3) |
+
+Every preset is computed from the tower's axis, the chair and the seat (`sim/rooms.ts` `TOWER_AXIS`, `ROOMS.chair`,
+`SEAT`; phase 4 D1), so they follow the rooms if the tower ever moves. The numbers today: the tower's axis is
+x 0, z −1392.2; Troy's chair (0.6, 92.7, −1392.2); the seat (0.6, 9, −1392.2); Troy starts at (0.6, −1387) facing north.
 
 `?orbit=yawDeg,pitchDeg[,zoom]` starts the follow (or chase) camera orbited; it works on foot as aboard.
 
@@ -58,27 +63,31 @@ still so the screenshot shows exactly the scripted moment.
 - `cradle`, `engines`, `clamps`, `door` — press that launch control;
 - `use` — queue `'use'` (`E` on foot: sit in the chair when at it);
 - `leave` — queue `'leave'` (the panel's fifth control, `5`; refused *Dock first* unless aboard a docked, raised sub
-  — accepted, Troy rides back up the shaft and stands up in the lounge, M6b);
+  — accepted, Troy rides back up the shaft and stands up in front of his chair, M6b);
 - `face=DEG` — Troy, on foot, turned in place to that heading (degrees, the sim's yaw: 0 north, 180 south); the camera
   snaps. He stands up facing away from his chair, so the loop's witness turns him back to it before `use`;
-- `walk=X:Z` — Troy on foot at the walkable point nearest world (X, Z); the camera snaps;
+- `walk=X:Z` — Troy on foot at the walkable point nearest world (X, Z); the camera snaps. The front of his chair —
+  where he stands to sit, 1.6 m south of it (he walks up from the south, D2) — is `walk=0.6:-1390.6`;
 - `out=M` / `in=M` — the released sub on the tunnel's centreline M m in from the mouth, facing out / in;
 - `dock=M` — the released sub on the pen's axis M m south of the cradle, facing it; `dx=` `dy=` `dz=` `turn=` nudge it;
 - `throttle=T`, `steer=Y`, `climb=P` (−1 … 1), `fire=1|0`, `boost=1|0` — hold those inputs until changed.
 
-### The ride shots (T7)
+### The ride shots (T7; phase 4 D4)
 
-Troy walked to his chair, sits, and rides; vary the last number (seconds into the 10 s ride) for each shot:
+Troy walked to the front of his chair, sits, and rides straight down; vary the last number (seconds into the 6 s ride)
+for each shot:
 
 ```
-?start=control&menu=0&hold&script=walk=0:-1275.5,1,use,N
+?start=control&menu=0&hold&script=walk=0.6:-1390.6,1,use,N
 ```
+
+`use,8` locks him in (the sub on standby, Troy in the pilot's seat).
 
 ### The way back up (T9, M6b)
 
-Aboard the standby sub (docked and raised), `leave` and the chair carries Troy back up the shaft over the same 10 s:
+Aboard the standby sub (docked and raised), `leave` and the chair carries Troy back up the shaft over the same 6 s:
 the ride camera sets off on the pen camera, follows the chair up the shaft (from above it, looking back down at him
-rising), and arrives on the follow camera's pose in the lounge, Troy standing in front of his chair. Vary the last
+rising), and arrives on the follow camera's pose in the control room, Troy standing in front of his chair. Vary the last
 number for each shot (seconds into the ascent):
 
 ```
@@ -88,29 +97,32 @@ number for each shot (seconds into the ascent):
 | N | What it shows |
 |---|---|
 | — (`?start=pen&menu=0`) | the panel's fifth control `5 · LEAVE SEAT` lit amber, READY |
-| `0.5` | the chair rising out of the cabin through the open roof hatch (add `&view=hatch` for the housing's angle; `0.2` catches Troy in the hatch) |
-| `1.5` | in the tube above the pen hall, the chair coming up toward the camera |
-| `5` | the level run under the grounds, the chair facing up-shaft (south) |
-| `9.5` – `9.8` | arriving in the lounge: out of the bore onto the follow camera's pose |
-| `11` | standing in front of the chair, the follow camera, the on-foot legend |
+| `0.5` | the chair rising out of the cabin, up through the hall toward the ceiling (add `&view=port` for the hall's angle) |
+| `2` | in the tube above the pen hall, the chair coming up toward the camera, facing the windows' way (south) |
+| `5.5` – `5.8` | arriving in the control room: out of the bore onto the follow camera's pose |
+| `7` | standing in front of the chair, the follow camera, the on-foot legend |
 
-`?start=pen&menu=0&script=leave,12` runs it whole (Troy left standing in the lounge). The loop repeats — up, turn
-back to the chair, sit, and down again to lock in:
+`?start=pen&menu=0&script=leave,8` runs it whole (Troy left standing in front of his chair). The loop repeats — up,
+turn back to the chair, sit, and down again to lock in:
 
 ```
-?start=pen&menu=0&hold&script=leave,12,face=0,use,12
+?start=pen&menu=0&hold&script=leave,8,face=0,use,8
 ```
+
+Until T3 (phase 4) the chair passes through the pen hall's solid ceiling (the port is T3's) and the sub's roof hatch
+is still phase 3's, at the cabin's middle — the aboard chair already sits at Troy's new seat, the forward roof.
 
 At sea it is refused — the panel shows the fifth control red with *DOCK FIRST* for 3 s, as phase 2's refusals:
 `?start=ocean&menu=0&script=leave,1`.
 
 ### The full loop (T7) — control room to open water in one page
 
-Troy at his chair, sits, rides down 10 s and locks in, then phase 2's launch, steered out through the tunnel, ending
-≈ 190 m out at sea (one line in the URL):
+Troy at his chair, sits, rides down 6 s and locks in, then phase 2's launch, steered out through the tunnel, ending
+out at sea (one line in the URL; the tunnel's legs are still phase 2's S-bend steering — T4 re-steers them for the
+straight bore):
 
 ```
-?start=control&menu=0&script=walk=0:-1275.5,1,use,12,cradle,8.2,engines,2.2,clamps,1,throttle=1,1.5,1.5,1.5,steer=-0.5,climb=-0.25,1.5,steer=0.5,climb=0,1.5,climb=-0.25,1.5,steer=-0.25,1.5,steer=0.25,climb=0.25,1.5,steer=-0.5,1.5,steer=0.25,1.5,door,steer=-1,climb=-0.5,1.5,steer=1,1.5,steer=-0.75,climb=0.5,1.5,steer=1,1.5,steer=-1,climb=0,1.5,steer=1,climb=-0.5,1.5,steer=-1,climb=0.25,1.5,steer=1,climb=0.5,1.5,steer=-1,1.5,steer=0,climb=0,6
+?start=control&menu=0&script=walk=0.6:-1390.6,1,use,8,cradle,8.2,engines,2.2,clamps,1,throttle=1,1.5,1.5,1.5,steer=-0.5,climb=-0.25,1.5,steer=0.5,climb=0,1.5,climb=-0.25,1.5,steer=-0.25,1.5,steer=0.25,climb=0.25,1.5,steer=-0.5,1.5,steer=0.25,1.5,door,steer=-1,climb=-0.5,1.5,steer=1,1.5,steer=-0.75,climb=0.5,1.5,steer=1,1.5,steer=-1,climb=0,1.5,steer=1,climb=-0.5,1.5,steer=-1,climb=0.25,1.5,steer=1,climb=0.5,1.5,steer=-1,1.5,steer=0,climb=0,6
 ```
 
 Phase 2's launch alone: `?script=cradle,8.2,engines,2.2,clamps,1` (starts in the pen by the implication).

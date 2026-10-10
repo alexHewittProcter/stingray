@@ -1,7 +1,7 @@
 import type { GameMode } from './game/mode';
 import type { CombatState } from './sim/combat';
 import type { LaunchControl, LaunchState, Press } from './sim/launch';
-import type { Rooms } from './sim/rooms';
+import { FLOOR_Y, ROOMS, type Rooms, SEAT, TOWER_AXIS } from './sim/rooms';
 import type { SubInput, SubState } from './sim/sub';
 import type { TroyState } from './sim/troy';
 import type { Vec3 } from './sim/vec3';
@@ -39,7 +39,7 @@ export interface DebugHandle {
   use(): void;
   /**
    * Phase 3 (M10): queue 'leave' — the launch panel's fifth control (M9). Refused 'Dock first' unless Troy is aboard a
-   * docked, raised sub; accepted, Troy rides back up to the lounge (M6b).
+   * docked, raised sub; accepted, Troy rides back up to the control room (M6b).
    */
   leave(): void;
   /**
@@ -61,23 +61,27 @@ export function installDebugHandle(handle: DebugHandle): void {
 
 const CONTROLS: readonly string[] = ['cradle', 'engines', 'clamps', 'door'];
 
+const A = TOWER_AXIS;
+const C = ROOMS.chair.pos;
+const HALL_CEILING_Y = MARINEVILLE.interior.pen.max.y;
+
 /**
- * Phase 3 (M10): named ?view= presets, one per room and one each for the shaft and its housing in the pen hall, so each
- * can be screenshotted headless (the default start puts Troy in the control room): x, y, z, lookX, lookY, lookZ, as the
- * six-number form. Listed with their URLs in docs/witnessing.md.
+ * Phase 3 (M10), phase 4 (W): named ?view= presets — the control room, the station, the shaft, and the port and hatch at
+ * its foot in the pen hall — so each can be screenshotted headless (the default start puts Troy in the control room):
+ * x, y, z, lookX, lookY, lookZ, as the six-number form, each relative to the tower's axis / the chair / the seat (D1).
+ * Listed with their URLs in docs/witnessing.md. `port` and `hatch` point at where T3's port and hatch go.
  */
 export const VIEW_PRESETS: Readonly<Record<string, readonly [number, number, number, number, number, number]>> = Object.freeze({
-  // The control room from its south-east corner, over Troy at the start toward the console bank and the corridor door.
-  control: [7.6, 95.4, -1242.2, -1, 93.4, -1252],
-  // Down the corridor's first leg from the control room's doorway, toward the turn.
-  corridor: [5.2, 94.4, -1258.6, 4.4, 93.8, -1268],
-  // The Standby Lounge from its doorway, toward Troy's chair and the bore beside it.
-  lounge: [-6.8, 95.3, -1268.2, 0, 93, -1277],
-  // Inside the injector shaft's level run (leg 2, y 22.4 under the grounds), looking north along it toward the pen.
-  shaft: [0.6, 22.9, -1290, 0, 22.2, -1340],
-  // The pen hall, up at the shaft's housing in the ceiling above the cradle — the arrival shot's hatch — over the
-  // standby sub's roof.
-  hatch: [11, 11, -1380, 0, 17, -1395],
+  // The control room from the south windows (west of Troy's start), across the room to the station.
+  control: [A.x - 2.2, FLOOR_Y + 2.6, A.z + 8.4, C.x, FLOOR_Y + 0.9, C.z - 0.5],
+  // The station from behind (north, over the back panel): the chairs' backs, the dais and the bore under Troy's.
+  station: [A.x - 1.4, FLOOR_Y + 3.4, A.z - 4.2, C.x, FLOOR_Y - 0.3, C.z + 0.4],
+  // Inside the injector shaft's tube, high in the stalk, looking down it toward the pen.
+  shaft: [C.x + 0.9, 60, C.z + 0.6, C.x, 25, C.z],
+  // The pen hall, up at the ceiling over Troy's hatch — where the port is (T3) — over the standby sub's roof.
+  port: [SEAT.x + 12, 11, SEAT.z + 10, SEAT.x, HALL_CEILING_Y - 0.2, SEAT.z],
+  // The standby sub's cabin roof close, over Troy's seat — where his hatch is (T3).
+  hatch: [SEAT.x + 2.5, SEAT.y + 2.2, SEAT.z + 3, SEAT.x, SEAT.y + 1.2, SEAT.z + 0.2],
 });
 
 /** The ?view= parameter as six numbers — a preset name or x,y,z,lookX,lookY,lookZ — or null. */
@@ -149,14 +153,15 @@ export function nearCradle(metres: number): { pos: Vec3; yaw: number } {
  *     world (X, Z), as __stingray.walkTo does; the camera snaps;
  *   - phase 3 (M10): use queues 'use' (M5), as __stingray.use does — E on foot;
  *   - phase 3 (M10): leave queues 'leave', as __stingray.leave does — the panel's 5 (refused 'Dock first' unless
- *     aboard a docked, raised sub; accepted, M6b, he rides back up to the lounge);
+ *     aboard a docked, raised sub; accepted, M6b, he rides back up to the control room);
  *   - phase 3 (T9): face=DEG turns Troy, on foot, to face that heading (the sim's yaw in degrees: 0 north), as
  *     __stingray.face does — "leave,12,face=0,use,12" stands him up, turns him back to his chair and sits him again.
  * "cradle,8.2,engines,2.1,clamps,1" lowers the cradle, starts the engines and releases the clamps;
- * "out=40,door,5" waits in the door chamber while the door opens. Phase 3 (T7), the full loop from the lounge to open
- * water in one page (Troy at his chair, sits, rides down 10 s and locks in, then phase 2's launch, steered out through
- * the tunnel — the held axes merge, main.ts setInput — ending ≈ 190 m out at sea):
- *   ?start=control&menu=0&script=walk=0:-1275.5,1,use,12,cradle,8.2,engines,2.2,clamps,1,throttle=1,1.5,1.5,1.5,
+ * "out=40,door,5" waits in the door chamber while the door opens. Phase 3 (T7), the full loop from the control room to
+ * open water in one page (Troy walked to the front of his chair at the station — phase 4: (0.6, −1390.6), 1.6 m south
+ * of it — sits, rides down 6 s and locks in, then phase 2's launch, steered out through the tunnel — the held axes
+ * merge, main.ts setInput — ending out at sea; T4 re-steers the tunnel legs for the straight bore):
+ *   ?start=control&menu=0&script=walk=0.6:-1390.6,1,use,8,cradle,8.2,engines,2.2,clamps,1,throttle=1,1.5,1.5,1.5,
  *   steer=-0.5,climb=-0.25,1.5,steer=0.5,climb=0,1.5,climb=-0.25,1.5,steer=-0.25,1.5,steer=0.25,climb=0.25,1.5,
  *   steer=-0.5,1.5,steer=0.25,1.5,door,steer=-1,climb=-0.5,1.5,steer=1,1.5,steer=-0.75,climb=0.5,1.5,steer=1,1.5,
  *   steer=-1,climb=0,1.5,steer=1,climb=-0.5,1.5,steer=-1,climb=0.25,1.5,steer=1,climb=0.5,1.5,steer=-1,1.5,
