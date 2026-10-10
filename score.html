@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- DEV ONLY (phase 4 T5): hear the score's sections on their own. Served by `pnpm dev` at /score.html; not a
+         build input (vite.config.ts lists index.html and model.html only), so it never ships. -->
+    <title>Stingray — score (dev)</title>
+    <style>
+      body { font: 15px/1.4 system-ui, sans-serif; margin: 24px; background: #0d1b2a; color: #e0e6ee; }
+      button { font: inherit; margin: 4px; padding: 8px 14px; background: #1b3a5c; color: #fff; border: 1px solid #4a7fb0; border-radius: 4px; cursor: pointer; }
+      button.on { background: #c8792a; }
+      label { display: block; margin: 12px 0 4px; }
+      pre { background: #08121c; padding: 10px; white-space: pre-wrap; }
+    </style>
+  </head>
+  <body>
+    <h1>Score (dev only)</h1>
+    <p>Click a section to play it (the first click starts audio). Loops play until another section or Stop.</p>
+    <div id="sections"></div>
+    <label>Intensity <span id="iv">1.00</span> <input id="intensity" type="range" min="0" max="1.5" step="0.01" value="1" /></label>
+    <label>Music bus <span id="lv">0.35</span> <input id="level" type="range" min="0" max="1" step="0.01" value="0.35" /></label>
+    <pre id="log"></pre>
+    <script type="module" src="/src/score-page.ts"></script>
+  </body>
+</html>
