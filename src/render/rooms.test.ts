@@ -182,8 +182,9 @@ describe('the injector station (phase 4, D2)', () => {
     let meshes = 0;
     view.group.getObjectByName('station')!.traverse((o) => { if (o instanceof THREE.Mesh) meshes++; });
     // T1: 20. T2: + the bay wall's silver band and gold rail, the decal atlas, the lit ring — and the lid's two leaves,
-    // each its own mesh because they swing.
-    expect(meshes).toBeLessThanOrEqual(22);
+    // each its own mesh because they swing. Phase 4 T3: + Troy's chair's pole above its head bar, its own mesh so it can
+    // be hidden aboard (D3).
+    expect(meshes).toBeLessThanOrEqual(23);
   });
 });
 

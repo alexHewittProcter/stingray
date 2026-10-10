@@ -35,6 +35,8 @@ export const LEVELS = {
   water: 0.5, // the hull going under / coming out on the cradle
   refusal: 0.1,
   chair: 0.6, // phase 3: the injector chair's carriage letting go, and locking into the cabin
+  portServo: 0.22, // phase 4: the pen ceiling port's lid servo, opening and shutting
+  poleHiss: 0.32, // phase 4: the pole's hydraulic hiss, retracting into the port and extending from it
 
   // The ocean door (both scaled by distance from the door's centre)
   doorMachinery: 0.3,

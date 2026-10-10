@@ -69,7 +69,8 @@ const HALL_CEILING_Y = MARINEVILLE.interior.pen.max.y;
  * Phase 3 (M10), phase 4 (W): named ?view= presets — the control room, the station, the shaft, and the port and hatch at
  * its foot in the pen hall — so each can be screenshotted headless (the default start puts Troy in the control room):
  * x, y, z, lookX, lookY, lookZ, as the six-number form, each relative to the tower's axis / the chair / the seat (D1).
- * Listed with their URLs in docs/witnessing.md. `port` and `hatch` point at where T3's port and hatch go.
+ * Listed with their URLs in docs/witnessing.md. `port` and `hatch` (phase 4 D3) start in the pen without a ?start=
+ * (game.ts startPlace): the docked sub, the port's lid open, the pole down to the open hatch.
  */
 export const VIEW_PRESETS: Readonly<Record<string, readonly [number, number, number, number, number, number]>> = Object.freeze({
   // The control room from the south windows (west of Troy's start), across the room to the station.
@@ -78,10 +79,12 @@ export const VIEW_PRESETS: Readonly<Record<string, readonly [number, number, num
   station: [A.x - 1, FLOOR_Y + 4, A.z - 3.4, C.x, FLOOR_Y - 0.2, C.z + 0.6],
   // Inside the injector shaft's tube, high in the stalk, looking down it toward the pen.
   shaft: [C.x + 0.9, 60, C.z + 0.6, C.x, 25, C.z],
-  // The pen hall, up at the ceiling over Troy's hatch — where the port is (T3) — over the standby sub's roof.
-  port: [SEAT.x + 12, 11, SEAT.z + 10, SEAT.x, HALL_CEILING_Y - 0.2, SEAT.z],
-  // The standby sub's cabin roof close, over Troy's seat — where his hatch is (T3).
-  hatch: [SEAT.x + 2.5, SEAT.y + 2.2, SEAT.z + 3, SEAT.x, SEAT.y + 1.2, SEAT.z + 0.2],
+  // The pen hall from beside the docked sub, looking up at Troy's port (lid open), Phones's dummy beside it and the pole
+  // standing from the port down to the cabin roof.
+  port: [SEAT.x + 9, SEAT.y + 1.5, SEAT.z + 7, SEAT.x - 0.5, HALL_CEILING_Y - 4.5, SEAT.z],
+  // The docked sub's cabin roof close, from above and behind (north-east): Troy's hatch open with the pole coming down
+  // into it, Phones's dummy beside it, the dome aft.
+  hatch: [SEAT.x + 2.4, SEAT.y + 3.4, SEAT.z - 3.2, SEAT.x - 0.3, SEAT.y + 1.2, SEAT.z + 0.3],
 });
 
 /** The ?view= parameter as six numbers — a preset name or x,y,z,lookX,lookY,lookZ — or null. */

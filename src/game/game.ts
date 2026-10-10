@@ -184,15 +184,19 @@ export function startsAtSea(params: URLSearchParams): boolean {
 
 /**
  * Where the URL starts the game (M7): ?start=pen|control|ocean; ?at= implies ocean; ?script= without ?start implies
- * pen, so every phase-2 witnessing URL runs unchanged. With none of them, the control room (M9).
+ * pen, so every phase-2 witnessing URL runs unchanged; so does a pen-side ?view= preset (phase 4 W: `port`, `hatch` —
+ * the docked sub with the pole down and the hatch open). With none of them, the control room (M9).
  */
 export function startPlace(params: URLSearchParams): StartPlace {
   if (startsAtSea(params)) return 'ocean';
   const start = params.get('start');
   if (start === 'pen' || start === 'control') return start;
   // An unknown ?start= value is ignored, as if absent.
-  return params.has('script') ? 'pen' : DEFAULT_START;
+  return params.has('script') || PEN_VIEWS.includes(params.get('view') ?? '') ? 'pen' : DEFAULT_START;
 }
+
+/** Phase 4 (W): the ?view= presets that look at the pen's boarding machinery, and so start there. */
+const PEN_VIEWS: readonly string[] = ['port', 'hatch'];
 
 export type StartPlace = 'pen' | 'control' | 'ocean';
 
