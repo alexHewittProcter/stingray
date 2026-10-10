@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { MUTE_KEY, readMuted, writeMuted } from './mute';
+import { MUSIC_KEY, MUTE_KEY, musicOnLoad, readMusic, readMuted, writeMusic, writeMuted } from './mute';
 
 function memory() {
   const map = new Map<string, string>();
@@ -31,5 +31,41 @@ describe('mute persistence (L5, L7)', () => {
     expect(readMuted(broken)).toBe(false);
     expect(() => writeMuted(broken, true)).not.toThrow();
     expect(() => writeMuted(undefined, true)).not.toThrow();
+  });
+});
+
+describe('the music switch (phase 4 S4)', () => {
+  it('is stored under stingray.music, defaults to on, and remembers the choice', () => {
+    const store = memory();
+    expect(MUSIC_KEY).toBe('stingray.music');
+    expect(readMusic(store)).toBe(true);
+    writeMusic(store, false);
+    expect(store.map.get(MUSIC_KEY)).toBe('0');
+    expect(readMusic(store)).toBe(false);
+    writeMusic(store, true);
+    expect(readMusic(store)).toBe(true);
+  });
+
+  it('is separate from the mute', () => {
+    const store = memory();
+    writeMuted(store, true);
+    expect(readMusic(store)).toBe(true);
+    writeMusic(store, false);
+    expect(readMuted(store)).toBe(true);
+  });
+
+  it('?music=0 starts the page off without touching the stored switch', () => {
+    const store = memory();
+    expect(musicOnLoad(store, new URLSearchParams('music=0'))).toBe(false);
+    expect(store.map.has(MUSIC_KEY)).toBe(false);
+    expect(musicOnLoad(store, new URLSearchParams(''))).toBe(true);
+    writeMusic(store, false);
+    expect(musicOnLoad(store, new URLSearchParams('music=1'))).toBe(false);
+  });
+
+  it('survives storage that is missing or throws (on)', () => {
+    expect(readMusic(undefined)).toBe(true);
+    expect(readMusic(broken)).toBe(true);
+    expect(() => writeMusic(broken, false)).not.toThrow();
   });
 });

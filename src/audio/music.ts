@@ -4,9 +4,11 @@
 // AudioContext's, so suspending the context (the pause menu) pauses the music and resuming carries on in place.
 //
 // Each play gets its own output gain (for its fade-in and its fade-out); the previous play's is faded out under it.
-// A section marked `diegetic` (ALERT: the base's PA) goes to the effects bus instead, taking the room and muffle.
+// A section marked `diegetic` (ALERT: the base's PA) goes to the effects bus instead, taking the room and muffle, at
+// LEVELS.music.alert.
 
 import { playHit } from './instruments';
+import { LEVELS } from './levels';
 import type { Mixer } from './mixer';
 import { SCORE, type Score, type SectionId, stepSeconds } from './score';
 import { type PlayOptions, type Sequence, advance, begin, bodyStart, finished, playingAt } from './sequence';
@@ -29,7 +31,7 @@ export interface Music {
   playing(): SectionId | null;
   /** Once per drawn frame: schedule what falls in the look-ahead. */
   frame(): void;
-  /** The music bus's gain (S4's Music switch: 0 = off); glides over `seconds`. */
+  /** The music bus's gain (S4's Music switch: 0 = off); glides over `seconds`. The diegetic send follows in proportion. */
   setLevel(gain: number, seconds?: number): void;
   /** Scale the velocity of every hit scheduled from now on (S3: the roll builds with the descent). 1 = as written. */
   setIntensity(k: number): void;
@@ -46,6 +48,11 @@ export function createMusic(m: Mixer, score: Score = SCORE): Music {
   let seq: Sequence | null = null;
   let out: GainNode | null = null;
   let intensity = 1;
+  // The diegetic sections' own send into the effects bus at LEVELS.music.alert (phase 4 T6). It follows setLevel in
+  // proportion, so the Music switch silences the PA's tattoo with the rest of the score.
+  const diegetic = ctx.createGain();
+  diegetic.gain.value = LEVELS.music.alert * (m.music.gain.value / LEVELS.musicBus);
+  diegetic.connect(m.effects);
 
   const release = (node: GainNode, fade: number) => {
     const now = ctx.currentTime;
@@ -76,7 +83,7 @@ export function createMusic(m: Mixer, score: Score = SCORE): Music {
       const next = begin(score, now, id, opts, seq);
       if (out) release(out, HANDOVER);
       out = ctx.createGain();
-      out.connect(score.sections[id].diegetic ? m.effects : m.music);
+      out.connect(score.sections[id].diegetic ? diegetic : m.music);
       if (opts.fadeIn && opts.fadeIn > 0) {
         const from = next.segments[0]?.part === 'ending' ? now : bodyStart(next);
         out.gain.setValueAtTime(0, from);
@@ -95,7 +102,9 @@ export function createMusic(m: Mixer, score: Score = SCORE): Music {
     playing: () => playingAt(seq, ctx.currentTime),
     frame,
     setLevel(gain, seconds = 0.3) {
-      m.music.gain.setTargetAtTime(Math.max(0, gain), ctx.currentTime, Math.max(seconds, 0.01) / 3);
+      const tc = Math.max(seconds, 0.01) / 3;
+      m.music.gain.setTargetAtTime(Math.max(0, gain), ctx.currentTime, tc);
+      diegetic.gain.setTargetAtTime(LEVELS.music.alert * (Math.max(0, gain) / LEVELS.musicBus), ctx.currentTime, tc);
     },
     setIntensity(k) {
       intensity = Math.max(0, Math.min(1.5, k));

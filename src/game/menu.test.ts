@@ -8,6 +8,7 @@ const DOWN: MenuEvent = { type: 'down' };
 const CHOOSE: MenuEvent = { type: 'choose' };
 const BACK: MenuEvent = { type: 'back' };
 const PAUSE: MenuEvent = { type: 'pause' };
+const ON = { muted: false, music: true };
 
 const on = (s: MenuState, ...events: MenuEvent[]) => {
   let action = 'none';
@@ -24,26 +25,37 @@ const choose = (kind: MenuKind, item: string) => {
 
 describe('the menu items', () => {
   // M9 (amending T9's items): the control room first on the title, second on the pause menu.
-  it('the title offers the control room (first, the default), the pen, the ocean, controls and sound', () => {
-    expect(menuItems('title', 'main')).toEqual(['controlRoom', 'pen', 'ocean', 'controls', 'sound']);
+  it('the title offers the control room (first, the default), the pen, the ocean, controls, sound and music', () => {
+    expect(menuItems('title', 'main')).toEqual(['controlRoom', 'pen', 'ocean', 'controls', 'sound', 'music']);
     expect(openMenu('title').index).toBe(0);
   });
 
-  it('the pause menu offers resume (first), the control room, the pen, the ocean, controls and sound', () => {
-    expect(menuItems('pause', 'main')).toEqual(['resume', 'controlRoom', 'pen', 'ocean', 'controls', 'sound']);
+  it('the pause menu offers resume (first), the control room, the pen, the ocean, controls, sound and music', () => {
+    expect(menuItems('pause', 'main')).toEqual(['resume', 'controlRoom', 'pen', 'ocean', 'controls', 'sound', 'music']);
   });
 
   it("M9: the title's and the pause menu's words", () => {
-    const words = (kind: MenuKind) => menuItems(kind, 'main').map((i) => itemLabel(i, false, kind));
-    expect(words('title')).toEqual(['Start in the control room', 'Skip to Pen 3', 'Skip to open ocean', 'Controls', 'Sound: On']);
+    const words = (kind: MenuKind) => menuItems(kind, 'main').map((i) => itemLabel(i, ON, kind));
+    expect(words('title')).toEqual(['Start in the control room', 'Skip to Pen 3', 'Skip to open ocean', 'Controls', 'Sound: On', 'Music: On']);
     expect(words('pause')).toEqual([
-      'Resume', 'Return to the control room', 'Return to Pen 3', 'Skip to open ocean', 'Controls', 'Sound: On',
+      'Resume', 'Return to the control room', 'Return to Pen 3', 'Skip to open ocean', 'Controls', 'Sound: On', 'Music: On',
     ]);
   });
 
   it('the sound item reads the mute', () => {
-    expect(itemLabel('sound', false, 'title')).toBe('Sound: On');
-    expect(itemLabel('sound', true, 'pause')).toBe('Sound: Off');
+    expect(itemLabel('sound', ON, 'title')).toBe('Sound: On');
+    expect(itemLabel('sound', { muted: true, music: true }, 'pause')).toBe('Sound: Off');
+  });
+
+  it('phase 4 (S4): the music item reads the Music switch, independent of the mute', () => {
+    expect(itemLabel('music', ON, 'title')).toBe('Music: On');
+    expect(itemLabel('music', { muted: false, music: false }, 'pause')).toBe('Music: Off');
+    expect(itemLabel('music', { muted: true, music: true }, 'pause')).toBe('Music: On');
+    // Beside Sound on both menus.
+    for (const kind of ['title', 'pause'] as const) {
+      const items = menuItems(kind, 'main');
+      expect(items.indexOf('music')).toBe(items.indexOf('sound') + 1);
+    }
   });
 });
 
@@ -51,9 +63,9 @@ describe('navigation', () => {
   it('down and up move the selection and wrap at both ends', () => {
     const t = openMenu('title');
     expect(on(t, DOWN).s.index).toBe(1);
-    expect(on(t, UP).s.index).toBe(4);
-    expect(on(t, DOWN, DOWN, DOWN, DOWN, DOWN).s.index).toBe(0);
-    expect(on(openMenu('pause'), UP).s.index).toBe(5);
+    expect(on(t, UP).s.index).toBe(5);
+    expect(on(t, DOWN, DOWN, DOWN, DOWN, DOWN, DOWN).s.index).toBe(0);
+    expect(on(openMenu('pause'), UP).s.index).toBe(6);
   });
 
   it('the pointer selects an item; an index off the page is ignored', () => {
@@ -98,6 +110,15 @@ describe('choosing', () => {
       expect(r.action).toBe('toggleSound');
       expect(r.state.kind).toBe(kind);
       expect(menuItems(kind, 'main')[r.state.index]).toBe('sound');
+    }
+  });
+
+  it("phase 4 (S4): music toggles the Music switch ('music') and keeps the menu where it is", () => {
+    for (const kind of ['title', 'pause'] as const) {
+      const r = choose(kind, 'music');
+      expect(r.action).toBe('music');
+      expect(r.state.kind).toBe(kind);
+      expect(menuItems(kind, 'main')[r.state.index]).toBe('music');
     }
   });
 

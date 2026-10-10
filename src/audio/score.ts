@@ -6,7 +6,7 @@
 // Tempo 152 bpm, 4/4, G minor (the bridge passes through B♭ major; the home sting ends on a G major chord).
 // A step is a sixteenth note; a bar is 16 steps. Notes are MIDI numbers (60 = middle C, 67 = G4).
 //
-// Tune by number here. Levels live with the instruments (instruments.ts MUSIC_LEVELS → levels.ts at T6).
+// Tune by number here. Levels are in levels.ts (LEVELS.musicBus, LEVELS.music).
 
 export type Instrument = 'snare' | 'kick' | 'timp' | 'brass' | 'bass';
 export const INSTRUMENTS: readonly Instrument[] = ['snare', 'kick', 'timp', 'brass', 'bass'];
