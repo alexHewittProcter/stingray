@@ -79,17 +79,31 @@ export function injectorChairMaterials(): InjectorChairMaterials {
  */
 export function createInjectorChair(mats: InjectorChairMaterials = injectorChairMaterials()): THREE.Group {
   const parts = new Parts();
-  addInjectorChair(parts, mats);
-  return parts.build('injector-chair');
+  const upper = new Parts();
+  addInjectorChair(parts, mats, undefined, upper);
+  const chair = parts.build('injector-chair');
+  chair.add(upper.build(CHAIR_UPPER_POLE_NAME));
+  return chair;
 }
+
+/**
+ * Phase 4 (D3, T3): the moving chair's pole above its head bar, its own child of the chair, so main.ts can hide it
+ * aboard — there the long pole (render/shaft.ts) is drawn from the port down to the head bar instead, and retracts
+ * up through the port, leaving the chair in the cabin with no pole above it (pen3-stingray-afloat-poles-retracted.png).
+ */
+export const CHAIR_UPPER_POLE_NAME = 'injector-chair-upper-pole';
+/** Where the chair's upper pole starts: the top of the head bar's collar, in the chair's frame. */
+export const CHAIR_HEAD_COLLAR_TOP_Y = CHAIR_HEAD_BAR_Y + 0.07;
 
 /**
  * An injector chair's pieces added to `parts`, placed by `frame` (the chair's origin and yaw) — for chairs that never
  * move (Phones's and Marina's), merged with the rest of the room so they cost no draw calls of their own.
  */
-export function addInjectorChair(parts: Parts, mats: InjectorChairMaterials, frame?: THREE.Matrix4): void {
-  const add = (material: THREE.Material, ...geometries: THREE.BufferGeometry[]): void =>
-    parts.add(material, ...geometries.map((g) => (frame ? g.applyMatrix4(frame) : g)));
+export function addInjectorChair(parts: Parts, mats: InjectorChairMaterials, frame?: THREE.Matrix4, upper: Parts = parts): void {
+  const into = (to: Parts) => (material: THREE.Material, ...geometries: THREE.BufferGeometry[]): void =>
+    to.add(material, ...geometries.map((g) => (frame ? g.applyMatrix4(frame) : g)));
+  const add = into(parts);
+  const addUpper = into(upper);
   const S = CHAIR_SEAT;
 
   const low = CHAIR_LOWEST_Y;
@@ -151,7 +165,9 @@ export function addInjectorChair(parts: Parts, mats: InjectorChairMaterials, fra
 
   // The pole (D2): chrome, rising from a bracket behind the seat pan, up the back, through the head bar and on up.
   const P = CHAIR_POLE_Z;
-  add(mats.frame, rod({ x: 0, y: CHAIR_POLE_FOOT_Y, z: P }, { x: 0, y: CHAIR_POLE_TOP_Y, z: P }, CHAIR_POLE_RADIUS, CHAIR_POLE_RADIUS, 16));
+  // (In two lengths: the part above the head bar's collar goes into `upper` — the moving chair's own child, T3.)
+  add(mats.frame, rod({ x: 0, y: CHAIR_POLE_FOOT_Y, z: P }, { x: 0, y: CHAIR_HEAD_COLLAR_TOP_Y, z: P }, CHAIR_POLE_RADIUS, CHAIR_POLE_RADIUS, 16));
+  addUpper(mats.frame, rod({ x: 0, y: CHAIR_HEAD_COLLAR_TOP_Y, z: P }, { x: 0, y: CHAIR_POLE_TOP_Y, z: P }, CHAIR_POLE_RADIUS, CHAIR_POLE_RADIUS, 16));
   // The bracket that carries the seat: a dark block from the seat pan's back to the pole, a collar round the pole.
   add(mats.dark, box(0.22, 0.1, 0.18, { x: 0, y: 0.41, z: 0.39 }));
   add(mats.dark, rod({ x: 0, y: CHAIR_POLE_FOOT_Y, z: P }, { x: 0, y: CHAIR_POLE_FOOT_Y + 0.14, z: P }, 0.085, 0.085, 16));
@@ -161,5 +177,5 @@ export function addInjectorChair(parts: Parts, mats: InjectorChairMaterials, fra
   add(mats.frame, bar({ x: -0.2, y: CHAIR_HEAD_BAR_Y, z: 0.44 }, { x: 0.2, y: CHAIR_HEAD_BAR_Y, z: 0.44 }, 0.05, 0.04));
   add(mats.dark, rod({ x: 0, y: CHAIR_HEAD_BAR_Y - 0.07, z: P }, { x: 0, y: CHAIR_HEAD_BAR_Y + 0.07, z: P }, 0.09, 0.09, 16));
   // A cap on the pole's top.
-  add(mats.dark, rod({ x: 0, y: CHAIR_POLE_TOP_Y - 0.04, z: P }, { x: 0, y: CHAIR_POLE_TOP_Y, z: P }, 0.07, 0.07, 16));
+  addUpper(mats.dark, rod({ x: 0, y: CHAIR_POLE_TOP_Y - 0.04, z: P }, { x: 0, y: CHAIR_POLE_TOP_Y, z: P }, 0.07, 0.07, 16));
 }

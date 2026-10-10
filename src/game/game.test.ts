@@ -221,6 +221,10 @@ describe('the session owner (phase 3, M3, M7)', () => {
     ['?script=cradle,8', 'pen'],
     ['?script=cradle,8&start=control', 'control'],
     ['?script=cradle,8&start=ocean', 'ocean'],
+    ['?view=port', 'pen'],
+    ['?view=hatch', 'pen'],
+    ['?view=port&start=control', 'control'],
+    ['?view=control', 'control'],
   ])('starts where the URL says (%s → %s); the control room is the default (M9)', (search, place) => {
     const params = new URLSearchParams(search);
     expect(startPlace(params)).toBe(place);

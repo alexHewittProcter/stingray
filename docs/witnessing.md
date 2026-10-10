@@ -45,8 +45,11 @@ room's shot and Stingray is on standby in the pen's.
 | `control` | `?view=control` | the control room from the south windows, over Troy at the start, across the room to the injector station |
 | `station` | `?view=station` | the station from behind (north, over its back panel): the three chairs' backs, the dais, the bore under Troy's |
 | `shaft` | `?view=shaft` | inside the injector shaft's tube, high in the tower's stalk (y 60), looking straight down it toward the pen |
-| `port` | `?view=port` | the pen hall, up at the ceiling over Troy's hatch — where the port goes (T3) — over the standby sub's roof |
-| `hatch` | `?view=hatch` | the standby sub's cabin roof close, over Troy's seat (the forward roof, port side) — where his hatch goes (T3) |
+| `port` | `?view=port` | the pen hall from beside the docked sub, up at the ceiling: Troy's port (lid open, lit ring), Phones's dummy 1.6 m west, and the pole standing from the port down into Troy's open hatch (phase 4 D3) |
+| `hatch` | `?view=hatch` | the docked sub's cabin roof close, from above and behind: Troy's hatch open (the lid swung forward) with Troy in his seat and the pole coming down to his chair's head bar, Phones's dummy beside it, the dome aft |
+
+`port` and `hatch` start in the pen (the docked sub, Troy aboard) when no `?start=` is given; with one, they are only
+the camera (e.g. `?start=control&view=port` — the hall with the lid shut and no pole).
 
 Every preset is computed from the tower's axis, the chair and the seat (`sim/rooms.ts` `TOWER_AXIS`, `ROOMS.chair`,
 `SEAT`; phase 4 D1), so they follow the rooms if the tower ever moves. The numbers today: the tower's axis is
@@ -109,8 +112,27 @@ turn back to the chair, sit, and down again to lock in:
 ?start=pen&menu=0&hold&script=leave,8,face=0,use,8
 ```
 
-Until T3 (phase 4) the chair passes through the pen hall's solid ceiling (the port is T3's) and the sub's roof hatch
-is still phase 3's, at the cabin's middle — the aboard chair already sits at Troy's new seat, the forward roof.
+### The port, the pole and the hatch (phase 4, D3)
+
+Everything here is drawn from `(troy, launch)` each frame (`render/boarding.ts`; no sim state). Docked and raised with
+Troy aboard, the pole stands from Troy's port down to his chair's head bar in the open hatch (the series' frame): so
+`?start=pen` shows the pole down, the port's lid open and the hatch open. Press `1` and the pole retracts up through
+the port over 1.5 s, then the lid (0.6 s) and the hatch (0.4 s) shut behind it; docking again reverses it — the lid
+opens, then the pole comes down. Riding, the lid and the hatch open as the chair comes within 14 m of the port; the
+pole is drawn from the port down to the chair's pole top once that is below the ceiling.
+
+| URL | What it shows |
+|---|---|
+| `?view=port` | docked: the port open, the pole standing to the roof |
+| `?start=pen&menu=0&view=port&hold&script=cradle,0.75` | the pole half retracted, the sub going down |
+| `?start=pen&menu=0&hold&script=cradle,1.2` | the pole nearly up (behind the HUD's title from the pen camera), the hatch still open |
+| `?start=pen&menu=0&hold&script=cradle,4` | the sub under water: no pole, the lid and the hatch shut |
+| `?start=control&menu=0&view=port&hold&script=walk=0.6:-1390.6,use,4.95` | the chair coming down through the port into the hall, the hatch open below |
+| `?start=control&menu=0&hold&script=walk=0.6:-1390.6,use,4.6` | the ride camera over the chair, looking down the annulus through the open lid to the hatch |
+| `?start=control&menu=0&hold&script=walk=0.6:-1390.6,use,8` | locked in: the pole standing, Troy in his seat |
+| `?start=pen&menu=0&view=5.2,9.6,-1392.2,0.6,9.6,-1392.2` | Troy in his seat through the window band's forward pane, the open hatch above |
+| `?start=pen&menu=0&view=port&hold&script=leave,1.1` | the ascent: the chair going up through the port |
+| `?start=pen&menu=0&view=port&hold&script=leave,8` | Troy back in the control room: the port and the hatch shut, no pole |
 
 At sea it is refused — the panel shows the fifth control red with *DOCK FIRST* for 3 s, as phase 2's refusals:
 `?start=ocean&menu=0&script=leave,1`.

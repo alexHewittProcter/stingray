@@ -20,7 +20,8 @@ import { createFpsReadout } from './render/fps';
 import { createHud } from './render/hud';
 import { createInteractView } from './render/interact';
 import { cameraIndoors, inRooms, oceanInView } from './render/indoors';
-import { CHAIR_SEAT } from './render/injector-chair';
+import { BOARDING_SHUT, type Boarding, smooth, stepBoarding } from './render/boarding';
+import { CHAIR_HEAD_COLLAR_TOP_Y, CHAIR_POLE_TOP_Y, CHAIR_POLE_Z, CHAIR_SEAT, CHAIR_UPPER_POLE_NAME } from './render/injector-chair';
 import { createLandmarks } from './render/landmarks';
 import { createLaunchPanel } from './render/launch-panel';
 import { initialLegend, legendOn, legendSituation, legendTick } from './render/legend';
@@ -107,8 +108,8 @@ const troy = createTroy();
 scene.add(troy.group);
 // The ride (phase 3, M6/M4, T7; phase 4, D1): the injector shaft's tube, straight down from the control room to the pen
 // hall's ceiling; the ride camera; the one chair object (M8) — found at the station, re-parented to the shaft path while
-// riding and into the sub's model aboard, Troy seated in it; and the sub's roof hatch, open while the chair is in the
-// hall (phase 4 T1's interim — T3 drives it from D3's predicate).
+// riding and into the sub's model aboard, Troy seated in it; and (phase 4, D3) the port in the hall's ceiling with its
+// lid, the long pole from it, and the sub's roof hatch — all driven from (troy, launch) each frame (render/boarding.ts).
 const shaft = createShaft(ROOMS, world.marineville.interior);
 scene.add(shaft.group);
 const rideCamera = createRideCamera(camera, ROOMS, world.marineville.interior, shaft.line);
@@ -116,10 +117,16 @@ const chair = rooms.group.getObjectByName(INJECTOR_CHAIR_NAME)!;
 const chairHome = chair.parent!;
 pen.reflect(chair);
 pen.reflect(troy.group);
-/** Phase 4 (T1, interim until T3's D3 predicate): the hatch is open while the riding chair is below the hall's ceiling. */
-const HALL_CEILING_Y = world.marineville.interior.pen.max.y;
-const HATCH_SECONDS = 0.4; // the lid's swing, either way
-let hatch = 0;
+pen.reflect(shaft.port);
+/** D3: the chair's pole above its head bar — hidden aboard, where the long pole comes down to the head bar instead. */
+const chairUpperPole = chair.getObjectByName(CHAIR_UPPER_POLE_NAME)!;
+/**
+ * D3: the lid, the pole and the hatch as drawn (render-side only; snapped on jumps). Set from the start state before
+ * anything runs, so a ?script= that presses `cradle` before the first frame sees the pole retract from down rather
+ * than start already gone (the first frame's jump is the start's, already applied here).
+ */
+let boarding: Boarding = { ...BOARDING_SHUT };
+const poleFoot = new THREE.Vector3();
 /** The camera as last drawn, for the ride's hold (M4: "the camera stays in the room for the chair's first rideHold s"). */
 const drawnPose: CameraPose = { pos: new THREE.Vector3(), quat: new THREE.Quaternion(), fov: camera.fov };
 let wasRiding = false;
@@ -161,6 +168,7 @@ const interact = createInteractView(rooms.group, hud, INTERACTABLES);
 // what is drawn. L4: the game starts in standby in Pen 3 (the control room from T8); ?start=control and ?start=ocean
 // (or ?at=…) start there instead. Phase 3 (M3, M9): R returns to the control room from anywhere.
 const game = new Game(world, startState(world, params));
+boarding = stepBoarding(boarding, game.state.troy, game.state.launch, game.state.troy.pos.y, 0, true);
 
 // The key legend's timing (T8, render/legend.ts).
 let legend = initialLegend();
@@ -372,11 +380,18 @@ function draw(alpha: number, frameSeconds: number): void {
   // breath) and, on foot, fades when the camera is on top of him.
   seatChairAndTroy(g.troy.where, troyNow);
   troy.pose(g.troy, alpha, game.lastState.troy, { dt: frameSeconds, camera, snap: jumped, place: g.troy.where === 'onFoot' });
-  // M1: the roof hatch, open while the chair is in the hall — on the way down its last stretch, on the way up (M6b)
-  // its first (phase 4 T1's interim; T3: D3's predicate).
-  const hatchWant = riding && troyNow.pos.y < HALL_CEILING_Y ? 1 : 0;
-  hatch = jumped ? hatchWant : hatch + Math.sign(hatchWant - hatch) * Math.min(Math.abs(hatchWant - hatch), frameSeconds / HATCH_SECONDS);
-  craft.setHatch(hatch * hatch * (3 - 2 * hatch));
+  // D3: the port's lid, the long pole and Troy's hatch, from (troy, launch) — the lid and hatch open as the chair comes
+  // into the hall and while the pole is down; the pole stands from the port to the riding chair's pole top, or aboard
+  // and docked to the chair's head bar in the open hatch, and retracts up through the port when the cradle sets off.
+  boarding = stepBoarding(boarding, g.troy, g.launch, troyNow.pos.y, frameSeconds, jumped && drawnOnce);
+  const aboard = g.troy.where === 'aboard';
+  chairUpperPole.visible = !aboard;
+  if (aboard) craft.group.updateMatrixWorld(true);
+  else chair.updateMatrixWorld(true);
+  if (riding) chair.localToWorld(poleFoot.set(0, CHAIR_POLE_TOP_Y, CHAIR_POLE_Z));
+  else if (aboard) chair.localToWorld(poleFoot.set(0, CHAIR_HEAD_COLLAR_TOP_Y, CHAIR_POLE_Z));
+  shaft.update(boarding, riding || aboard ? poleFoot : null, riding ? 1 : aboard ? smooth(boarding.pole) : 0);
+  craft.setHatch(smooth(boarding.hatch));
   pen.update(camera, penView, frameSeconds, elapsed);
   const door = game.lastState.launch.door + (g.launch.door - game.lastState.launch.door) * alpha;
   tunnel.update(camera, { door, doorMoving: g.launch.doorDir !== 0 }, elapsed);
