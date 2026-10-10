@@ -55,9 +55,16 @@ export const LEVELS = {
   underwaterCutoff: 1400, // Hz — effects and the engine are low-passed this hard while the sub is submerged
   airCutoff: 16000, // Hz — and this open in air
 
-  // Phase 4 (S2, S3): the score's instruments (audio/instruments.ts), each scaled by the music bus above — except
-  // `alert`, the level of the ALERT section (the base's PA, diegetic), which plays through the effects bus instead:
-  // quiet, under the console hum's room, read as an alarm somewhere in the building rather than as the score.
+  // The ALERT: the "Launch Stations" PA drum signal (public/sfx/launch-stations.wav, made by tools/launch-stations.py),
+  // played on foot in the control room. SFX, not score: through the effects bus (× effectsBus, taking the room and the
+  // muffle), never scaled by the Music switch — quiet, read as the base's loudspeakers rather than as music. The clip
+  // is peak-normalised to −1 dBFS and compressed, so it sits lower here than the old synthesised tattoo's 0.3.
+  alert: 0.22,
+  // s — the silence after each sounding before the signal sounds again: one bar at the clip's 180 bpm, so the
+  // 4.000 s clip (three bars, the drumming ≈ 3.65 s) comes round every four bars.
+  alertGap: 4 / 3,
+
+  // Phase 4 (S2, S3): the score's instruments (audio/instruments.ts), each scaled by the music bus above.
   music: {
     snareNoise: 0.5, // the wires: noise through a band-pass at ≈ 1.8 kHz
     snareCrack: 0.16, // the stick on the head: a short high-passed tick
@@ -71,6 +78,5 @@ export const LEVELS = {
     brass: 0.26, // per voicing, divided across its pitches
     brassVibrato: 7, // cents
     bass: 0.5,
-    alert: 0.3, // the ALERT's output gain into the effects bus (× effectsBus 0.9)
   },
 } as const;

@@ -5,13 +5,19 @@
 //
 // Each play gets its own output gain (for its fade-in and its fade-out); the previous play's is faded out under it.
 // A section marked `diegetic` (ALERT: the base's PA) goes to the effects bus instead, taking the room and muffle, at
-// LEVELS.music.alert.
+// LEVELS.alert — and it is SFX, not score: the Music switch (setLevel) leaves it alone; M's mute silences it with
+// everything else, at the master.
+//
+// A section with a `clip` (ALERT: the Launch Stations signal, public/sfx/launch-stations.wav) plays a decoded sample
+// rather than hits: the same look-ahead hands out each sounding's start (sequence.ts clipsDue, every clip.seconds +
+// LEVELS.alertGap) and it is started sample-accurately on the audio clock. The file is fetched and decoded once,
+// when the music is made (after the first gesture: audio.ts makes it then); if that fails, the ALERT is silent.
 
 import { playHit } from './instruments';
 import { LEVELS } from './levels';
 import type { Mixer } from './mixer';
-import { SCORE, type Score, type SectionId, stepSeconds } from './score';
-import { type PlayOptions, type Sequence, advance, begin, bodyStart, finished, playingAt } from './sequence';
+import { type Clip, SCORE, type Score, type SectionId, stepSeconds } from './score';
+import { START_DELAY, type PlayOptions, type Sequence, advance, begin, bodyStart, finished, playingAt } from './sequence';
 
 export interface MusicPlayOptions extends PlayOptions {
   /** Seconds to fade the new section in from silence (default: none). */
@@ -31,7 +37,8 @@ export interface Music {
   playing(): SectionId | null;
   /** Once per drawn frame: schedule what falls in the look-ahead. */
   frame(): void;
-  /** The music bus's gain (S4's Music switch: 0 = off); glides over `seconds`. The diegetic send follows in proportion. */
+  /** The music bus's gain (S4's Music switch: 0 = off); glides over `seconds`. The diegetic send (the PA) is SFX and
+   *  does not follow. */
   setLevel(gain: number, seconds?: number): void;
   /** Scale the velocity of every hit scheduled from now on (S3: the roll builds with the descent). 1 = as written. */
   setIntensity(k: number): void;
@@ -41,6 +48,18 @@ export interface Music {
 const TAIL = 3;
 /** The crossfade when one play replaces another. */
 const HANDOVER = 0.03;
+/**
+ * A clip sounding due while its file was still decoding (the first gesture plays the ALERT at once, before the fetch
+ * lands) still starts, from its top, when the buffer arrives within this long of when it was due; later than that it
+ * is skipped and the next sounding comes on time.
+ */
+const CLIP_GRACE = 1;
+
+/** Where a public/ asset is served (Vite's base). */
+function assetUrl(url: string): string {
+  const base = (import.meta.env?.BASE_URL as string | undefined) ?? '/';
+  return base.endsWith('/') ? base + url : `${base}/${url}`;
+}
 
 export function createMusic(m: Mixer, score: Score = SCORE): Music {
   const ctx = m.ctx;
@@ -48,11 +67,50 @@ export function createMusic(m: Mixer, score: Score = SCORE): Music {
   let seq: Sequence | null = null;
   let out: GainNode | null = null;
   let intensity = 1;
-  // The diegetic sections' own send into the effects bus at LEVELS.music.alert (phase 4 T6). It follows setLevel in
-  // proportion, so the Music switch silences the PA's tattoo with the rest of the score.
+  // The diegetic sections' own send into the effects bus at LEVELS.alert. Fixed: the PA is a sound in the base, not
+  // the score, so the Music switch does not touch it (the mute does, at the master).
   const diegetic = ctx.createGain();
-  diegetic.gain.value = LEVELS.music.alert * (m.music.gain.value / LEVELS.musicBus);
+  diegetic.gain.value = LEVELS.alert;
   diegetic.connect(m.effects);
+
+  // The decoded clips, by url: fetched once, here (the music is made on the first gesture). null while loading or
+  // if the fetch or the decode failed — the clip is then silent, and nothing else changes.
+  const buffers = new Map<string, AudioBuffer | null>();
+  const load = (clip: Clip) => {
+    if (buffers.has(clip.url)) return;
+    buffers.set(clip.url, null);
+    try {
+      void fetch(assetUrl(clip.url))
+        .then((r) => (r.ok ? r.arrayBuffer() : Promise.reject(new Error(`${r.status}`))))
+        .then((bytes) => ctx.decodeAudioData(bytes))
+        .then((buffer) => void buffers.set(clip.url, buffer))
+        .catch(() => undefined);
+    } catch {
+      // No fetch (or it threw synchronously): the clip stays silent.
+    }
+  };
+  for (const section of Object.values(score.sections)) if (section.clip) load(section.clip);
+
+  // The current play's clip sources (stopped with its fade) and a sounding that came due before its buffer did.
+  let sources: AudioBufferSourceNode[] = [];
+  let missed: { clip: Clip; time: number } | null = null;
+
+  const startClip = (clip: Clip, time: number): boolean => {
+    const buffer = buffers.get(clip.url);
+    if (!buffer || !out) return false;
+    const src = ctx.createBufferSource();
+    src.buffer = buffer;
+    src.connect(out);
+    src.start(time);
+    const list = sources;
+    list.push(src);
+    src.onended = () => {
+      const i = list.indexOf(src);
+      if (i >= 0) list.splice(i, 1);
+      src.disconnect();
+    };
+    return true;
+  };
 
   const release = (node: GainNode, fade: number) => {
     const now = ctx.currentTime;
@@ -60,20 +118,34 @@ export function createMusic(m: Mixer, score: Score = SCORE): Music {
     g.cancelScheduledValues(now);
     g.setValueAtTime(g.value, now);
     g.linearRampToValueAtTime(0, now + Math.max(fade, 0.005));
+    for (const src of sources) {
+      try {
+        src.stop(now + Math.max(fade, 0.005) + 0.05);
+      } catch {
+        // Already stopped.
+      }
+    }
+    sources = [];
+    missed = null;
     setTimeout(() => node.disconnect(), (Math.max(fade, 0) + 0.5) * 1000);
   };
 
   const frame = () => {
     if (!seq || !out) return;
     const now = ctx.currentTime;
-    const r = advance(score, seq, now);
+    if (missed && now - missed.time > CLIP_GRACE) missed = null;
+    if (missed && startClip(missed.clip, now + START_DELAY)) missed = null;
+    const r = advance(score, seq, now, undefined, LEVELS.alertGap);
     seq = r.seq;
     for (const h of r.hits) playHit(m, out, h, ss, intensity);
+    for (const c of r.clips) if (!startClip(c.clip, c.time)) missed = { clip: c.clip, time: c.time };
     if (finished(seq, now)) {
       const done = out;
       setTimeout(() => done.disconnect(), TAIL * 1000);
       seq = null;
       out = null;
+      sources = [];
+      missed = null;
     }
   };
 
@@ -82,6 +154,8 @@ export function createMusic(m: Mixer, score: Score = SCORE): Music {
       const now = ctx.currentTime;
       const next = begin(score, now, id, opts, seq);
       if (out) release(out, HANDOVER);
+      sources = [];
+      missed = null;
       out = ctx.createGain();
       out.connect(score.sections[id].diegetic ? diegetic : m.music);
       if (opts.fadeIn && opts.fadeIn > 0) {
@@ -98,13 +172,14 @@ export function createMusic(m: Mixer, score: Score = SCORE): Music {
       if (out) release(out, fadeOut);
       out = null;
       seq = null;
+      sources = [];
+      missed = null;
     },
     playing: () => playingAt(seq, ctx.currentTime),
     frame,
     setLevel(gain, seconds = 0.3) {
       const tc = Math.max(seconds, 0.01) / 3;
       m.music.gain.setTargetAtTime(Math.max(0, gain), ctx.currentTime, tc);
-      diegetic.gain.setTargetAtTime(LEVELS.music.alert * (Math.max(0, gain) / LEVELS.musicBus), ctx.currentTime, tc);
     },
     setIntensity(k) {
       intensity = Math.max(0, Math.min(1.5, k));
