@@ -1,8 +1,8 @@
 import * as THREE from 'three';
 import type { Interior } from '../sim/world';
-import { FLOOR_Y, type Rooms, SHAFT_OPEN_TOP, SHAFT_RADIUS } from '../sim/rooms';
+import { FLOOR_Y, type Rooms, SHAFT_RADIUS } from '../sim/rooms';
 import type { Vec3 } from '../sim/vec3';
-import { BORE_FLARE, TUBE_STUB } from './rooms';
+import { TUBE_TOP_Y } from './rooms';
 
 // The injector shaft (phase 3, M1 "The shaft", T7; phase 4, D1): the closed tube the chair rides straight down, from
 // the control room's bore (render/rooms.ts — the open throat, its flare and a 2 m stub of the tube) through the tower's
@@ -19,8 +19,8 @@ import { BORE_FLARE, TUBE_STUB } from './rooms';
 // The drop below the ceiling (≈ 11 m of open hall down to the seat) is drawn as nothing: the chair hangs in the hall,
 // as the series' does (T3 adds the port, the lid and the pole).
 
-/** Where the room's drawn stub of the tube ends (render/rooms.ts: the throat, its flare and the stub). */
-export const TUBE_TOP_Y = FLOOR_Y - SHAFT_OPEN_TOP - BORE_FLARE - TUBE_STUB;
+/** Where the room's drawn stub of the tube ends (render/rooms.ts: the throat, its flare and the stub; defined there). */
+export { TUBE_TOP_Y };
 /** Light rings along the tube, every so many metres. */
 const RING_SPACING = 6;
 /** Wall rings along the tube (for the vertex-colour light falloff), every so many metres. */
