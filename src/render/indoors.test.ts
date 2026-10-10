@@ -6,17 +6,22 @@ import { cameraIndoors, inRooms, indoorAmount, oceanInView } from './indoors';
 import { VIEW_PRESETS, viewParam } from '../debug';
 import { createRooms, walls } from './rooms';
 import { inShaft, shaftLine } from './shaft';
+import { createTunnelPath } from './tunnel-path';
 
 const I = MARINEVILLE.interior;
 const v = (x: number, y: number, z: number) => new THREE.Vector3(x, y, z);
 const eye = (p: { x: number; y: number; z: number }) => v(p.x, p.y + 1.6, p.z);
+
+// Phase 4 D6: the centreline is three points, so the bore is sampled by arc length (every 40 m), not every 6th point.
+const BORE = createTunnelPath(I.tunnel.centreline);
+const BORE_SAMPLES = Array.from({ length: Math.floor(BORE.length / 40) }, (_, k) => BORE.pointAt((k + 1) * 40));
 
 const PEN_AND_BORE: Array<[string, THREE.Vector3]> = [
   ['the pen hall', v(0, 5, -1395)],
   ["the pen camera's place", v(I.cradle.pos.x + 27, I.cradle.raisedY + 1.6, I.cradle.pos.z + 4)],
   ['the pen ceiling corner', v(31.5, 19.5, -1449.5)],
   ['just inside the mouth', v(0, -40, COAST_Z - 1)],
-  ...I.tunnel.centreline.filter((_, k) => k > 0 && k % 6 === 0).map((p, k): [string, THREE.Vector3] => [`the bore ${k}`, v(p.x, p.y + 10, p.z)]),
+  ...BORE_SAMPLES.map((p, k): [string, THREE.Vector3] => [`the bore at ${(k + 1) * 40} m`, v(p.x, p.y + 10, p.z)]),
 ];
 
 const ROOM_POINTS: Array<[string, THREE.Vector3]> = [

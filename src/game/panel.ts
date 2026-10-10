@@ -173,11 +173,14 @@ function controlView(
     : c === 'clamps' ? l.clamps === 'released'
     : l.door >= 1);
   const pressable = wouldAct(c, g, interior);
+  // Phase 4 D6: the door's request range (340 m) reaches the pen, so coming home a shut door is requestable from the
+  // pool — but it is not a step home; it stays dark there, so the one amber lamp is still the next step.
+  const offTrip = home && c === 'door' && inPen(g.sub.pos, interior);
   // Green wins over amber unless the press that would take it out of position is the next step (coming home).
   const lamp: Lamp = refused ? 'red'
     : moving ? 'amber'
     : inPosition && !(pressable && next === c) ? 'green'
-    : pressable ? 'amber'
+    : pressable && !offTrip ? 'amber'
     : 'dark';
   return { control: c, key: KEYS[c], label: LABELS[c], lamp, moving, lever: leverOf(c, g), word: wordOf(c, g, interior), pressable, next: next === c };
 }
@@ -250,7 +253,12 @@ function carrying(g: GameState, interior: Interior): boolean {
 
 export function nextControl(g: GameState, m: PanelMemory, interior: Interior): LaunchControl | null {
   const l = g.launch;
-  const doorWanted = l.clamps === 'released' && l.door < 1 && l.doorDir !== 1 && refusalFor('door', l, g.sub, interior) === null;
+  // Phase 4 D6: the request range (340 m) reaches past the close range (280 m) at both ends, so on the way home the
+  // door is a step only for a sub at sea facing the mouth (one just launched, heading away as the tower shuts it, is
+  // not asked to open it again) — and never once she is in the pool, with the door behind her.
+  const homeAndAway = m.trip === 'home' && (inPen(g.sub.pos, interior) || (m.shown !== 'launch' && !facingMouth(g, interior)));
+  const doorWanted = l.clamps === 'released' && l.door < 1 && l.doorDir !== 1 && refusalFor('door', l, g.sub, interior) === null
+    && !homeAndAway;
   if (l.clamps === 'locked') {
     if (l.cradleDir !== 0 || l.engines === 'starting') return null;
     if (m.trip === 'out') {
@@ -304,9 +312,7 @@ function homePrompt(g: GameState, m: PanelMemory, interior: Interior, next: Laun
     // At sea: only within door range, where the door control shows.
     if (refusalFor('door', l, g.sub, interior) !== null) return null;
     // Opening or open: words only for a sub facing the mouth (one just launched is heading away from it).
-    const to = interior.door.centre;
-    const facing = -Math.sin(g.sub.yaw) * (to.x - g.sub.pos.x) - Math.cos(g.sub.yaw) * (to.z - g.sub.pos.z);
-    if (facing <= 0.5 * Math.hypot(to.x - g.sub.pos.x, to.z - g.sub.pos.z)) return null;
+    if (!facingMouth(g, interior)) return null;
     if (l.doorDir === 1) return 'The ocean door is opening — wait for it, then drive in';
     if (l.door >= 1) return 'Door open — drive in through the mouth';
     return null;
@@ -362,6 +368,13 @@ export function alongTunnelToPen(p: Vec3, interior: Interior): number {
     arc += len;
   }
   return arc - bestArc;
+}
+
+/** The sub's nose points at the ocean door: within 60° of the line to its centre, seen from above. */
+function facingMouth(g: GameState, interior: Interior): boolean {
+  const to = interior.door.centre;
+  const facing = -Math.sin(g.sub.yaw) * (to.x - g.sub.pos.x) - Math.cos(g.sub.yaw) * (to.z - g.sub.pos.z);
+  return facing > 0.5 * Math.hypot(to.x - g.sub.pos.x, to.z - g.sub.pos.z);
 }
 
 function inPen(p: Vec3, interior: Interior): boolean {

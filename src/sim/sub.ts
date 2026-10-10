@@ -42,14 +42,18 @@ export function speedOf(s: SubState): number {
   return Math.hypot(s.vel.x, s.vel.y, s.vel.z);
 }
 
-export function stepSub(s: SubState, i: SubInput, dt: number, env: Env): SubState {
+/**
+ * `level` (phase 4 D6, the bore's pitch assist): the pitch the nose returns to with no pitch input, submerged — 0 (level)
+ * everywhere but the launch tunnel, where launch.ts drive passes the bore's slope (interior.ts boreSlopeAt).
+ */
+export function stepSub(s: SubState, i: SubInput, dt: number, env: Env, level = 0): SubState {
   const n: SubState = { pos: { ...s.pos }, vel: { ...s.vel }, yaw: s.yaw, pitch: s.pitch, medium: s.medium };
   // Dive input leaves the surface immediately.
   if (n.medium === 'surface' && i.pitch < 0) n.medium = 'submerged';
 
   const current = edgeCurrent(n.pos, env.bounds.halfSize);
   if (n.medium === 'airborne') fly(n, i, dt);
-  else swim(n, i, dt, current);
+  else swim(n, i, dt, current, level);
   n.vel.x += current.x * T.edgePush * dt;
   n.vel.z += current.z * T.edgePush * dt;
 
@@ -66,14 +70,14 @@ export function stepSub(s: SubState, i: SubInput, dt: number, env: Env): SubStat
 
 // ---- In the water (submerged or on the surface) ----
 
-function swim(n: SubState, i: SubInput, dt: number, current: Vec3): void {
+function swim(n: SubState, i: SubInput, dt: number, current: Vec3, level: number): void {
   n.yaw += i.yaw * yawRate(speedOf(n)) * dt;
   steerWithCurrent(n, current, dt);
 
   // On the surface the nose can only be pulled up (to leap); otherwise it lies level.
   if (n.medium === 'surface' && i.pitch <= 0) n.pitch = towardZero(n.pitch, T.levelRate * dt);
   else if (i.pitch !== 0) n.pitch += i.pitch * T.pitchRate * dt;
-  else n.pitch = towardZero(n.pitch, T.levelRate * dt);
+  else n.pitch = moveToward(n.pitch, level, T.levelRate * dt);
   n.pitch = clampPitch(n.pitch);
 
   // Split velocity into speed along the nose and drift off it; thrust drives the first, drag kills the second.

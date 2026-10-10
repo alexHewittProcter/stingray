@@ -28,7 +28,9 @@ import { WATER_GLSL, displayVector } from './water-look';
 /** Render layer for what the pool reflects: the hall, the cradle, the craft and the lights. */
 export const PEN_LAYER = 1;
 
-const TUNNEL_OPENING_RADIUS = 13.5; // a little over the 13 m bore: the centreline's last segment is not quite square to the wall
+// A little over the 13 m bore: the centreline's last segment is not square to the wall — phase 4 D6's straight incline
+// meets it at ≈ 8.7°, so the level collar's floor, 2.5 m in, must clear the inclined bore (13.5 left it 3 cm inside).
+const TUNNEL_OPENING_RADIUS = 13.7;
 const COLLAR_DEPTH = 2.5;
 const WALKWAY = { y: 8.5, depth: 3, thick: 0.35 };
 const QUAY = { top: 0.6, depth: 2.2, bottom: -1.5 };
