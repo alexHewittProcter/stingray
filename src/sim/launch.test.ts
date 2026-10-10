@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { modeOf } from '../game/mode';
-import { capAt, confine, northOfFace } from './interior';
+import { boreSlopeAt, capAt, confine, northOfFace } from './interior';
 import {
   type GameState, type LaunchControl, type LaunchState, LAUNCH_CONTROLS, REFUSAL, cradleHeight, oceanStart, refusalFor,
   released, standby, stepGame, withoutDoor,
@@ -455,6 +455,92 @@ describe('the speed cap (L1, ramped by phase 4 D6)', () => {
     }
     for (let k = 0; k < steps(2); k++) g = stepGame(g, out(g), null, DT, W);
     expect(along(g.sub)).toBeGreaterThan(T.interiorSpeedCap + 10);
+  });
+});
+
+describe('the bore\'s pitch assist (phase 4 D6)', () => {
+  const DEG = Math.PI / 180;
+  const INCLINE = Math.atan(26 / 170);
+  const BOOST = input({ throttle: 1, boost: true });
+  /** Held on throttle and boost with no pitch (or steer) input: the worst speed and pitch seen while on the incline. */
+  function holdThrough(start: GameState, until: (g: GameState) => boolean) {
+    let g = start;
+    let slowest = Infinity;
+    let fastest = 0;
+    let shed = 0; // the most speed lost in one step on the incline: a hull scraping the bore loses it every step
+    let k = 0;
+    for (; k < steps(20) && !until(g); k++) {
+      const next = stepGame(g, BOOST, null, DT, W);
+      expectNoJump(g, next);
+      expect(outside(next.sub.pos)).toBeLessThanOrEqual(1e-6);
+      const prev = g;
+      g = next;
+      const z = g.sub.pos.z;
+      // The incline's middle, clear of the joins' blends and the ramp: z −1190 … −1270.
+      if (z < -1190 && z > -1270) {
+        [slowest, fastest] = [Math.min(slowest, speedOf(g.sub)), Math.max(fastest, speedOf(g.sub))];
+        // Off the ramp's 60 m (z > −1280) the cap is the full 60 m/s, so speed only falls by scraping.
+        shed = Math.max(shed, speedOf(prev.sub) - speedOf(g.sub));
+      }
+    }
+    return { g, slowest, fastest, shed, seconds: k * DT };
+  }
+
+  it('boreSlopeAt: the incline\'s slope along the heading (≈ ±8.7°), level in the chamber and the pen, 0 at sea and broadside', () => {
+    const mid = { x: 0, y: -27, z: -1255 };
+    expect(boreSlopeAt(mid, 0, I)).toBeCloseTo(INCLINE, 9); // facing in (north), up the incline
+    expect(boreSlopeAt(mid, Math.PI, I)).toBeCloseTo(-INCLINE, 9); // facing out, down it
+    expect(boreSlopeAt(mid, Math.PI / 2, I)).toBeCloseTo(0, 9);
+    expect(INCLINE / DEG).toBeCloseTo(8.7, 1);
+    expect(boreSlopeAt({ x: 0, y: -40, z: COAST_Z - 30 }, 0, I)).toBe(0); // the door chamber
+    expect(boreSlopeAt(CRADLE_DOWN, 0, I)).toBe(0); // the pen
+    expect(boreSlopeAt(SEA(50), 0, I)).toBe(0); // the sea
+    expect(boreSlopeAt({ x: 40, y: -27, z: -1255 }, 0, I)).toBe(0); // outside the bore
+    // Blended across the corner and faded to level at the pen's wall: continuous, never beyond the incline's.
+    let prev = boreSlopeAt({ x: 0, y: -40, z: COAST_Z - 1 }, 0, I);
+    for (let z = COAST_Z - 1; z > I.pen.max.z; z -= 0.5) {
+      const y = z > -1170 ? -40 : -40 + (26 * (-1170 - z)) / 170; // on the centreline
+      const here = boreSlopeAt({ x: 0, y, z }, 0, I);
+      expect(Math.abs(here - prev), `z ${z}`).toBeLessThan(0.01);
+      expect(here).toBeLessThanOrEqual(INCLINE + 1e-12);
+      prev = here;
+    }
+    expect(boreSlopeAt({ x: 0, y: -14, z: I.pen.max.z + 0.01 }, 0, I)).toBeCloseTo(0, 3);
+  });
+
+  it('out: from the released cradle, held level on throttle and boost (no pitch input), the sub runs the incline at ≥ 55 m/s and reaches the sea', () => {
+    // The door asked for from the cradle as the run starts (an open one would shut at once: the cradle is beyond 280 m).
+    const start = press(freeAt(CRADLE_DOWN, I.cradle.yawOut), 'door', BOOST);
+    const { g, fastest, shed, seconds } = holdThrough(start, (g) => g.sub.pos.z > COAST_Z + 60);
+    // Still gathering speed off the ramp (boost accelerates at 20 m/s²): it passes 55 on the incline, never sheds any.
+    expect(fastest).toBeGreaterThanOrEqual(55);
+    expect(shed).toBeLessThan(0.05);
+    expect(g.sub.pos.z).toBeGreaterThan(COAST_Z + 60);
+    expect(seconds).toBeLessThan(11); // ≈ 10.2 s from the release to 60 m out at sea
+  });
+
+  it('in: from the sea, held on throttle and boost (no pitch input), the sub runs up the incline at ≥ 55 m/s, then the ramp slows it into the pen', () => {
+    const start = freeAt(SEA(200), 0, { door: 1 });
+    const { g, slowest, shed } = holdThrough(start, (g) => g.sub.pos.z < I.pen.max.z - 10);
+    expect(slowest).toBeGreaterThanOrEqual(55);
+    expect(shed).toBeLessThan(0.05);
+    expect(g.sub.pos.z).toBeLessThan(I.pen.max.z - 10);
+    expect(along(g.sub)).toBeLessThanOrEqual(T.interiorSpeedCap + EPS);
+  });
+
+  it('the door chamber stays level: a sub held on the throttle there keeps its nose at 0', () => {
+    let g = freeAt({ x: 0, y: -40, z: COAST_Z - 10 }, 0, { door: 1 });
+    for (let k = 0; k < steps(0.8); k++) {
+      g = stepGame(g, BOOST, null, DT, W);
+      if (g.sub.pos.z > COAST_Z - 70 + T.boreTrimBlend / 2) expect(g.sub.pitch).toBe(0);
+    }
+  });
+
+  it('no effect at sea: a pitched sub there with no pitch input levels to 0 as phase 1\'s does', () => {
+    let g = freeAt(SEA(300), 0);
+    g = { ...g, sub: { ...g.sub, pitch: -20 * DEG } };
+    g = run(g, steps(0.5), input({ throttle: 1 }));
+    expect(g.sub.pitch).toBe(0);
   });
 });
 

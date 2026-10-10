@@ -153,16 +153,15 @@ At sea it is refused — the panel shows the fifth control red with *DOCK FIRST*
 
 Troy at his chair, sits, rides down 6 s and locks in, then phase 2's launch — and phase 4's straight tunnel (D6): the
 door is asked for from the cradle as the clamps let go (it is open 5 s later, before Stingray gets there), and
-Stingray boosts straight out at 60 m/s, ending 100 m out at sea (one line in the URL):
+Stingray boosts straight out on the throttle alone at up to 60 m/s, ending out at sea (one line in the URL):
 
 ```
-?start=control&menu=0&script=walk=0.6:-1390.6,1,use,8,cradle,8.2,engines,2.2,clamps,door,throttle=1,boost=1,4,climb=-1,0.15,climb=-0.001,3.6,climb=0,6
+?start=control&menu=0&script=walk=0.6:-1390.6,1,use,8,cradle,8.2,engines,2.2,clamps,door,throttle=1,boost=1,12
 ```
 
-The steering is one nudge of the nose: `climb=-1,0.15` at the pen's south wall pitches it down the incline's 8.7°,
-`climb=-0.001` holds it there (the sub levels itself only while the pitch axis is zero), and `climb=0` at the door
-chamber levels it. Stop it early with `&hold` for the stages: `…,climb=-0.001,1.5&hold` on the incline just off the
-ramp, 75 kn and gathering speed; `…,3.6,climb=0,0.8&hold` the level door chamber at 117 kn (60 m/s), the door open ahead.
+No steering: the bore's pitch assist trims the nose to the incline (below). From the release: the pen's wall at
+≈ 4.2 s, the mouth at ≈ 9.3 s, 100 m out at ≈ 10.9 s. Stop it early with `&hold` for the stages: `…,boost=1,6.2&hold`
+on the incline, nose down 8.7°, 96 kn and gathering speed (60 m/s, 117 kn, by ≈ 6.7 s); `…,boost=1,8.6&hold` the level door chamber, the door open ahead.
 
 Phase 2's launch alone: `?script=cradle,8.2,engines,2.2,clamps,1` (starts in the pen by the implication).
 
@@ -186,25 +185,29 @@ lowered cradle (296 m) and from the pen's mouth; `doorCloseRange` 280 m — the 
 beyond it, so docking still shuts it (the cradle is 296 m away) and at sea it shuts behind a departing sub as before.
 A sub that asks from the cradle and then waits there sees the door open and close again (it is beyond 280 m).
 
-**Pitch on the incline.** The bore's confinement is phase 2's: a hull held level runs into the incline's crown and
-slides along it, shedding speed (≈ 7 m/s, 14 kn, at full boost — `?start=pen&menu=0&hold&script=cradle,8.2,engines,2.2,clamps,door,throttle=1,boost=1,9`).
-Pitched to the incline it runs at 60 m/s. (A feel item for T7: the keyboard's pitch keys level the nose on release.)
+**Pitch on the incline — the bore's pitch assist (`sim/interior.ts` `boreSlopeAt`).** Inside the bore, the nose with
+no pitch input settles (at the usual levelling rate) to the bore's slope along the heading instead of to level: ≈ −8.7°
+heading out down the incline, ≈ +8.7° heading in, 0 in the level door chamber and broadside, blended over
+`boreTrimBlend` 20 m across the corner and to level at the pen's wall. Pitch input works on top as everywhere; at sea
+and in the pen nothing changes. So a sub held on the throttle runs the incline at 60 m/s either way (without it, a level
+hull rode the incline's crown and slid along it at ≈ 7 m/s).
 
 ### Coming home (phase 4 D6)
 
-From 200 m out at sea, facing in: the door, a boosted run in, the nose up the incline at the door chamber's end, the
-ramp slowing Stingray from 60 m/s to 15 into the pen, then docked and raised — and the door shut behind her:
+From 200 m out at sea, facing in: the door, a boosted run in on the throttle alone (the pitch assist takes the nose up
+the incline), the ramp slowing Stingray from 60 m/s to 15 into the pen, then docked and raised — and the door shut
+behind her:
 
 ```
-?start=ocean&menu=0&hold&script=in=-200,door,throttle=1,boost=1,6.1,climb=1,0.15,climb=0.001,N
+?start=ocean&menu=0&hold&script=in=-200,door,throttle=1,boost=1,N
 ```
 
 | N | What it shows |
 |---|---|
-| `1.8` | mid-incline at 117 kn (60 m/s), "OCEAN DOOR OPEN — PEN 3 71 M" |
-| `2.8,climb=0,0.3` | on the ramp, 14 m from the pen: 50 kn and falling; the docking guide up |
-| `2.8,climb=0,1.6` | at the pen's wall: 29 kn (15 m/s), "STINGRAY IN PEN 3 — DOCKING" |
-| `2.8,climb=0,2,throttle=0,boost=0,dock=0,clamps,1,engines,cradle,8.2` | docked and raised: the ocean door SHUT (the tower closed it once the hull was beyond 280 m) |
+| `7.6` | mid-incline at 117 kn (60 m/s), nose up 8.7° |
+| `9.4` | on the ramp, 13 m from the pen: 48 kn and falling; the docking guide up |
+| `10.2` | at the pen's wall: 29 kn (15 m/s), "STINGRAY IN PEN 3 — DOCKING" |
+| `11,throttle=0,boost=0,dock=0,clamps,1,engines,cradle,8.2` | docked and raised: the ocean door SHUT (the tower closed it once the hull was beyond 280 m) |
 
 ## Other switches
 

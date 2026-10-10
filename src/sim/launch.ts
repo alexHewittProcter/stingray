@@ -6,7 +6,7 @@
 // applied around it) → stepCombat (with fire forced off north of the cliff face, and always the full world).
 
 import { type CombatState, initialCombatState, stepCombat } from './combat';
-import { capAt, confine, northOfFace } from './interior';
+import { boreSlopeAt, capAt, confine, northOfFace } from './interior';
 import { seatOf } from './rooms';
 import { type SubInput, type SubState, forwardOf, initialSubState, speedOf, stepSub } from './sub';
 import { type TroyState, aboard } from './troy';
@@ -271,8 +271,9 @@ function drive(s: SubState, input: SubInput, l: LaunchState, dt: number, env: En
     boost: input.boost && cap > T.cruiseSpeed,
     throttle: input.throttle > 0 && cap < T.cruiseSpeed ? (input.throttle * cap) / T.cruiseSpeed : input.throttle,
   };
-  // L2: the door is solid unless fully open.
-  const n = stepSub(s, given, dt, l.door >= 1 ? withoutDoor(env) : env);
+  // L2: the door is solid unless fully open. D6's pitch assist: in the bore, the nose with no pitch input settles to the
+  // bore's slope along the heading rather than to level (0 everywhere else, so the sea is unchanged).
+  const n = stepSub(s, given, dt, l.door >= 1 ? withoutDoor(env) : env, boreSlopeAt(s.pos, s.yaw, interior));
   confineHull(n, interior, dt);
   capAlongNose(n, capAt(n.pos, interior));
   return n;

@@ -164,12 +164,11 @@ export function nearCradle(metres: number): { pos: Vec3; yaw: number } {
  * open water in one page (Troy walked to the front of his chair at the station — phase 4: (0.6, −1390.6), 1.6 m south
  * of it — sits, rides down 6 s and locks in, then phase 2's launch; phase 4 (D6, T4): the tunnel is straight, so the
  * door is asked for from the cradle as the clamps let go (its 340 m request range reaches it; it is open 5 s later,
- * long before the sub gets there) and Stingray boosts straight out at 60 m/s — one nudge of the nose down (climb=-1
- * for 0.15 s ≈ the incline's 8.7°, then held with a hair of input, as nothing levels it while an axis is non-zero) at
- * the pen's south wall, level again at the door chamber; the held axes merge, main.ts setInput; ≈ 11 s from the
- * release to 100 m out at sea):
- *   ?start=control&menu=0&script=walk=0.6:-1390.6,1,use,8,cradle,8.2,engines,2.2,clamps,door,throttle=1,boost=1,4,
- *   climb=-1,0.15,climb=-0.001,3.6,climb=0,6   (one line in the URL). Unknown words are ignored. At most
+ * long before the sub gets there) and Stingray boosts straight out on the throttle alone — the bore's pitch assist
+ * (interior.ts boreSlopeAt) trims the nose to the incline, so no steering — at up to 60 m/s; the held axes merge,
+ * main.ts setInput; ≈ 9.3 s from the release to the mouth, ≈ 10.9 s to 100 m out at sea):
+ *   ?start=control&menu=0&script=walk=0.6:-1390.6,1,use,8,cradle,8.2,engines,2.2,clamps,door,throttle=1,boost=1,12
+ *   (one line in the URL). Unknown words are ignored. At most
  * SCRIPT_LIMITS.tokens words run, and at most SCRIPT_LIMITS.totalSeconds in all.
  */
 export function runScript(script: string, handle: DebugHandle): void {
