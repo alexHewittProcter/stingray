@@ -222,7 +222,7 @@ sound has started — add `--enable-logging=stderr --v=0` and read the `INFO:CON
 - In the game, from the console: `__stingray.music.play('ROLL')`, `__stingray.music.stop()`,
   `__stingray.music.playing()`. Click the page first (a browser holds a context made without a gesture).
 - The **Music** item beside Sound on both menus switches the score on and off (stored as `stingray.music`, default
-  on); `M` mutes everything, music included. `?music=0` starts a page with the music off without touching the stored
+  off since `53346f3`); `M` mutes everything, music included. The `ALERT` is not score (below): the switch leaves it on. `?music=0` starts a page with the music off without touching the stored
   switch.
 
 **The cues** (`src/audio/music-cues.ts`; the edges are the fixed step pairs `Game.onStep` hands the sound, so each fires once):
@@ -231,7 +231,7 @@ sound has started — add `--enable-logging=stderr --v=0` and read the `INFO:CON
 |---|---|
 | the title menu up, from the first gesture | `FANFARE` then `MARCH` (looping) |
 | the title closed — Start / Skip to… | `stop(4)`; on foot, the `ALERT` once the 4 s fade is done (on the audio clock) |
-| on foot in the control room (after a jump, or the title) | `ALERT` — the PA's tattoo, through the effects bus (the room's send), quiet, looping |
+| on foot in the control room (after a jump, or the title) | `ALERT` — the PA's Launch Stations signal (a sampled clip, below), through the effects bus (the room's send), quiet, every 5.33 s |
 | sit: `troy.where` `onFoot` → `riding` (down) | `ROLL`, its intensity following the ride: 0.4 at the top → 1.2 at the seat |
 | lock-in: `riding` → `aboard`, 6.0 s after the sit | `MARCH` — ROLL's brass hit lands on the step, the march a bar (≈ 1.58 s) later |
 | the session mode becomes `piloting` (the hull past z −1100) | `stop(6)`; at sea, the ambience alone |
@@ -244,6 +244,24 @@ sound has started — add `--enable-logging=stderr --v=0` and read the `INFO:CON
 With `&debug=music` on the full loop above: the sit at 1.02 s → `ROLL`; 7.02 s → `MARCH`; 28.65 s (9.25 s after the
 clamps let go) → `stop(6)`. On the homecoming, `…,11,throttle=0,boost=0,dock=0,clamps,1,engines,cradle,8.2,leave,8`:
 `STING_HOME` as the cradle locks up, `ROLL` on the leave, `STING_END` 6.0 s later.
+
+### The Launch Stations signal (the ALERT)
+
+The `ALERT` is a sampled asset, not the synthesised score: `public/sfx/launch-stations.wav`, an original modelled
+recreation of the base's PA drum signal (the founder's brief: `docs/briefs/launch-stations-prompt.md`). It is SFX —
+through the effects bus at `LEVELS.alert`, so it sounds **with the Music switch off** (`M` still mutes it). It plays
+from its top, and again every 4.000 s clip + `LEVELS.alertGap` (one bar at its 180 bpm: 5.33 s, four bars, a cycle).
+
+- **Hear it:** `pnpm dev` → `/?start=control&menu=0`, then click the page (the first gesture starts sound; the first
+  sounding comes as soon as the file has decoded). Or from the console anywhere: `__stingray.music.play('ALERT')` /
+  `__stingray.music.stop()`. `/score.html`'s ALERT button plays it too (its offline `?render=` does not: it renders
+  hits only). The file alone: `afplay public/sfx/launch-stations.wav`.
+- **Regenerate it:** `python3 tools/launch-stations.py` (Python 3 with numpy and scipy; deterministic — same seed,
+  same bytes). `--events` prints every hit (time ms, voice, velocity), `--settings` the PA chain; tune by the named
+  constants at the top of each part of the script. `--samples DIR` swaps the modelled drums for recordings
+  (`DIR/snare.wav`, `accent.wav`, `tenor.wav`, optional `rim.wav`) on the same event list. If the length changes,
+  change `LAUNCH_STATIONS.seconds` in `src/audio/score.ts` (`score.test.ts` reads the WAV's header and holds them
+  together).
 
 ## Other switches
 

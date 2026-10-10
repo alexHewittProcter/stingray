@@ -1,8 +1,22 @@
 // The music scheduler's pure core (S2: `due` over a fake clock). music.ts itself is the thin Web Audio shell that
 // calls `advance` each frame on ctx.currentTime and schedules what comes back.
 import { describe, expect, it } from 'vitest';
-import { INSTRUMENTS, SCORE, type SectionId, hitsBetween, sectionSteps, stepSeconds } from './score';
-import { LOOK_AHEAD, START_DELAY, type Sequence, type Timed, advance, begin, bodyStart, due, finished, playingAt } from './sequence';
+import { LEVELS } from './levels';
+import { INSTRUMENTS, LAUNCH_STATIONS, SCORE, type SectionId, hitsBetween, sectionSteps, stepSeconds } from './score';
+import {
+  type ClipStart,
+  LOOK_AHEAD,
+  START_DELAY,
+  type Sequence,
+  type Timed,
+  advance,
+  begin,
+  bodyStart,
+  clipTimes,
+  due,
+  finished,
+  playingAt,
+} from './sequence';
 
 const SS = stepSeconds(SCORE);
 const BAR = 16 * SS;
@@ -79,10 +93,9 @@ describe('the scheduler over a fake clock', () => {
     expect(second).toEqual(first);
   });
 
-  it('ALERT loops two bars indefinitely', () => {
-    const { hits } = run(begin(SCORE, 0, 'ALERT'), 0, START_DELAY + 10 * 32 * SS);
-    expect(hits.length).toBe(count('ALERT') * 10);
-    expect(hits.every((h) => h.inst === 'snare')).toBe(true);
+  it('ALERT has no hits: it is the Launch Stations clip, handed out as clip starts (below)', () => {
+    const { hits } = run(begin(SCORE, 0, 'ALERT'), 0, 20);
+    expect(hits).toEqual([]);
   });
 
   it('`then` follows on the beat: FANFARE ends exactly where MARCH begins', () => {
@@ -182,5 +195,73 @@ describe('rolls (instruments.ts)', () => {
     const long = rollStrokes(0, 1, 3, 8, SS);
     expect(long.length).toBe(24);
     expect(long[0]![1]).toBeCloseTo(1 - MUSIC_LEVELS.longRollRise, 9);
+  });
+});
+
+describe('clips (the ALERT: the Launch Stations signal, a sampled asset)', () => {
+  const GAP = LEVELS.alertGap;
+  const PERIOD = LAUNCH_STATIONS.seconds + GAP;
+
+  /** The clip starts over a fake clock, frames every `dt` with a wobble; only starts before `t1` are kept. */
+  function clipRun(seq: Sequence, t0: number, t1: number, gap = GAP, dt = 1 / 60, wobble = 0.004): { clips: ClipStart[]; seq: Sequence } {
+    const clips: ClipStart[] = [];
+    let i = 0;
+    for (let now = t0; now < t1; now += dt + Math.sin(i++ * 1.7) * wobble) {
+      const r = advance(SCORE, seq, now, LOOK_AHEAD, gap);
+      for (const c of r.clips) {
+        expect(c.time).toBeGreaterThanOrEqual(now);
+        expect(c.time).toBeLessThan(now + LOOK_AHEAD);
+      }
+      clips.push(...r.clips);
+      seq = r.seq;
+    }
+    return { clips: clips.filter((c) => c.time < t1 - 1e-9), seq };
+  }
+
+  it('clipTimes: from the start, every period, in [from, to); a one-shot once; clipped to the segment', () => {
+    expect(clipTimes(1, Infinity, 5, true, 0, 12)).toEqual([1, 6, 11]);
+    expect(clipTimes(1, Infinity, 5, true, 6, 11)).toEqual([6]); // [from, to)
+    expect(clipTimes(1, Infinity, 5, true, 6.5, 10.9)).toEqual([]);
+    expect(clipTimes(1, 10, 5, true, 0, 100)).toEqual([1, 6]); // ends with its segment
+    expect(clipTimes(1, 10, 5, false, 0, 100)).toEqual([1]); // a one-shot sounds once
+    expect(clipTimes(1, 10, 5, false, 2, 100)).toEqual([]);
+    expect(clipTimes(1, Infinity, 5, true, 9, 3)).toEqual([]);
+    // far along, no float drift: the k-th start is start + k × period exactly
+    expect(clipTimes(0.05, Infinity, 16 / 3, true, 1000, 1006)).toEqual([0.05 + 188 * (16 / 3)]);
+  });
+
+  it('ALERT sounds the clip at once (after the start delay), then every clip length + one bar of silence', () => {
+    const { clips } = clipRun(begin(SCORE, 2, 'ALERT'), 2, 2 + START_DELAY + 10 * PERIOD - 0.01);
+    expect(clips.length).toBe(10);
+    clips.forEach((c, k) => {
+      expect(c.id).toBe('ALERT');
+      expect(c.clip).toBe(LAUNCH_STATIONS);
+      expect(c.time).toBeCloseTo(2 + START_DELAY + k * PERIOD, 9);
+    });
+    // the gap: the clip has ended a whole bar (at its 180 bpm) before it sounds again — and the cycle is 4 bars
+    for (let k = 1; k < clips.length; k++) expect(clips[k]!.time - (clips[k - 1]!.time + LAUNCH_STATIONS.seconds)).toBeCloseTo(60 / 180 * 4, 9);
+    expect(PERIOD / (60 / 180)).toBeCloseTo(16, 9);
+  });
+
+  it('the gap is the caller\'s tuning (advance\'s clipGap): 0 is back to back, a negative gap is treated as 0', () => {
+    const tight = clipRun(begin(SCORE, 0, 'ALERT'), 0, START_DELAY + 3 * LAUNCH_STATIONS.seconds - 0.01, 0).clips;
+    expect(tight.map((c) => c.time)).toEqual([0, 1, 2].map((k) => START_DELAY + k * LAUNCH_STATIONS.seconds));
+    const neg = clipRun(begin(SCORE, 0, 'ALERT'), 0, START_DELAY + 2 * LAUNCH_STATIONS.seconds - 0.01, -3).clips;
+    expect(neg.length).toBe(2);
+  });
+
+  it('a play of another section stops the clip being handed out; sections without a clip never hand one out', () => {
+    let seq = begin(SCORE, 0, 'ALERT');
+    seq = clipRun(seq, 0, 1).seq;
+    const roll = begin(SCORE, 1, 'ROLL', {}, seq);
+    expect(clipRun(roll, 1, 30).clips).toEqual([]);
+    expect(clipRun(begin(SCORE, 0, 'MARCH'), 0, 30).clips).toEqual([]);
+  });
+
+  it('a stalled frame skips a missed sounding rather than starting it late', () => {
+    let seq = begin(SCORE, 0, 'ALERT');
+    seq = advance(SCORE, seq, 0, LOOK_AHEAD, GAP).seq; // the first sounding handed out
+    const late = advance(SCORE, seq, START_DELAY + PERIOD + 0.5, LOOK_AHEAD, GAP); // no frames over the second
+    expect(late.clips).toEqual([]);
   });
 });
