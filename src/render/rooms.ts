@@ -1,12 +1,15 @@
 import * as THREE from 'three';
 import {
-  CONTROL_ROOM_PROPS, SHAFT_OPEN_TOP, SHAFT_RADIUS, STATION_CHAIRS, TOWER_AXIS, type Box, type Room, type Rooms,
+  CONTROL_ROOM_PROPS, DAIS_HEIGHT, FLOOR_Y, SHAFT_OPEN_TOP, SHAFT_RADIUS, STATION_CHAIRS, TOWER_AXIS, type Box, type Room,
+  type Rooms,
 } from '../sim/rooms';
 import { controlFloorTexture, decalAtlas, decalUV, meshWallTexture, type DecalName } from './control-room-textures';
 import { inRooms } from './indoors';
-import { type InjectorChairMaterials, addInjectorChair, createInjectorChair } from './injector-chair';
+import { CHAIR_POLE_TOP_Y, CHAIR_POLE_Z, type InjectorChairMaterials, addInjectorChair, createInjectorChair } from './injector-chair';
 import { Parts, box as boxAt } from './parts';
-import { STATION_MAROON, hazardTexture } from './station-textures';
+import {
+  STATION_DECALS, STATION_MAROON, type StationDecal, hazardTexture, stationDecalAtlas, stationDecalUV,
+} from './station-textures';
 
 // Troy's rooms (phase 3; phase 4 D2: the control room alone, the injector station at its centre). M1 art: T4 dresses
 // the control room after 02_MARINEVILLE_CONTROL_ROOM/ and 05_ART_DIRECTION "Marineville / WASP" — bright graphic 1960s
@@ -41,9 +44,12 @@ export interface RoomsView {
   readonly lamp: THREE.PointLight;
   /**
    * Once per drawn frame. `shaft` (T7): the camera is down the injector shaft's bore or tube — the rooms stay drawn
-   * (the bore's throat and the room above it are theirs) and the lamp stays in the room.
+   * (the bore's throat and the room above it are theirs) and the lamp stays in the room. `dt` (s) eases the bore's
+   * lid (phase 4 T2); left out, the view reads its own wall clock between calls.
    */
-  update(camera: THREE.Camera, shaft?: boolean): void;
+  update(camera: THREE.Camera, shaft?: boolean, dt?: number): void;
+  /** The bore's lid as drawn, 0 shut … 1 open (phase 4 T2; for tests and T3). */
+  lid(): number;
 }
 
 export function createRooms(rooms: Rooms): RoomsView {
@@ -52,10 +58,12 @@ export function createRooms(rooms: Rooms): RoomsView {
   const glass = new THREE.MeshBasicMaterial({ color: 0x9fc4dc, transparent: true, opacity: 0.12, depthWrite: false });
   const mats = controlMaterials(glass);
 
-  // The control room, dressed (T4), and the injector station at its centre (phase 4, D2 — greybox, T1).
+  // The control room, dressed (T4), and the injector station at its centre (phase 4, D2 — dressed, T2).
   const control = rooms.rooms.find((r) => r.id === 'controlRoom');
   if (control) group.add(controlRoom(control, rooms, mats));
-  group.add(station(rooms, mats));
+  const dais = station(rooms, mats);
+  group.add(dais.group);
+  let lastClock: number | null = null;
 
   const lamp = new THREE.PointLight(0xfff3df, 0, 30, 2);
   lamp.name = 'rooms-lamp';
@@ -64,7 +72,13 @@ export function createRooms(rooms: Rooms): RoomsView {
   return {
     group,
     lamp,
-    update(camera, shaft = false) {
+    lid: dais.lid,
+    update(camera, shaft = false, dt) {
+      // The lid follows Troy's chair whether or not the rooms are drawn (it must be shut when the camera comes back).
+      const now = performance.now();
+      const step = dt ?? (lastClock === null ? 0 : Math.min(0.1, (now - lastClock) / 1000));
+      lastClock = now;
+      dais.update(step);
       const inside = inRooms(camera.position) || shaft;
       group.visible = inside;
       lamp.intensity = inside ? LAMP_INTENSITY : 0;
@@ -636,9 +650,9 @@ function furniture(kit: Kit, F: number): void {
   }
 }
 
-// ---- The injector station (phase 4, D2; T1 greybox — T2 dresses it) ----
+// ---- The injector station (phase 4, D2; T2 dressed) ----
 
-/** A box from min/max, for the station's greybox. */
+/** A box from min/max. */
 const block = slab;
 
 /**
@@ -653,19 +667,48 @@ export const BORE_FLARE = 1.2;
 /** The drawn top of the shaft's tube: SHAFT_RADIUS wide, from the bore's flare down this far; render/shaft.ts (T7)
  * continues it from there (TUBE_TOP_Y). */
 export const TUBE_STUB = 2;
+/** Where the room's drawn stub of the tube ends (the throat, its flare and the stub) and render/shaft.ts's tube begins. */
+export const TUBE_TOP_Y = FLOOR_Y - SHAFT_OPEN_TOP - BORE_FLARE - TUBE_STUB;
+
+/**
+ * The bore's lid (phase 4 T2 — T1's hand-off: the 1.2 m bore and the chairs 1.2 m apart overlap, so Phones's chair
+ * would overhang an open hole; the founder's caption "this goes down a tunnel that opens"): two half-disc leaves flush
+ * with the dais top, hinged at the bore's east and west rims, that swing down into the bore. Shut whenever nobody is
+ * riding — so Phones's and Marina's chairs stand over a closed floor — they open as Troy's chair sets off, shut once it
+ * is below the tube's top (TUBE_TOP_Y), and the reverse on the way up. Render-side only: lidWanted(riding, chair y).
+ */
+export const LID_SECONDS = 0.5;
+/** How far the leaves swing down, fully open (rad): hanging plumb, just outside the bore's wall. */
+const LID_SWING = Math.PI / 2;
+/** The leaves' thickness. */
+const LID_THICKNESS = 0.03;
+/** The leaves' radius: inside the bore's, the lit ring between (and, open, they hang just inside the throat's wall). */
+const LID_RADIUS = BORE_RADIUS - 0.08;
+
+/** D2/T2: the bore's lid is open while the chair is riding above the tube's top (render-side; no sim state). */
+export function lidWanted(riding: boolean, chairY: number): boolean {
+  return riding && chairY > TUBE_TOP_Y;
+}
+
+/** The station's sleeve for each chair's pole: hangs from a ceiling boss, overlapping the pole's top by this much. */
+const SLEEVE_OVERLAP = 0.12;
+const SLEEVE_RADIUS = 0.085;
 
 function stationMaterials(mats: ControlMaterials) {
   const lambert = (color: number, extra: THREE.MeshLambertMaterialParameters = {}) => new THREE.MeshLambertMaterial({ color, ...extra });
   const hazard = hazardTexture();
+  const atlas = stationDecalAtlas();
   return {
-    dais: lambert(0x5d646b),
     maroon: lambert(STATION_MAROON),
     hazard: lambert(hazard ? 0xffffff : 0xe9b52c, { map: hazard }),
+    decals: new THREE.MeshLambertMaterial({
+      color: atlas ? 0xffffff : 0x8a8f94, map: atlas, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -4,
+    }),
     bore: lambert(0x5d666e, { emissive: 0x14171a }),
     boreDark: lambert(0x1c2024),
     boreLight: new THREE.MeshBasicMaterial({ color: 0xf6f0d8 }),
     chair: {
-      upholstery: lambert(0x5b6f8f), frame: mats.frame, pad: mats.trim, dark: mats.bodyDark, body: mats.body,
+      upholstery: lambert(0x5b6f8f), frame: mats.frame, pad: mats.trim, dark: mats.bodyDark, body: mats.panel,
     } satisfies InjectorChairMaterials,
   };
 }
@@ -678,48 +721,104 @@ function stationMaterialsFor(mats: ControlMaterials): StationMaterials {
   return stationMats.station;
 }
 
+/** Remap a geometry's UVs from its x/z position over a square of half-size r about (cx, cz) into a station decal. */
+function stationDecalByXZ(g: THREE.BufferGeometry, name: StationDecal, cx: number, cz: number, r: number): THREE.BufferGeometry {
+  const [u0, v0, u1, v1] = stationDecalUV(name);
+  const pos = g.attributes.position as THREE.BufferAttribute;
+  const uv = g.attributes.uv as THREE.BufferAttribute;
+  for (let k = 0; k < pos.count; k++) {
+    uv.setXY(k, u0 + ((pos.getX(k) - cx) / r + 1) / 2 * (u1 - u0), v0 + ((cz - pos.getZ(k)) / r + 1) / 2 * (v1 - v0));
+  }
+  return g;
+}
+
+/** A flat station decal of size w × h, centred at c, facing south (+z) — or a disc of diameter w when round. */
+function stationDecal(name: StationDecal, w: number, h: number, c: V3, round = false): THREE.BufferGeometry {
+  const g = round ? new THREE.CircleGeometry(w / 2, 40) : new THREE.PlaneGeometry(w, h);
+  const [u0, v0, u1, v1] = stationDecalUV(name);
+  const uv = g.attributes.uv as THREE.BufferAttribute;
+  for (let k = 0; k < uv.count; k++) uv.setXY(k, u0 + uv.getX(k) * (u1 - u0), v0 + uv.getY(k) * (v1 - v0));
+  return g.translate(c.x, c.y, c.z);
+}
+
+interface StationView {
+  group: THREE.Group;
+  /** Once per drawn frame: the lid follows the chair (lidWanted), eased over LID_SECONDS. */
+  update(dt: number): void;
+  /** The lid as drawn, 0 shut … 1 open (for tests). */
+  lid(): number;
+}
+
 /**
- * The injector station (D2), greybox: the dais (CONTROL_ROOM_PROPS.station) with the bore through it under Troy's chair,
- * a hazard band along its front; the three chairs on it facing the windows (south) — Troy's its own object (M8), the
- * one that carries him, Phones's and Marina's merged with the room; the maroon back panel behind the row; and the open
- * bore (D1: "a visible bore in the floor", the shaft's first SHAFT_OPEN_TOP metres) — a lit throat flaring at its foot
- * into the top of the shaft's SHAFT_RADIUS tube, which render/shaft.ts continues.
+ * The injector station (D2): the dais (CONTROL_ROOM_PROPS.station) — a low grey slab with a silver edge trim, a hazard
+ * band along its front, the "INJECTOR STATION" plate low on its front face, the bore through it under Troy's chair with
+ * a lit ring round its rim and its two-leaf lid; the three chairs on their poles facing the windows (south), each pole
+ * running on up into a sleeve under a ceiling boss — Troy's chair its own object (M8), the one that carries him,
+ * Phones's and Marina's merged with the room; behind the row the series' bay wall (TV_injector_bay_clean_01,
+ * troy-in-injector-chair-on-pole.png): maroon below a thin gold rail, a perforated silver band above it with the round
+ * mesh grille. Below the floor, the open bore (D1: the shaft's first SHAFT_OPEN_TOP metres) — a lit throat flaring at
+ * its foot into the top of the shaft's SHAFT_RADIUS tube, which render/shaft.ts continues. No lights: the ring and the
+ * throat's bands are self-lit materials.
  */
-function station(rooms: Rooms, mats: ControlMaterials): THREE.Group {
+function station(rooms: Rooms, mats: ControlMaterials): StationView {
   const kit = newKit(mats);
   const S = stationMaterialsFor(mats);
   const { shell, props } = kit;
   const P = CONTROL_ROOM_PROPS;
   const chair = rooms.chair;
   const F = chair.pos.y;
+  const b = P.station;
+  const top = F + DAIS_HEIGHT - 0.004; // the slab's top: the band, ring and plate sit just on it, inside the collider
+  const midX = (b.min.x + b.max.x) / 2;
 
-  // The dais: a grey slab with the bore's round hole under Troy's chair, a hazard band along its front edge.
+  // The dais: a mid-grey slab (the consoles' panel grey, so the trim and the lit ring read against it), inset a little inside its collider so the trim can stand on the collider's faces, with the
+  // bore's round hole under Troy's chair.
   {
-    const b = P.station;
+    const i = 0.005;
     const shape = new THREE.Shape();
-    shape.moveTo(b.min.x, -b.max.z).lineTo(b.max.x, -b.max.z).lineTo(b.max.x, -b.min.z).lineTo(b.min.x, -b.min.z).closePath();
+    shape.moveTo(b.min.x + i, -b.max.z + i).lineTo(b.max.x - i, -b.max.z + i).lineTo(b.max.x - i, -b.min.z - i).lineTo(b.min.x + i, -b.min.z - i).closePath();
     shape.holes.push(new THREE.Path().absarc(chair.pos.x, -chair.pos.z, BORE_RADIUS, 0, Math.PI * 2, true));
-    const h = b.max.y - b.min.y - 0.002;
-    props.add(S.dais, new THREE.ExtrudeGeometry(shape, { depth: h, bevelEnabled: false, curveSegments: 40 }).rotateX(-Math.PI / 2).translate(0, F, 0));
-    const band = new THREE.PlaneGeometry(b.max.x - b.min.x - 0.02, 0.12).rotateX(-Math.PI / 2)
-      .translate((b.min.x + b.max.x) / 2, F + h + 0.001, b.max.z - 0.36);
-    const uv = band.attributes.uv as THREE.BufferAttribute;
-    for (let k = 0; k < uv.count; k++) uv.setXY(k, uv.getX(k) * (b.max.x - b.min.x) / 0.4, uv.getY(k) * 0.3);
+    props.add(mats.panel, new THREE.ExtrudeGeometry(shape, { depth: top - F, bevelEnabled: false, curveSegments: 48 }).rotateX(-Math.PI / 2).translate(0, F, 0));
+    // The silver edge trim on all four sides, from the floor to just under the collider's top.
+    const t = 0.04;
+    const h = DAIS_HEIGHT - 0.001;
+    props.add(mats.frame,
+      block({ x: b.min.x, y: F, z: b.max.z - t }, { x: b.max.x, y: F + h, z: b.max.z }),
+      block({ x: b.min.x, y: F, z: b.min.z }, { x: b.max.x, y: F + h, z: b.min.z + t }),
+      block({ x: b.min.x, y: F, z: b.min.z + t }, { x: b.min.x + t, y: F + h, z: b.max.z - t }),
+      block({ x: b.max.x - t, y: F, z: b.min.z + t }, { x: b.max.x, y: F + h, z: b.max.z - t }));
+    // The hazard band along the front, just inside the trim.
+    const band = new THREE.PlaneGeometry(b.max.x - b.min.x - 2 * t, 0.14).rotateX(-Math.PI / 2)
+      .translate(midX, top + 0.001, b.max.z - t - 0.07);
+    scaleUV(band, (b.max.x - b.min.x) / 0.4, 0.35);
     props.add(S.hazard, band);
+    // The plate, low on the front face: INJECTOR STATION (D2), yellow on the silver trim.
+    const plateH = 0.07;
+    const [, , pw, ph] = STATION_DECALS.stationPlate;
+    props.add(S.decals, stationDecal('stationPlate', (plateH * pw) / ph, plateH, { x: midX, y: F + DAIS_HEIGHT / 2, z: b.max.z }));
+    // The lit ring round the bore's rim, inside it, framing the lid (self-lit: no new light). Inside, because the
+    // bore's rim meets the dais's front edge (sim/rooms.ts DAIS_FRONT_Z).
+    props.add(S.boreLight, new THREE.RingGeometry(LID_RADIUS + 0.004, BORE_RADIUS, 64).rotateX(-Math.PI / 2).translate(chair.pos.x, top + 0.001, chair.pos.z));
   }
 
-  // The back panel behind the row: maroon (T2 adds the mesh grille and the plate).
-  props.add(S.maroon, block(
-    { x: P.stationPanel.min.x + 0.01, y: F, z: P.stationPanel.min.z + 0.01 },
-    { x: P.stationPanel.max.x - 0.01, y: P.stationPanel.max.y - 0.01, z: P.stationPanel.max.z - 0.01 },
-  ));
+  // The bay wall behind the row: maroon below a thin gold rail, a perforated silver band above, the mesh grille on it.
+  {
+    const w = P.stationPanel;
+    const railY = F + 1.9;
+    const front = w.max.z - 0.04; // the wall's face, the rail standing proud of it inside the collider
+    props.add(S.maroon, block({ x: w.min.x + 0.01, y: F, z: w.min.z + 0.01 }, { x: w.max.x - 0.01, y: railY - 0.03, z: front }));
+    props.add(mats.meshWall, scaleUV(block({ x: w.min.x + 0.01, y: railY + 0.03, z: w.min.z + 0.01 }, { x: w.max.x - 0.01, y: w.max.y - 0.01, z: front }), 4, 0.7));
+    props.add(mats.bodyDark, block({ x: w.min.x + 0.01, y: railY - 0.03, z: w.min.z + 0.01 }, { x: w.max.x - 0.01, y: railY + 0.03, z: front - 0.005 }));
+    props.add(mats.gold, rodX(w.min.x + 0.02, w.max.x - 0.02, railY, w.max.z - 0.02, 0.018));
+    props.add(S.decals, stationDecal('grille', 0.5, 0.5, { x: midX, y: (railY + w.max.y) / 2, z: front }, true));
+  }
 
   // The bore (D1): the lit throat through the floor slab, a guide rail at each quarter, the flare and the tube's stub.
   {
     const { x, z } = chair.pos;
     const inside = (g: THREE.BufferGeometry) => backFaces(g);
     shell.add(S.bore, inside(new THREE.CylinderGeometry(BORE_RADIUS, BORE_RADIUS, BORE_DEPTH, 40, 1, true).translate(x, F - BORE_DEPTH / 2, z)));
-    // The lit ring just under the rim, then one every 2 m down the throat.
+    // A lit band just under the rim, then one every 2 m down the throat.
     for (let d = 0.12; d < BORE_DEPTH; d += 2) {
       shell.add(S.boreLight, inside(new THREE.CylinderGeometry(BORE_RADIUS - 0.012, BORE_RADIUS - 0.012, 0.09, 40, 1, true).translate(x, F - d, z)));
     }
@@ -729,18 +828,25 @@ function station(rooms: Rooms, mats: ControlMaterials): THREE.Group {
       shell.add(S.boreDark, boxAt(0.08, BORE_DEPTH, 0.06, { x: x + Math.cos(a) * r, y: F - BORE_DEPTH / 2, z: z + Math.sin(a) * r }, -a));
     }
     shell.add(S.bore, inside(new THREE.CylinderGeometry(BORE_RADIUS, SHAFT_RADIUS, BORE_FLARE, 40, 1, true).translate(x, F - BORE_DEPTH - BORE_FLARE / 2, z)));
-    const tubeTop = F - BORE_DEPTH - BORE_FLARE;
-    shell.add(S.bore, inside(new THREE.CylinderGeometry(SHAFT_RADIUS, SHAFT_RADIUS, TUBE_STUB, 40, 1, true).translate(x, tubeTop - TUBE_STUB / 2, z)));
-    shell.add(S.boreLight, inside(new THREE.CylinderGeometry(SHAFT_RADIUS - 0.012, SHAFT_RADIUS - 0.012, 0.12, 40, 1, true).translate(x, tubeTop - 0.6, z)));
+    shell.add(S.bore, inside(new THREE.CylinderGeometry(SHAFT_RADIUS, SHAFT_RADIUS, TUBE_STUB, 40, 1, true).translate(x, TUBE_TOP_Y + TUBE_STUB / 2, z)));
+    shell.add(S.boreLight, inside(new THREE.CylinderGeometry(SHAFT_RADIUS - 0.012, SHAFT_RADIUS - 0.012, 0.12, 40, 1, true).translate(x, TUBE_TOP_Y + TUBE_STUB - 0.6, z)));
   }
 
-  // The chairs (M8), facing the windows: Troy's is its own object — the one that carries him (T7) — tagged for M5's
-  // prompt and glow; Phones's and Marina's, identical, merge with the room. (Phase 3's chair, on its short column, until
-  // T2 hangs them on their poles.)
+  // The chairs (M8), on their poles, facing the windows: Troy's is its own object — the one that carries him (T7) —
+  // tagged for M5's prompt and glow; Phones's and Marina's, identical, merge with the room. Each pole runs on up into a
+  // sleeve hanging from a boss on the ceiling; the sleeves stay when Troy's chair drops (its pole slides out).
   const yaw = chair.yaw + Math.PI; // the seat faces away from the way Troy walks up to it
   const turn = new THREE.Quaternion().setFromAxisAngle(UP, yaw);
-  for (const c of [STATION_CHAIRS.phones, STATION_CHAIRS.marina]) {
-    addInjectorChair(props, S.chair, new THREE.Matrix4().compose(new THREE.Vector3(c.x, F, c.z), turn, new THREE.Vector3(1, 1, 1)));
+  const ceiling = rooms.rooms[0]!.max.y;
+  for (const c of [STATION_CHAIRS.troy, STATION_CHAIRS.phones, STATION_CHAIRS.marina]) {
+    if (c !== STATION_CHAIRS.troy) {
+      addInjectorChair(props, S.chair, new THREE.Matrix4().compose(new THREE.Vector3(c.x, F, c.z), turn, new THREE.Vector3(1, 1, 1)));
+    }
+    const pole = new THREE.Vector3(0, 0, CHAIR_POLE_Z).applyQuaternion(turn).add(new THREE.Vector3(c.x, 0, c.z));
+    props.add(mats.frame, rodY(pole.x, pole.z, F + CHAIR_POLE_TOP_Y - SLEEVE_OVERLAP, ceiling - 0.06, SLEEVE_RADIUS));
+    props.add(mats.bodyDark,
+      rodY(pole.x, pole.z, F + CHAIR_POLE_TOP_Y - SLEEVE_OVERLAP - 0.03, F + CHAIR_POLE_TOP_Y - SLEEVE_OVERLAP + 0.05, SLEEVE_RADIUS + 0.025),
+      rodY(pole.x, pole.z, ceiling - 0.06, ceiling, 0.11));
   }
   const troysChair = createInjectorChair(S.chair);
   troysChair.name = INJECTOR_CHAIR_NAME;
@@ -751,7 +857,54 @@ function station(rooms: Rooms, mats: ControlMaterials): THREE.Group {
 
   const group = buildKit(kit, 'station');
   group.add(troysChair);
-  return group;
+
+  // The lid: two half-disc leaves in the bore's hole, their tops just under the dais's, hinged at the rim (west and
+  // east) and swinging down into the bore — the hatch decal across both. Each leaf is its own mesh (they move).
+  const R = LID_RADIUS;
+  const lidTop = top - 0.002;
+  const leaves = ([-1, 1] as const).map((side) => {
+    // side −1: the west leaf (x < the bore's centre), hinged at the west rim; +1 the east.
+    const shape = new THREE.Shape();
+    if (side < 0) shape.moveTo(0, R).absarc(0, 0, R, Math.PI / 2, (3 * Math.PI) / 2, false).lineTo(0, R);
+    else shape.moveTo(0, -R).absarc(0, 0, R, -Math.PI / 2, Math.PI / 2, false).lineTo(0, -R);
+    const g = new THREE.ExtrudeGeometry(shape, { depth: LID_THICKNESS, bevelEnabled: false, curveSegments: 24 })
+      .rotateX(-Math.PI / 2).translate(0, -LID_THICKNESS, 0);
+    stationDecalByXZ(g, 'hatch', 0, 0, R);
+    g.translate(-side * R, 0, 0); // into the hinge's frame: the hinge line (along z) at the leaf's outer rim
+    const mesh = new THREE.Mesh(g, S.decals);
+    mesh.name = side < 0 ? 'bore-lid-west' : 'bore-lid-east';
+    mesh.userData.roomProp = true;
+    const hinge = new THREE.Group();
+    hinge.name = `${mesh.name}-hinge`;
+    hinge.position.set(chair.pos.x + side * R, lidTop, chair.pos.z);
+    hinge.add(mesh);
+    group.add(hinge);
+    return { hinge, side };
+  });
+
+  let open = 0; // 0 shut … 1 open, linear in time; drawn eased
+  const setLid = () => {
+    const swing = LID_SWING * open * open * (3 - 2 * open);
+    // West leaf (hinge at its −x rim): its +x side swings down — rotation −θ about z; the east leaf the mirror.
+    for (const { hinge, side } of leaves) hinge.rotation.z = side < 0 ? -swing : swing;
+  };
+  setLid();
+  const at = new THREE.Vector3();
+  return {
+    group,
+    update(dt) {
+      const riding = troysChair.parent !== group;
+      const want = lidWanted(riding, troysChair.getWorldPosition(at).y) ? 1 : 0;
+      open += Math.sign(want - open) * Math.min(Math.abs(want - open), Math.max(0, dt) / LID_SECONDS);
+      setLid();
+    },
+    lid: () => open,
+  };
+}
+
+/** A round rod along x from x0 to x1 at (y, z). */
+function rodX(x0: number, x1: number, y: number, z: number, r: number): THREE.BufferGeometry {
+  return new THREE.CylinderGeometry(r, r, x1 - x0, 12).rotateZ(Math.PI / 2).translate((x0 + x1) / 2, y, z);
 }
 
 /** The name of Troy's injector chair object in the rooms group (T7 finds it by this name to re-parent it). */
