@@ -106,7 +106,7 @@ export const TUNING = {
   rideEaseOut: 1, // s — the last, smoothstep down to rest at the seat
 
   // The ride camera (phase 3, M4 "Transitions") — presentation numbers (render/ride-camera.ts)
-  rideHold: 1.5, // s — the camera stays in the room this long after Troy sits (phase 4 D4 → 0.8 at T4)
+  rideHold: 0.8, // s — the camera stays in the room this long after Troy sits (phase 4 D4: was 1.5)
   rideCatchUp: 1.5, // s — then eases from above the bore onto the chair's boom
   rideBoom: 3, // m behind the chair along the shaft, before the tube's wall shortens it
   rideRise: 1.75, // m off the shaft's axis, behind-and-above the chair (held inside the tube's wall)

@@ -1,23 +1,28 @@
 import * as THREE from 'three';
 import { confineCamera } from '../sim/interior';
-import { RIDE_SECONDS, chairYaw, legsOf, rideProgressAt, shaftPointAt } from '../sim/ride';
+import { RIDE_SECONDS, chairYaw, legsOf, rideProgressAt, rideTimeAt, shaftPointAt } from '../sim/ride';
 import { FLOOR_Y, type Rooms, SHAFT_OPEN_TOP, SHAFT_RADIUS } from '../sim/rooms';
 import { TUNING as T } from '../sim/tuning';
 import type { Vec3 } from '../sim/vec3';
 import type { Interior } from '../sim/world';
+import { PORT_Y } from './boarding';
 import { walkBoom } from './boom';
 import { BORE_RADIUS } from './rooms';
-import { distanceToLine } from './shaft';
+import { ANNULUS_TOP_Y, COLLAR_DEPTH, PORT_RADIUS } from './shaft';
 
 // The ride camera (phase 3, M4 "Transitions", T7): the view while Troy rides the injector chair down the shaft.
 //
-//   - The hold: for the chair's first rideHold (1.5 s) the camera stays in the room — it eases from where the follow
+//   - The hold: for the chair's first rideHold (0.8 s since phase 4 D4) the camera stays in the room — it eases from where the follow
 //     camera left it (the pose `begin` was given) to a point above the bore, rideBoom over the seat, turning from
 //     Troy toward the shaft — so the player watches the chair drop away into the floor.
 //   - The ride: then it follows the chair down the shaft — "behind and above it, boom 3 m shortened by the tube's
 //     wall, looking down the shaft". The boom runs along the shaft itself (the camera is rideBoom behind the chair by
 //     arc length, so it never cuts a corner through the rock), lifted off the axis by rideRise behind-and-above the
-//     chair, held rideWallInset inside the wall (the bore's throat is only 0.95 m across), and looking rideLookAhead
+//     chair, held rideWallInset inside the wall — the wall's radius by height (rideWallRadius: the bore's 1.2 m
+//     throat, the 2.2 m tube, then phase 4 D4's port: the annulus tapering to the port's 0.8 m at the hall ceiling,
+//     the collar, and the hall opening below it) — and not just at the camera: the whole boom from the camera to the
+//     chair stays inside that wall (boomRise), so passing the port the camera closes in on the axis rather than
+//     looking at Troy through the annulus's cone. It looks rideLookAhead
 //     ahead of the chair along the shaft. It catches up from the hold over rideCatchUp — eased, so it sets off from
 //     rest and arrives at the chair's speed.
 //   - The arrival: over the ride's final rideBlend (1.5 s) the pose blends into the camera rig's output — the pen
@@ -59,6 +64,55 @@ const smooth = (x: number) => {
   return t * t * (3 - 2 * t);
 };
 
+/**
+ * Below the port's collar the hall opens; the ride's wall radius widens back to the tube's over this height — gently,
+ * so the camera swings back out to its full rise over a boom's length rather than in a frame.
+ */
+const HALL_OPENING = 3;
+/** The camera's clearance from the drawn wall: rideWallInset and a hair. */
+const WALL_MARGIN = T.rideWallInset + 0.05;
+
+/**
+ * The drawn wall's radius about the shaft's axis at arc length s from the top (the chair's point, at height topY):
+ * the bore's throat (BORE_RADIUS) for the first SHAFT_OPEN_TOP, its flare to the tube's SHAFT_RADIUS; then, by height
+ * (phase 4 D4 — the shaft is one vertical leg): the tube down to ANNULUS_TOP_Y, the annulus tapering linearly to
+ * PORT_RADIUS at the hall's ceiling (PORT_Y), the collar at PORT_RADIUS for COLLAR_DEPTH below it, and the hall
+ * widening back out below the collar (the pen camera and the pen's walls take over there). Beyond the shaft's ends
+ * (s < 0: above the bore) the bore's radius.
+ */
+export function rideWallRadius(s: number, topY: number): number {
+  if (s <= SHAFT_OPEN_TOP) return BORE_RADIUS;
+  const flare = THREE.MathUtils.lerp(BORE_RADIUS, SHAFT_RADIUS, Math.min(1, (s - SHAFT_OPEN_TOP) / 1.2));
+  return Math.min(flare, wallRadiusAtY(topY - s));
+}
+
+/** The tube's, the annulus's, the collar's and the hall's radius at height y (SHAFT_RADIUS above the annulus). */
+export function wallRadiusAtY(y: number): number {
+  if (y >= ANNULUS_TOP_Y) return SHAFT_RADIUS;
+  if (y >= PORT_Y) return THREE.MathUtils.lerp(PORT_RADIUS, SHAFT_RADIUS, (y - PORT_Y) / (ANNULUS_TOP_Y - PORT_Y));
+  const collarFoot = PORT_Y - COLLAR_DEPTH;
+  if (y >= collarFoot) return PORT_RADIUS;
+  return THREE.MathUtils.lerp(PORT_RADIUS, SHAFT_RADIUS, Math.min(1, (collarFoot - y) / HALL_OPENING));
+}
+
+/**
+ * How far off the axis the camera may stand (≤ rideRise) with its boom's foot at arc length sCam, so that every point
+ * of the straight line from the camera to the axis at arc length sTo (the chair, or where the camera looks) stays
+ * WALL_MARGIN inside the wall — a point a fraction g of the way is (1 − g) of the rise off the axis, at arc length
+ * sCam + g·(sTo − sCam). Sampled finely; continuous in both arguments, so the camera eases in toward the axis through
+ * the port.
+ */
+export function boomRise(sCam: number, sTo: number, topY: number): number {
+  let rise: number = T.rideRise;
+  const SAMPLES = 40;
+  for (let i = 0; i < SAMPLES; i++) {
+    const g = i / SAMPLES;
+    const room = rideWallRadius(sCam + g * (sTo - sCam), topY) - WALL_MARGIN;
+    rise = Math.min(rise, room / (1 - g));
+  }
+  return Math.max(0, rise);
+}
+
 export function createRideCamera(camera: THREE.PerspectiveCamera, rooms: Rooms, interior: Interior, line: readonly Vec3[]): RideCamera {
   const shaft = rooms.shaft;
   const legs = legsOf(shaft);
@@ -67,6 +121,7 @@ export function createRideCamera(camera: THREE.PerspectiveCamera, rooms: Rooms, 
   const endYaw = interior.cradle.yawOut;
   const first = legs[0]!;
   const last = legs[legs.length - 1]!;
+  const topY = shaft[0]!.y;
   const unit = (leg: (typeof legs)[number]) =>
     new THREE.Vector3(leg.to.x - leg.from.x, leg.to.y - leg.from.y, leg.to.z - leg.from.z).normalize();
   const firstDir = unit(first);
@@ -79,11 +134,6 @@ export function createRideCamera(camera: THREE.PerspectiveCamera, rooms: Rooms, 
     const p = shaftPointAt(shaft, s);
     return out.set(p.x, p.y, p.z);
   };
-  /** The drawn wall's radius at arc length s: the bore's throat, its flare, the tube. */
-  const radiusAt = (s: number): number => {
-    if (s <= SHAFT_OPEN_TOP) return BORE_RADIUS;
-    return THREE.MathUtils.lerp(BORE_RADIUS, SHAFT_RADIUS, Math.min(1, (s - SHAFT_OPEN_TOP) / 1.2));
-  };
   const yawAt = (s: number) => (s <= 0 ? startYaw : chairYaw(shaft, s / length, startYaw, endYaw));
   const forwardOf = (yaw: number, out: THREE.Vector3) => out.set(-Math.sin(yaw), 0, -Math.cos(yaw));
 
@@ -93,8 +143,8 @@ export function createRideCamera(camera: THREE.PerspectiveCamera, rooms: Rooms, 
   const fwd = new THREE.Vector3();
   const off = new THREE.Vector3();
   const right = new THREE.Vector3();
-  /** The camera's place with its boom's foot at arc length s: on the axis, lifted behind-and-above the chair. */
-  const cameraAt = (s: number, out: THREE.Vector3): THREE.Vector3 => {
+  /** The camera's place with its boom's foot at arc length s (the chair at sChair): on the axis, lifted behind-and-above the chair. */
+  const cameraAt = (s: number, sChair: number, out: THREE.Vector3): THREE.Vector3 => {
     along.subVectors(axis(s + 1.5, a), axis(s - 1.5, b)).normalize();
     const yaw = yawAt(s);
     forwardOf(yaw, fwd);
@@ -104,9 +154,16 @@ export function createRideCamera(camera: THREE.PerspectiveCamera, rooms: Rooms, 
     off.addScaledVector(along, -off.dot(along));
     if (off.lengthSq() < 1e-6) off.copy(Y);
     off.normalize();
-    const rise = Math.max(0, Math.min(T.rideRise, radiusAt(s) - T.rideWallInset - 0.05));
+    // The whole sightline from the camera to where it looks (rideLookAhead past the chair) stays inside the wall — so
+    // the boom to the chair does too, and the camera starts closing in on the axis well before the port, not in a snap.
+    const rise = boomRise(s, Math.max(s + T.rideBoom, sChair) + T.rideLookAhead, topY);
     return axis(s, out).addScaledVector(off, rise);
   };
+
+  // When the place's blend starts: the end of the hold's rideBlend window, or — if later — the moment the camera, on
+  // its boom rideBoom above the chair, has come down past the port's collar into the hall.
+  const camClearsPort = rideTimeAt(Math.min(1, (topY - (PORT_Y - COLLAR_DEPTH) + T.rideBoom) / length));
+  const placeBlendFrom = Math.min(RIDE_SECONDS - 0.5, Math.max(RIDE_SECONDS - T.rideBlend, camClearsPort));
 
   const holdPos = new THREE.Vector3();
   const holdQuat = new THREE.Quaternion();
@@ -125,9 +182,15 @@ export function createRideCamera(camera: THREE.PerspectiveCamera, rooms: Rooms, 
   const rigQuat = new THREE.Quaternion();
   const from = new THREE.Vector3();
 
-  /** Inside the space the camera may see from during the arrival: the tube (and housing) or the pen hall. */
+  // The shaft is one vertical leg (phase 4 D1): its axis, as drawn (render/shaft.ts shaftLine).
+  const axisX = line[0]!.x;
+  const axisZ = line[0]!.z;
+  /**
+   * Inside the space the camera may see from during the arrival: the tube, the annulus and the port by their radius at
+   * the point's height (D4: never the annulus's cone), or the pen hall.
+   */
   const inRideSpace = (q: { x: number; y: number; z: number }): boolean =>
-    (q.y < FLOOR_Y && distanceToLine(q, line) <= SHAFT_RADIUS - T.rideWallInset) || confineCamera(q, interior).normal === null;
+    (q.y < FLOOR_Y && Math.hypot(q.x - axisX, q.z - axisZ) <= wallRadiusAtY(q.y) - T.rideWallInset) || confineCamera(q, interior).normal === null;
 
   return {
     begin(start) {
@@ -146,7 +209,7 @@ export function createRideCamera(camera: THREE.PerspectiveCamera, rooms: Rooms, 
       // The hold, then the catch-up: the boom's foot eases from above the bore onto the chair's boom.
       const w = smooth((t - T.rideHold) / T.rideCatchUp);
       const sCam = (1 - w) * boomFoot + w * (sChair - T.rideBoom);
-      cameraAt(sCam, pos);
+      cameraAt(sCam, sChair, pos);
       const settle = smooth(t / T.rideHold);
       if (held && t < T.rideHold) pos.lerpVectors(holdPos, pos, settle);
 
@@ -172,12 +235,15 @@ export function createRideCamera(camera: THREE.PerspectiveCamera, rooms: Rooms, 
       }
 
       // The arrival: blend into the rig's pose (the camera holds it now), walking a hidden position back toward the chair.
+      // The view (orientation, fov) blends over the last rideBlend as phase 3 M4 had it; the place waits until the
+      // camera has come down through the port (phase 4 D4) — blending it earlier would pull it toward the pen camera
+      // through the annulus's rock, and the walk back would jump as the port opens into the hall below it.
       const k = smooth((t - (RIDE_SECONDS - T.rideBlend)) / T.rideBlend);
       if (k > 0) {
         rigPos.copy(camera.position);
         rigQuat.copy(camera.quaternion);
         const rigFov = camera.fov;
-        pos.lerp(rigPos, k);
+        pos.lerp(rigPos, smooth((t - placeBlendFrom) / (RIDE_SECONDS - placeBlendFrom)));
         from.set(chair.x, chair.y + 1.3, chair.z);
         const walked = walkBoom(from, pos, inRideSpace, 0.2, 6);
         pos.set(walked.x, walked.y, walked.z);
