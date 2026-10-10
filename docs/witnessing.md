@@ -209,9 +209,45 @@ behind her:
 | `10.2` | at the pen's wall: 29 kn (15 m/s), "STINGRAY IN PEN 3 — DOCKING" |
 | `11,throttle=0,boost=0,dock=0,clamps,1,engines,cradle,8.2` | docked and raised: the ocean door SHUT (the tower closed it once the hull was beyond 280 m) |
 
+## Score (phase 4 S1–S4)
+
+**Headless Chrome has no audio.** The engine is unit-tested (`score.test.ts`, `music.test.ts`, `music-cues.test.ts`,
+`audio.test.ts`); the ear test is the founder's. What a headless run can show is *which* cue fires *when*:
+`?debug=music` logs every music command to the console as it is decided (with the sim time and step), whether or not
+sound has started — add `--enable-logging=stderr --v=0` and read the `INFO:CONSOLE` lines.
+
+**Hearing each section** (a real browser, sound on):
+
+- `pnpm dev` → `/score.html` — play any section on its own, ROLL → MARCH (the brass hit), stop, and sliders.
+- In the game, from the console: `__stingray.music.play('ROLL')`, `__stingray.music.stop()`,
+  `__stingray.music.playing()`. Click the page first (a browser holds a context made without a gesture).
+- The **Music** item beside Sound on both menus switches the score on and off (stored as `stingray.music`, default
+  on); `M` mutes everything, music included. `?music=0` starts a page with the music off without touching the stored
+  switch.
+
+**The cues** (`src/audio/music-cues.ts`; the edges are the fixed step pairs `Game.onStep` hands the sound, so each fires once):
+
+| When (the sim edge) | Plays |
+|---|---|
+| the title menu up, from the first gesture | `FANFARE` then `MARCH` (looping) |
+| the title closed — Start / Skip to… | `stop(4)`; on foot, the `ALERT` once the 4 s fade is done (on the audio clock) |
+| on foot in the control room (after a jump, or the title) | `ALERT` — the PA's tattoo, through the effects bus (the room's send), quiet, looping |
+| sit: `troy.where` `onFoot` → `riding` (down) | `ROLL`, its intensity following the ride: 0.4 at the top → 1.2 at the seat |
+| lock-in: `riding` → `aboard`, 6.0 s after the sit | `MARCH` — ROLL's brass hit lands on the step, the march a bar (≈ 1.58 s) later |
+| the session mode becomes `piloting` (the hull past z −1100) | `stop(6)`; at sea, the ambience alone |
+| the rising edge of `docked(launch)`, once the sub has been released (never the session's start) | `STING_HOME` |
+| leave: `aboard` → `riding` (up) | `ROLL`, loud at the seat, thinning to the top |
+| stand-up: `riding` (up) → `onFoot`, 6.0 s after the leave | `STING_END` (no brass hit) |
+| the pause menu | nothing — the context is suspended; the music resumes where it was |
+| `R`, the menu's jumps, `?start=`, a script's `walk=` / `in=` / `dock=` | `stop(0.2)`, then the new state's cue (the title's `MARCH` under the title; the `ALERT` on foot; else none) |
+
+With `&debug=music` on the full loop above: the sit at 1.02 s → `ROLL`; 7.02 s → `MARCH`; 28.65 s (9.25 s after the
+clamps let go) → `stop(6)`. On the homecoming, `…,11,throttle=0,boost=0,dock=0,clamps,1,engines,cradle,8.2,leave,8`:
+`STING_HOME` as the cradle locks up, `ROLL` on the leave, `STING_END` 6.0 s later.
+
 ## Other switches
 
-`?fps` — the on-screen frame rate; `?stats` — the renderer's counts and the camera in the page; `?seed=N` — the world's seed (default 1964).
+`?fps` — the on-screen frame rate; `?music=0` — the score off for this page; `?debug=music` — log the music's cues; `?stats` — the renderer's counts and the camera in the page; `?seed=N` — the world's seed (default 1964).
 
 ## `window.__stingray`
 
@@ -229,6 +265,7 @@ behind her:
 | `camera()` | the camera's position |
 | `menu()` | which menu is up: `'title'`, `'pause'` or `null` |
 | `closeMenu()` | close it and play on as things stand |
+| `music.play(id)` / `music.stop()` / `music.playing()` | the score: a section from its top, a 1 s fade out, what plays (phase 4 S4; see Score) |
 | `troy()` | Troy's state (`where`, position, facing, gait) |
 | `rooms()` | the rooms' data (`src/sim/rooms.ts`) |
 | `walkTo(x, z)` | Troy on foot at the walkable point nearest (x, z); the camera snaps |
