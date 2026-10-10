@@ -23,9 +23,9 @@ import type { Vec3 } from '../sim/vec3';
 
 /**
  * Could the ocean side be seen from the camera at p? Outside Marineville, always. Inside, only while the door is not
- * fully shut (`door` > 0, the drawn travel). The tunnel's S-bend does not hide the mouth from the far end of the
- * tunnel or from parts of the pen hall (a diagonal sightline clears the 13 m bore through both bends), so where the
- * camera is inside does not matter: a shut door is the one thing that hides the ocean.
+ * fully shut (`door` > 0, the drawn travel). The tunnel is straight (phase 4 D6: a level chamber and one incline),
+ * so the mouth is in sight from the far end of the tunnel and from the pen hall's end of it; where the camera is
+ * inside does not matter: a shut door is the one thing that hides the ocean.
  */
 export function oceanInView(p: Vec3 | THREE.Vector3, door: number): boolean {
   return !cameraIndoors(p) || door > 0;

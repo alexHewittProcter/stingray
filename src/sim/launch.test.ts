@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { modeOf } from '../game/mode';
-import { confine, northOfFace } from './interior';
+import { boreSlopeAt, capAt, confine, northOfFace } from './interior';
 import {
   type GameState, type LaunchControl, type LaunchState, LAUNCH_CONTROLS, REFUSAL, cradleHeight, oceanStart, refusalFor,
   released, standby, stepGame, withoutDoor,
@@ -113,7 +113,7 @@ function follow(path: Vec3[], s: SubState, cruise: number): SubInput {
   const wantYaw = Math.atan2(-d.x, -d.z);
   const wantPitch = Math.atan2(d.y, Math.hypot(d.x, d.z));
   const wantSpeed = Math.min(cruise, 0.8 * remaining);
-  const cap = northOfFace(s.pos) ? T.interiorSpeedCap : T.cruiseSpeed;
+  const cap = Math.min(capAt(s.pos, I), T.cruiseSpeed); // the sim scales the throttle to the cap below cruise (D6)
   return {
     throttle: Math.min(wantSpeed / cap, 1),
     yaw: near ? 0 : clamp1(wrap(wantYaw - s.yaw) * 3),
@@ -127,7 +127,7 @@ const INWARD = I.tunnel.centreline;
 const OUTWARD = [...INWARD].reverse();
 const SEA = (metres: number): Vec3 => ({ x: MOUTH.x, y: MOUTH.y, z: COAST_Z + metres });
 /** From the lowered cradle down the tunnel and out to sea. */
-const LAUNCH_PATH: Vec3[] = [CRADLE_DOWN, ...OUTWARD, SEA(260)];
+const LAUNCH_PATH: Vec3[] = [CRADLE_DOWN, ...OUTWARD, SEA(400)];
 /** From the sea in through the tunnel to the lowered cradle. */
 const RETURN_PATH: Vec3[] = [SEA(200), ...INWARD, CRADLE_DOWN];
 
@@ -155,7 +155,7 @@ function scriptedLaunch(start: GameState, trace: Trace, out = 200): GameState {
   g = scriptStep(g, NO_INPUT, 'clamps', trace);
   let asked = false;
   for (let k = 0; k < steps(90) && g.sub.pos.z < COAST_Z + out; k++) {
-    const ask: boolean = !asked && dist(g.sub.pos, I.door.centre) <= I.door.range;
+    const ask: boolean = !asked && dist(g.sub.pos, I.door.centre) <= I.door.requestRange;
     asked ||= ask;
     g = scriptStep(g, follow(LAUNCH_PATH, g.sub, T.cruiseSpeed), ask ? 'door' : null, trace);
   }
@@ -176,7 +176,7 @@ function scriptedReturn(start: GameState, trace: Trace): GameState {
   for (let k = 0; k < steps(120); k++) {
     const atCradle = dist(g.sub.pos, CRADLE_DOWN) < 1 && speedOf(g.sub) < 1;
     if (atCradle) break;
-    const ask: boolean = !asked && dist(g.sub.pos, I.door.centre) <= I.door.range;
+    const ask: boolean = !asked && dist(g.sub.pos, I.door.centre) <= I.door.requestRange;
     asked ||= ask;
     g = scriptStep(g, follow(RETURN_PATH, g.sub, T.cruiseSpeed), ask ? 'door' : null, trace);
   }
@@ -251,8 +251,8 @@ describe('launch machinery (L3)', () => {
       ['clamps: lock pitched', away(CRADLE_DOWN, 0, undefined, 16 * (Math.PI / 180)), 'clamps', REFUSAL.notLinedUp],
       ['door: from the cradle', standby(W), 'door', REFUSAL.onCradle],
       ['door: clamped and lowered', running, 'door', REFUSAL.onCradle],
-      ['door: out of range in the pen', away(CRADLE_DOWN, 0), 'door', REFUSAL.outOfRange],
-      ['door: out of range at sea', away(SEA(I.door.range + 1), 0), 'door', REFUSAL.outOfRange],
+      ['door: out of range at the pen\'s north end', away({ x: 0, y: I.cradle.loweredY, z: I.pen.min.z + T.hullRadius }, 0), 'door', REFUSAL.outOfRange],
+      ['door: out of range at sea', away(SEA(I.door.requestRange + 1), 0), 'door', REFUSAL.outOfRange],
     ];
     const strip = (g: GameState) => ({ ...g, launch: { ...g.launch, refusal: null } });
     for (const [name, g, control, reason] of cases) {
@@ -356,18 +356,55 @@ describe('confinement through stepGame (L1)', () => {
   });
 });
 
-describe('the speed cap (L1)', () => {
-  it('6a. forward speed never exceeds the cap inside, with boost held', () => {
+describe('the speed cap (L1, ramped by phase 4 D6)', () => {
+  const WALL = I.pen.max.z;
+  const TUNNEL = (south: number): Vec3 => {
+    // On the incline's centreline, `south` metres south of the pen's south wall.
+    const [, top, end] = I.tunnel.centreline as [Vec3, Vec3, Vec3];
+    const u = south / (top.z - end.z);
+    return { x: 0, y: end.y + (top.y - end.y) * u, z: WALL + south };
+  };
+
+  it('D6. capAt: 15 in the pen and at its south wall, the full boost cap 60 m out and beyond (the tunnel, the sea), linear between', () => {
+    expect(T.capRamp).toBe(60);
+    expect(capAt(CRADLE_DOWN, I)).toBe(T.interiorSpeedCap);
+    expect(capAt({ x: 0, y: I.cradle.raisedY, z: I.pen.min.z + 5 }, I)).toBe(T.interiorSpeedCap);
+    expect(capAt(TUNNEL(0), I)).toBe(T.interiorSpeedCap);
+    expect(capAt(TUNNEL(30), I)).toBeCloseTo((T.interiorSpeedCap + T.boostSpeed) / 2, 12);
+    expect(capAt(TUNNEL(60), I)).toBe(T.boostSpeed);
+    expect(capAt(TUNNEL(120), I)).toBe(T.boostSpeed);
+    expect(capAt({ x: 0, y: -40, z: COAST_Z - 35 }, I)).toBe(T.boostSpeed); // the door chamber
+    expect(capAt(SEA(100), I)).toBe(T.boostSpeed);
+    expect(capAt({ x: 300, y: -20, z: 0 }, I)).toBe(T.boostSpeed);
+    // Monotone over the ramp.
+    for (let d = 0; d < 60; d += 1) expect(capAt(TUNNEL(d + 1), I)).toBeGreaterThan(capAt(TUNNEL(d), I));
+  });
+
+  it('6a. in the pen, forward speed never exceeds 15 m/s with boost held', () => {
     let worst = 0;
-    run(freeAt({ x: 0, y: -40, z: -1105 }, 0), steps(10), input({ throttle: 1, boost: true }), (_, next) => {
+    run(freeAt({ x: 0, y: -14, z: I.pen.min.z + 10 }, Math.PI), steps(4), input({ throttle: 1, boost: true }), (_, next) => {
+      if (next.sub.pos.z > WALL) return;
       worst = Math.max(worst, along(next.sub));
-      expect(northOfFace(next.sub.pos)).toBe(true);
     });
     expect(worst).toBeLessThanOrEqual(T.interiorSpeedCap + EPS);
     expect(worst).toBeGreaterThan(T.interiorSpeedCap - 0.01);
   });
 
-  it.each([0, 3.5, -4])('6b. a sub arriving from the sea at 60 m/s (%s m off the axis) is at the cap one step inside, and is not flung sideways', (x) => {
+  it('D6. boost is allowed in the tunnel: from the door chamber the sub reaches 60 m/s heading in or out', () => {
+    for (const [pos, yaw] of [[{ x: 0, y: -40, z: COAST_Z - 10 }, 0], [TUNNEL(150), Math.PI]] as const) {
+      let worst = 0;
+      const g = run(freeAt(pos, yaw, { door: 1 }, scale(forwardOf(yaw, 0), T.cruiseSpeed)), steps(1.6), input({ throttle: 1, boost: true }), (prev, next) => {
+        expectNoJump(prev, next);
+        expect(northOfFace(next.sub.pos)).toBe(true);
+        worst = Math.max(worst, along(next.sub));
+      });
+      expect(worst, `from z ${pos.z}`).toBeGreaterThan(T.cruiseSpeed + 25);
+      expect(worst).toBeLessThanOrEqual(T.boostSpeed + EPS);
+      expect(g.sub.pos.z).toBeGreaterThan(WALL + T.capRamp); // still in the full-cap part of the tunnel
+    }
+  });
+
+  it.each([0, 3.5, -4])('6b. a sub arriving from the sea at 60 m/s (%s m off the axis) keeps its speed into the tunnel, is not flung sideways, and the ramp slows it to 15 at the pen', (x) => {
     let g = freeAt({ x, y: -40, z: COAST_Z + 30 }, 0, { door: 1 }, { x: 0, y: 0, z: -60 });
     let k = 0;
     while (!northOfFace(g.sub.pos)) {
@@ -376,24 +413,134 @@ describe('the speed cap (L1)', () => {
       g = next;
       expect(++k).toBeLessThan(120);
     }
-    expect(along(g.sub)).toBeLessThanOrEqual(T.interiorSpeedCap + EPS);
+    // No snap at the mouth (phase 2's cap is gone from the tunnel).
+    expect(along(g.sub)).toBeGreaterThan(T.boostSpeed - 1);
     let sideways = 0;
-    g = run(g, steps(2), input({ throttle: 1, boost: true }), (prev, next) => {
+    g = run(g, steps(0.5), input({ throttle: 1, boost: true }), (prev, next) => {
       expectNoJump(prev, next);
       sideways = Math.max(sideways, Math.abs(next.sub.pos.x - prev.sub.pos.x));
     });
     expect(sideways).toBeLessThan(0.3);
     expect(Math.abs(g.sub.pos.x)).toBeLessThanOrEqual(T.tunnelHullReach + 1e-6);
+    expect(along(g.sub)).toBeGreaterThan(T.boostSpeed - 1);
   });
 
-  it('6c. speed rises past the cap within 2 s of leaving the mouth', () => {
-    let g = freeAt({ x: 0, y: -40, z: COAST_Z - 20 }, Math.PI, { door: 1 }, { x: 0, y: 0, z: 15 });
-    for (let k = 0; northOfFace(g.sub.pos); k++) {
-      g = stepGame(g, input({ throttle: 1, boost: true }), null, DT, W);
+  it('D6. coming home at 60 m/s down the straight bore: the cap slows the sub over the last 60 m, never above capAt, 15 at the wall', () => {
+    // Boost straight up the incline (the autopilot steers; boost held throughout).
+    const path = [SEA(40), ...INWARD, CRADLE_DOWN];
+    let g = freeAt(SEA(40), 0, { door: 1 }, { x: 0, y: 0, z: -60 });
+    let atWall = -1;
+    let entered = 60;
+    for (let k = 0; k < steps(20) && g.sub.pos.z > WALL - 5; k++) {
+      const steer = follow(path, g.sub, T.boostSpeed);
+      const next = stepGame(g, { ...steer, throttle: 1, boost: true }, null, DT, W);
+      expectNoJump(g, next);
+      expect(outside(next.sub.pos)).toBeLessThanOrEqual(1e-6);
+      expect(along(next.sub)).toBeLessThanOrEqual(capAt(next.sub.pos, I) + EPS);
+      if (g.sub.pos.z > WALL + T.capRamp && next.sub.pos.z <= WALL + T.capRamp) entered = along(g.sub);
+      if (atWall < 0 && next.sub.pos.z <= WALL) atWall = along(next.sub);
+      g = next;
+    }
+    expect(entered).toBeGreaterThan(T.boostSpeed - 2); // it was at full speed on the ramp's south end
+    expect(atWall).toBeGreaterThan(0);
+    expect(atWall).toBeLessThanOrEqual(T.interiorSpeedCap + EPS);
+  });
+
+  it('6c. leaving the pen, speed rises past the old 15 m/s cap within 2 s of clearing the ramp', () => {
+    const out = (g: GameState): SubInput => ({ ...follow(LAUNCH_PATH, g.sub, T.boostSpeed), throttle: 1, boost: true });
+    let g = freeAt(TUNNEL(T.capRamp - 1), Math.PI, { door: 1 }, scale(forwardOf(Math.PI, 0), 15));
+    for (let k = 0; g.sub.pos.z < WALL + T.capRamp; k++) {
+      g = stepGame(g, out(g), null, DT, W);
       expect(k).toBeLessThan(120);
     }
-    g = run(g, steps(2), input({ throttle: 1, boost: true }));
+    for (let k = 0; k < steps(2); k++) g = stepGame(g, out(g), null, DT, W);
     expect(along(g.sub)).toBeGreaterThan(T.interiorSpeedCap + 10);
+  });
+});
+
+describe('the bore\'s pitch assist (phase 4 D6)', () => {
+  const DEG = Math.PI / 180;
+  const INCLINE = Math.atan(26 / 170);
+  const BOOST = input({ throttle: 1, boost: true });
+  /** Held on throttle and boost with no pitch (or steer) input: the worst speed and pitch seen while on the incline. */
+  function holdThrough(start: GameState, until: (g: GameState) => boolean) {
+    let g = start;
+    let slowest = Infinity;
+    let fastest = 0;
+    let shed = 0; // the most speed lost in one step on the incline: a hull scraping the bore loses it every step
+    let k = 0;
+    for (; k < steps(20) && !until(g); k++) {
+      const next = stepGame(g, BOOST, null, DT, W);
+      expectNoJump(g, next);
+      expect(outside(next.sub.pos)).toBeLessThanOrEqual(1e-6);
+      const prev = g;
+      g = next;
+      const z = g.sub.pos.z;
+      // The incline's middle, clear of the joins' blends and the ramp: z −1190 … −1270.
+      if (z < -1190 && z > -1270) {
+        [slowest, fastest] = [Math.min(slowest, speedOf(g.sub)), Math.max(fastest, speedOf(g.sub))];
+        // Off the ramp's 60 m (z > −1280) the cap is the full 60 m/s, so speed only falls by scraping.
+        shed = Math.max(shed, speedOf(prev.sub) - speedOf(g.sub));
+      }
+    }
+    return { g, slowest, fastest, shed, seconds: k * DT };
+  }
+
+  it('boreSlopeAt: the incline\'s slope along the heading (≈ ±8.7°), level in the chamber and the pen, 0 at sea and broadside', () => {
+    const mid = { x: 0, y: -27, z: -1255 };
+    expect(boreSlopeAt(mid, 0, I)).toBeCloseTo(INCLINE, 9); // facing in (north), up the incline
+    expect(boreSlopeAt(mid, Math.PI, I)).toBeCloseTo(-INCLINE, 9); // facing out, down it
+    expect(boreSlopeAt(mid, Math.PI / 2, I)).toBeCloseTo(0, 9);
+    expect(INCLINE / DEG).toBeCloseTo(8.7, 1);
+    expect(boreSlopeAt({ x: 0, y: -40, z: COAST_Z - 30 }, 0, I)).toBe(0); // the door chamber
+    expect(boreSlopeAt(CRADLE_DOWN, 0, I)).toBe(0); // the pen
+    expect(boreSlopeAt(SEA(50), 0, I)).toBe(0); // the sea
+    expect(boreSlopeAt({ x: 40, y: -27, z: -1255 }, 0, I)).toBe(0); // outside the bore
+    // Blended across the corner and faded to level at the pen's wall: continuous, never beyond the incline's.
+    let prev = boreSlopeAt({ x: 0, y: -40, z: COAST_Z - 1 }, 0, I);
+    for (let z = COAST_Z - 1; z > I.pen.max.z; z -= 0.5) {
+      const y = z > -1170 ? -40 : -40 + (26 * (-1170 - z)) / 170; // on the centreline
+      const here = boreSlopeAt({ x: 0, y, z }, 0, I);
+      expect(Math.abs(here - prev), `z ${z}`).toBeLessThan(0.01);
+      expect(here).toBeLessThanOrEqual(INCLINE + 1e-12);
+      prev = here;
+    }
+    expect(boreSlopeAt({ x: 0, y: -14, z: I.pen.max.z + 0.01 }, 0, I)).toBeCloseTo(0, 3);
+  });
+
+  it('out: from the released cradle, held level on throttle and boost (no pitch input), the sub runs the incline at ≥ 55 m/s and reaches the sea', () => {
+    // The door asked for from the cradle as the run starts (an open one would shut at once: the cradle is beyond 280 m).
+    const start = press(freeAt(CRADLE_DOWN, I.cradle.yawOut), 'door', BOOST);
+    const { g, fastest, shed, seconds } = holdThrough(start, (g) => g.sub.pos.z > COAST_Z + 60);
+    // Still gathering speed off the ramp (boost accelerates at 20 m/s²): it passes 55 on the incline, never sheds any.
+    expect(fastest).toBeGreaterThanOrEqual(55);
+    expect(shed).toBeLessThan(0.05);
+    expect(g.sub.pos.z).toBeGreaterThan(COAST_Z + 60);
+    expect(seconds).toBeLessThan(11); // ≈ 10.2 s from the release to 60 m out at sea
+  });
+
+  it('in: from the sea, held on throttle and boost (no pitch input), the sub runs up the incline at ≥ 55 m/s, then the ramp slows it into the pen', () => {
+    const start = freeAt(SEA(200), 0, { door: 1 });
+    const { g, slowest, shed } = holdThrough(start, (g) => g.sub.pos.z < I.pen.max.z - 10);
+    expect(slowest).toBeGreaterThanOrEqual(55);
+    expect(shed).toBeLessThan(0.05);
+    expect(g.sub.pos.z).toBeLessThan(I.pen.max.z - 10);
+    expect(along(g.sub)).toBeLessThanOrEqual(T.interiorSpeedCap + EPS);
+  });
+
+  it('the door chamber stays level: a sub held on the throttle there keeps its nose at 0', () => {
+    let g = freeAt({ x: 0, y: -40, z: COAST_Z - 10 }, 0, { door: 1 });
+    for (let k = 0; k < steps(0.8); k++) {
+      g = stepGame(g, BOOST, null, DT, W);
+      if (g.sub.pos.z > COAST_Z - 70 + T.boreTrimBlend / 2) expect(g.sub.pitch).toBe(0);
+    }
+  });
+
+  it('no effect at sea: a pitched sub there with no pitch input levels to 0 as phase 1\'s does', () => {
+    let g = freeAt(SEA(300), 0);
+    g = { ...g, sub: { ...g.sub, pitch: -20 * DEG } };
+    g = run(g, steps(0.5), input({ throttle: 1 }));
+    expect(g.sub.pitch).toBe(0);
   });
 });
 
@@ -432,19 +579,52 @@ describe('the ocean door (L2)', () => {
     expect(northOfFace(g.sub.pos)).toBe(true);
   });
 
-  it('7c. a request out of range is refused; at exactly the range it is accepted and the tower leaves it open', () => {
-    expect(press(freeAt(SEA(I.door.range + 0.01), 0), 'door').launch.refusal?.reason).toBe(REFUSAL.outOfRange);
-    expect(press(freeAt({ x: 0, y: -40, z: COAST_Z - I.door.range - 0.01 }, 0), 'door').launch.refusal?.reason).toBe(REFUSAL.outOfRange);
-    const atRange = press(freeAt(SEA(I.door.range), 0), 'door');
+  it('7c. a request out of range is refused; at exactly the range it is accepted (and opens: the tower closes it beyond closeRange)', () => {
+    expect(press(freeAt(SEA(I.door.requestRange + 0.01), 0), 'door').launch.refusal?.reason).toBe(REFUSAL.outOfRange);
+    expect(press(freeAt({ x: 0, y: -40, z: COAST_Z - I.door.requestRange - 0.01 }, 0), 'door').launch.refusal?.reason).toBe(REFUSAL.outOfRange);
+    const atRange = press(freeAt(SEA(I.door.requestRange), 0), 'door');
     expect(atRange.launch).toMatchObject({ doorDir: 1, refusal: null });
-    const open = run(atRange, steps(T.doorTravel) + 60);
+    // Within closeRange the tower leaves an open door open.
+    const near = press(freeAt(SEA(I.door.closeRange), 0), 'door');
+    const open = run(near, steps(T.doorTravel) + 60);
     expect(open.launch).toMatchObject({ door: 1, doorDir: 0 });
     // Inside the tunnel too, measured from the door's centre.
     expect(press(freeAt({ x: 0, y: -40, z: COAST_Z - 100 }, 0), 'door').launch.doorDir).toBe(1);
   });
 
+  it('D6. the ranges: request 340 m and close 280 m (tuning.ts), carried by World.interior.door', () => {
+    expect(I.door).toEqual({ centre: MOUTH, requestRange: T.doorRequestRange, closeRange: T.doorCloseRange });
+    expect(T.doorRequestRange).toBe(340);
+    expect(T.doorCloseRange).toBe(280);
+    // A boosting sub can ask from the pen's mouth and pass without stopping.
+    expect(T.doorRequestRange).toBeGreaterThanOrEqual(T.boostSpeed * T.doorTravel + 30);
+  });
+
+  it('D6. a request is possible from the cradle: released on the lowered cradle, the door opens', () => {
+    expect(dist(CRADLE_DOWN, I.door.centre)).toBeGreaterThan(I.door.closeRange);
+    expect(dist(CRADLE_DOWN, I.door.centre)).toBeLessThan(I.door.requestRange);
+    const g = press(freeAt(CRADLE_DOWN, I.cradle.yawOut), 'door');
+    expect(g.launch).toMatchObject({ doorDir: 1, refusal: null });
+  });
+
+  it('D6. close on dock: an open door shuts once the sub is locked on the cradle (beyond closeRange), lowered or raised', () => {
+    // Locked on the lowered cradle with the door open: the tower closes it.
+    let g = press(freeAt(CRADLE_DOWN, I.cradle.yawOut, { door: 1 }), 'clamps');
+    expect(g.launch.clamps).toBe('locked');
+    expect(g.launch.doorDir).toBe(-1);
+    g = run(g, steps(T.doorTravel));
+    expect(g.launch).toMatchObject({ door: 0, doorDir: 0 });
+    // And the raised (docked) sub is further still.
+    expect(dist({ ...CRADLE_DOWN, y: I.cradle.raisedY }, I.door.centre)).toBeGreaterThan(I.door.closeRange);
+  });
+
+  it('D6. close at sea: an open door shuts beyond closeRange, and stays open within it', () => {
+    expect(run(freeAt(SEA(I.door.closeRange - 1), 0, { door: 1 }), 1).launch).toMatchObject({ door: 1, doorDir: 0 });
+    expect(run(freeAt(SEA(I.door.closeRange + 1), 0, { door: 1 }), 1).launch.doorDir).toBe(-1);
+  });
+
   it('7d. the tower closes the door once the sub is out of range, in 5 s', () => {
-    let g = freeAt(SEA(I.door.range + 1), Math.PI, { door: 1 });
+    let g = freeAt(SEA(I.door.closeRange + 1), Math.PI, { door: 1 });
     g = run(g, 1);
     expect(g.launch.doorDir).toBe(-1);
     g = run(g, steps(T.doorTravel) - 2);
@@ -487,7 +667,7 @@ describe('the ocean door (L2)', () => {
 });
 
 describe('continuity (L4)', () => {
-  it('8. a scripted launch from standby to 200 m out: no step jumps, and the mode changes exactly once, at the mouth', () => {
+  it('8. a scripted launch from standby to 300 m out: no step jumps, and the mode changes exactly once, at the mouth', () => {
     let crossing: Vec3 | null = null;
     const trace: Trace = {
       modes: [modeOf(standby(W).sub.pos)],
@@ -497,13 +677,13 @@ describe('continuity (L4)', () => {
         if (northOfFace(prev.sub.pos) && !northOfFace(next.sub.pos)) crossing = next.sub.pos;
       },
     };
-    const g = scriptedLaunch(standby(W), trace);
-    expect(g.sub.pos.z).toBeGreaterThanOrEqual(COAST_Z + 200);
+    const g = scriptedLaunch(standby(W), trace, 300);
+    expect(g.sub.pos.z).toBeGreaterThanOrEqual(COAST_Z + 300);
     expect(trace.modes).toEqual(['launch', 'piloting']);
     expect(crossing).not.toBeNull();
     expect(dist(crossing!, MOUTH)).toBeLessThan(T.tunnelHullReach + 1);
     expect(g.launch).toMatchObject({ clamps: 'released', engines: 'on' });
-    // 200 m out is beyond the door's range: the tower is closing it behind the sub.
+    // 300 m out is beyond the door's close range (D6: 280 m): the tower is closing it behind the sub.
     expect(g.launch.doorDir).toBe(-1);
   });
 });
@@ -567,22 +747,23 @@ describe('return and dock (L3, test 10)', () => {
   ];
 
   /** From the open sea: ask for the door in range, drive the path at the cap, and slow to a creep in the pool. */
-  function driveHome(start: GameState, path: Vec3[], trace: Trace): { g: GameState; doorShutBehind: boolean } {
+  function driveHome(start: GameState, path: Vec3[], trace: Trace): { g: GameState; doorClosingBehind: boolean } {
     let g = start;
     let asked = false;
-    let doorShutBehind = false;
+    let doorClosingBehind = false;
     for (let k = 0; k < steps(120); k++) {
       if (dist(g.sub.pos, CRADLE_DOWN) < 1 && speedOf(g.sub) < 1) break;
-      const ask: boolean = !asked && dist(g.sub.pos, I.door.centre) <= I.door.range;
+      const ask: boolean = !asked && dist(g.sub.pos, I.door.centre) <= I.door.requestRange;
       asked ||= ask;
       const inPool = g.sub.pos.z < I.pen.max.z;
       g = scriptStep(g, follow(path, g.sub, inPool ? 5 : T.cruiseSpeed), ask ? 'door' : null, trace);
-      if (inPool && g.launch.door === 0 && g.launch.doorDir === 0) doorShutBehind = true;
+      // D6: the tower starts closing the door once the hull is beyond closeRange (280 m) — in the pool, short of the cradle.
+      if (inPool && g.launch.doorDir === -1) doorClosingBehind = true;
     }
-    return { g, doorShutBehind };
+    return { g, doorClosingBehind };
   }
 
-  it.each(ARRIVALS)('10a. from the open sea, %s: door, tunnel, pool, lock, engines off, raise — exactly standby, facing yawOut, door shut behind', (_, path) => {
+  it.each(ARRIVALS)('10a. from the open sea, %s: door, tunnel, pool, lock, engines off, raise — exactly standby, facing yawOut, door shut behind (D6: by the dock)', (_, path) => {
     const trace: Trace = {
       modes: ['piloting'],
       each: (prev, next) => {
@@ -591,9 +772,9 @@ describe('return and dock (L3, test 10)', () => {
       },
     };
     const start = freeAt(SEA(200), 0); // out at sea, facing home, door shut
-    const { g: arrived, doorShutBehind } = driveHome(start, path, trace);
+    const { g: arrived, doorClosingBehind } = driveHome(start, path, trace);
     expect(trace.modes).toEqual(['piloting', 'launch']);
-    expect(doorShutBehind).toBe(true); // the tower shut it behind the returning sub before it reached the pool
+    expect(doorClosingBehind).toBe(true); // the tower is closing it behind the returning sub before it reaches the cradle
     expect(dist(arrived.sub.pos, CRADLE_DOWN)).toBeLessThan(1);
     expect(refusalFor('clamps', arrived.launch, arrived.sub, I)).toBeNull();
     const facing = Math.abs(wrap(arrived.sub.yaw - I.cradle.yawOut));

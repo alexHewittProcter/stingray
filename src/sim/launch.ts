@@ -6,7 +6,7 @@
 // applied around it) → stepCombat (with fire forced off north of the cliff face, and always the full world).
 
 import { type CombatState, initialCombatState, stepCombat } from './combat';
-import { confine, northOfFace } from './interior';
+import { boreSlopeAt, capAt, confine, northOfFace } from './interior';
 import { seatOf } from './rooms';
 import { type SubInput, type SubState, forwardOf, initialSubState, speedOf, stepSub } from './sub';
 import { type TroyState, aboard } from './troy';
@@ -170,7 +170,7 @@ export function refusalFor(control: LaunchControl, l: LaunchState, sub: SubState
       return lockRefusal(sub, interior);
     case 'door':
       if (l.clamps === 'locked') return REFUSAL.onCradle;
-      return distance(sub.pos, interior.door.centre) <= interior.door.range ? null : REFUSAL.outOfRange;
+      return distance(sub.pos, interior.door.centre) <= interior.door.requestRange ? null : REFUSAL.outOfRange;
   }
 }
 
@@ -215,10 +215,10 @@ function advance(l: LaunchState, sub: SubState, dt: number, interior: Interior):
     if (n.engineStart >= T.engineStart - ARRIVE) [n.engines, n.engineStart] = ['on', 0];
   }
 
-  // The tower: an open door closes once the hull centre is beyond range; a closing door never closes on the hull.
+  // The tower: an open door closes once the hull centre is beyond closeRange; a closing door never closes on the hull.
   const away = distance(sub.pos, interior.door.centre);
   if (n.doorDir === -1 && away <= T.doorReopenDistance) n.doorDir = 1;
-  if (n.door >= 1 && n.doorDir === 0 && away > interior.door.range) n.doorDir = -1;
+  if (n.door >= 1 && n.doorDir === 0 && away > interior.door.closeRange) n.doorDir = -1;
   if (n.doorDir !== 0) {
     n.door += (n.doorDir * dt) / T.doorTravel;
     if (n.door >= 1 - ARRIVE) [n.door, n.doorDir] = [1, 0];
@@ -262,15 +262,20 @@ function nearerAxis(yaw: number, yawOut: number): number {
 // ---- The sub driven ----
 
 function drive(s: SubState, input: SubInput, l: LaunchState, dt: number, env: Env): SubState {
-  const inside = northOfFace(s.pos);
-  // L1's cap: no boost north of the face, and the throttle scaled to the cap. Reverse is unchanged.
-  const given = inside
-    ? { ...input, boost: false, throttle: input.throttle > 0 ? (input.throttle * T.interiorSpeedCap) / T.cruiseSpeed : input.throttle }
-    : input;
-  // L2: the door is solid unless fully open.
-  const n = stepSub(s, given, dt, l.door >= 1 ? withoutDoor(env) : env);
-  confineHull(n, env.marineville.interior, dt);
-  if (northOfFace(n.pos)) capAlongNose(n);
+  const interior = env.marineville.interior;
+  // L1's cap, as phase 4 D6 ramps it (capAt): the throttle scaled to the cap where it is below cruise, boost only
+  // where it is above. Reverse is unchanged.
+  const cap = capAt(s.pos, interior);
+  const given: SubInput = {
+    ...input,
+    boost: input.boost && cap > T.cruiseSpeed,
+    throttle: input.throttle > 0 && cap < T.cruiseSpeed ? (input.throttle * cap) / T.cruiseSpeed : input.throttle,
+  };
+  // L2: the door is solid unless fully open. D6's pitch assist: in the bore, the nose with no pitch input settles to the
+  // bore's slope along the heading rather than to level (0 everywhere else, so the sea is unchanged).
+  const n = stepSub(s, given, dt, l.door >= 1 ? withoutDoor(env) : env, boreSlopeAt(s.pos, s.yaw, interior));
+  confineHull(n, interior, dt);
+  capAlongNose(n, capAt(n.pos, interior));
   return n;
 }
 
@@ -284,11 +289,16 @@ function confineHull(n: SubState, interior: Interior, dt: number): void {
   n.vel = scale(n.vel, Math.exp(-T.contactDrag * dt));
 }
 
-/** The hard clamp: speed along the nose no more than the cap (a sub arriving from the sea snaps down at the mouth). */
-function capAlongNose(n: SubState): void {
+/**
+ * The hard clamp: speed along the nose no more than the cap. Where the cap is the full boost speed (at sea, and in
+ * the tunnel more than capRamp from the pen) it does nothing, so the sea is phase 1's; over the ramp a sub coming
+ * home at speed is slowed into the pen (D6) rather than hitting a wall at it.
+ */
+function capAlongNose(n: SubState, cap: number): void {
+  if (cap >= T.boostSpeed) return;
   const f = forwardOf(n.yaw, n.pitch);
   const along = dot(n.vel, f);
-  if (along > T.interiorSpeedCap) n.vel = sub(n.vel, scale(f, along - T.interiorSpeedCap));
+  if (along > cap) n.vel = sub(n.vel, scale(f, along - cap));
 }
 
 // The world stepSub sees while the door is fully open: the same world less the door's collider. Built once per world.

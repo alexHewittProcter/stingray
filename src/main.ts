@@ -176,7 +176,7 @@ let legend = initialLegend();
 // The launch panel (L6): its decisions are pure (game/panel.ts); its memory is presentation only.
 let panelMemory = initialMemory(game.state);
 const launchPanel = createLaunchPanel(document.body, (control) => game.press(control));
-// The docking guide (T6): on the way home, from the tunnel's last bend to the lock.
+// The docking guide (T6): on the way home, from the tunnel's last stretch to the lock.
 const dockGuide = createDockGuide(document.body);
 
 // T9: orbit the camera around the craft (render/orbit.ts) — drag on the game view or J/L/I/K, the wheel zooms, C or

@@ -1,5 +1,5 @@
-// Dock guidance (phase 2, L6 "dock guidance on the HUD", T6) — pure, no DOM. On the way home, from the last bend
-// of the tunnel to the lock, it says where the lowered cradle is relative to the craft, where the craft would come
+// Dock guidance (phase 2, L6 "dock guidance on the HUD", T6) — pure, no DOM. On the way home, from the tunnel's last
+// stretch (DOCK_GUIDE_RANGE from the cradle) to the lock, it says where the lowered cradle is relative to the craft, where the craft would come
 // to rest if the pilot let go now, whether each of L3's lock conditions holds, and the one thing to do next.
 // render/dock-guide.ts draws it; it never writes sim state, and its "ready" is exactly the sim's: a press of 3 is
 // accepted precisely when refusalFor('clamps', …) is null.
@@ -10,7 +10,7 @@ import type { Vec3 } from '../sim/vec3';
 import type { Interior } from '../sim/world';
 import type { PanelMemory } from './panel';
 
-/** The guide shows once the hull centre is this close to the lowered cradle position (the tunnel's last bend). */
+/** The guide shows once the hull centre is this close to the lowered cradle position (the tunnel's last stretch). */
 export const DOCK_GUIDE_RANGE = 80; // m
 
 /** A point in the craft's frame, level: ahead of the nose, to starboard, above. Metres. */

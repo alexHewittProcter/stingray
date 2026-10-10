@@ -162,13 +162,13 @@ export function nearCradle(metres: number): { pos: Vec3; yaw: number } {
  * "cradle,8.2,engines,2.1,clamps,1" lowers the cradle, starts the engines and releases the clamps;
  * "out=40,door,5" waits in the door chamber while the door opens. Phase 3 (T7), the full loop from the control room to
  * open water in one page (Troy walked to the front of his chair at the station — phase 4: (0.6, −1390.6), 1.6 m south
- * of it — sits, rides down 6 s and locks in, then phase 2's launch, steered out through the tunnel — the held axes
- * merge, main.ts setInput — ending out at sea; T4 re-steers the tunnel legs for the straight bore):
- *   ?start=control&menu=0&script=walk=0.6:-1390.6,1,use,8,cradle,8.2,engines,2.2,clamps,1,throttle=1,1.5,1.5,1.5,
- *   steer=-0.5,climb=-0.25,1.5,steer=0.5,climb=0,1.5,climb=-0.25,1.5,steer=-0.25,1.5,steer=0.25,climb=0.25,1.5,
- *   steer=-0.5,1.5,steer=0.25,1.5,door,steer=-1,climb=-0.5,1.5,steer=1,1.5,steer=-0.75,climb=0.5,1.5,steer=1,1.5,
- *   steer=-1,climb=0,1.5,steer=1,climb=-0.5,1.5,steer=-1,climb=0.25,1.5,steer=1,climb=0.5,1.5,steer=-1,1.5,
- *   steer=0,climb=0,6   (one line in the URL). Unknown words are ignored. At most
+ * of it — sits, rides down 6 s and locks in, then phase 2's launch; phase 4 (D6, T4): the tunnel is straight, so the
+ * door is asked for from the cradle as the clamps let go (its 340 m request range reaches it; it is open 5 s later,
+ * long before the sub gets there) and Stingray boosts straight out on the throttle alone — the bore's pitch assist
+ * (interior.ts boreSlopeAt) trims the nose to the incline, so no steering — at up to 60 m/s; the held axes merge,
+ * main.ts setInput; ≈ 9.3 s from the release to the mouth, ≈ 10.9 s to 100 m out at sea):
+ *   ?start=control&menu=0&script=walk=0.6:-1390.6,1,use,8,cradle,8.2,engines,2.2,clamps,door,throttle=1,boost=1,12
+ *   (one line in the URL). Unknown words are ignored. At most
  * SCRIPT_LIMITS.tokens words run, and at most SCRIPT_LIMITS.totalSeconds in all.
  */
 export function runScript(script: string, handle: DebugHandle): void {

@@ -1,5 +1,5 @@
 // The docking guide (phase 2, L6 "dock guidance on the HUD", T6): a small instrument on the right of the screen,
-// shown on the way home from the tunnel's last bend to the lock. DOM and SVG only; every number and the hint come
+// shown on the way home from the tunnel's last stretch to the lock. DOM and SVG only; every number and the hint come
 // from the pure view-model in game/dock.ts.
 //
 //   - The scope: the pen seen from above, the craft's nose up. The craft is the solid shape in the middle; the
