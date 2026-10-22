@@ -113,7 +113,10 @@ describe('music.ts: the ALERT plays the Launch Stations clip', () => {
   it('fetches the WAV once, when the music is made, from the site base', () => {
     const { fetchMock } = setUp();
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(fetchMock).toHaveBeenCalledWith(`/${LAUNCH_STATIONS.url}`);
+    // Vite's base ('/stingray/' on GitHub Pages, see vite.config.ts) is what vitest exposes here too.
+    const base = import.meta.env.BASE_URL;
+    expect(base.endsWith('/')).toBe(true);
+    expect(fetchMock).toHaveBeenCalledWith(`${base}${LAUNCH_STATIONS.url}`);
   });
 
   it('plays through the diegetic send into the effects bus — not the music bus — at LEVELS.alert', async () => {
