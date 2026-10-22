@@ -2,6 +2,8 @@ import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
+  // Served from https://alexhewittprocter.github.io/stingray/ on GitHub Pages (.github/workflows/deploy.yml)
+  base: '/stingray/',
   build: {
     rollupOptions: {
       input: {
